@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://Scripts/gold_ore.gd" id="1_ore"]
+[ext_resource type="Texture2D" path="res://Sprites/Gold Ore.webp" id="2_ore"]
+
+[node name="GoldOre" type="Node2D"]
+z_index = 4
+script = ExtResource("1_ore")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_ore")
+
+[node name="BuildMineButton" type="Button" parent="."]
+offset_left = -52.0
+offset_top = -15.0
+offset_right = 52.0
+offset_bottom = 15.0
+mouse_filter = 0
+text = "Build Mine"

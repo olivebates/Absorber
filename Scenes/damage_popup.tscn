@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://Scripts/damage_popup.gd" id="1_popup"]
+
+[node name="DamagePopup" type="Label"]
+z_index = 30
+offset_left = -20.0
+offset_top = -12.0
+offset_right = 20.0
+offset_bottom = 12.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.24, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.12, 0.025, 0.02, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 1
+vertical_alignment = 1
+script = ExtResource("1_popup")

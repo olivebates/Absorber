@@ -1,0 +1,129 @@
+class_name ItemPickup
+extends Area2D
+
+const ITEM_NAMES := {
+	"weathered_armor": "Weathered Armor",
+	"weathered_sword": "Weathered Sword",
+}
+
+const ITEM_TEXTURES := {
+	"weathered_armor": preload("res://Sprites/1Armor.webp"),
+	"weathered_sword": preload("res://Sprites/1Sword.webp"),
+}
+
+const GRADES := [
+	{"name": "Gray", "color": Color("777777")},
+	{"name": "White", "color": Color("f2f2f2")},
+	{"name": "Green", "color": Color("47b85c")},
+	{"name": "Blue", "color": Color("4785e8")},
+	{"name": "Purple", "color": Color("9a58d4")},
+	{"name": "Orange", "color": Color("e99032")},
+	{"name": "Pink", "color": Color("e65ac5")},
+	{"name": "Black", "color": Color("141414")},
+]
+
+const ITEM_DATA := {
+	"weathered_armor": {"block": 1, "slot": "armor"},
+	"weathered_sword": {"damage": 1, "slot": "weapon"},
+}
+
+var item_id := "weathered_sword"
+var grade := 0
+var _float_time := 0.0
+var _collecting := false
+var _shadow: Polygon2D
+
+@onready var icon: Sprite2D = $Icon
+
+
+func setup(new_item_id: String, new_grade := 0) -> void:
+	item_id = new_item_id
+	grade = clampi(new_grade, 0, GRADES.size() - 1)
+
+
+func _ready() -> void:
+	icon.texture = ITEM_TEXTURES.get(item_id, ITEM_TEXTURES["weathered_sword"])
+	_shadow = Polygon2D.new()
+	_shadow.polygon = _ellipse_points(19.0, 5.5)
+	_shadow.position = Vector2(0, 18)
+	_shadow.color = Color(0.0, 0.0, 0.0, 0.28)
+	_shadow.z_index = -1
+	add_child(_shadow)
+
+
+func _process(delta: float) -> void:
+	if not _collecting:
+		_float_time += delta * 2.4
+		icon.position.y = sin(_float_time) * 3.0 - 3.0
+
+
+func collect(player: FoxPlayer) -> void:
+	begin_collect(player)
+
+
+func begin_collect(player: FoxPlayer) -> bool:
+	if _collecting or not is_instance_valid(player) or not player.reserve_item_collection():
+		return false
+	_collecting = true
+	$CollisionShape2D.set_deferred("disabled", true)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(self, "global_position", player.global_position, 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "scale", Vector2.ZERO, 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(func() -> void:
+		if is_instance_valid(player):
+			player.complete_item_collection(item_id, grade)
+		queue_free()
+	)
+	return true
+
+
+func _ellipse_points(radius_x: float, radius_y: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for index in range(16):
+		var angle := TAU * float(index) / 16.0
+		points.append(Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
+	return points
+
+
+func get_item_name() -> String:
+	return ITEM_NAMES.get(item_id, item_id.capitalize())
+
+
+static func get_grade_name(grade: int) -> String:
+	return str(GRADES[clampi(grade, 0, GRADES.size() - 1)].get("name", "Gray"))
+
+
+static func get_grade_color(grade: int) -> Color:
+	return GRADES[clampi(grade, 0, GRADES.size() - 1)].get("color", Color("777777")) as Color
+
+
+static func get_item_grade(item: Dictionary) -> int:
+	return clampi(int(item.get("grade", 0)), 0, GRADES.size() - 1)
+
+
+static func get_damage_bonus(item: Dictionary) -> int:
+	return _scaled_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("damage", 0)), get_item_grade(item))
+
+
+static func get_block_amount(item: Dictionary) -> int:
+	return _scaled_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("block", 0)), get_item_grade(item))
+
+
+static func is_weapon(item_id: String) -> bool:
+	return str(ITEM_DATA.get(item_id, {}).get("slot", "")) == "weapon"
+
+
+static func is_armor(item_id: String) -> bool:
+	return str(ITEM_DATA.get(item_id, {}).get("slot", "")) == "armor"
+
+
+static func make_item(new_item_id: String, new_grade := 0) -> Dictionary:
+	return {"item_id": new_item_id, "grade": clampi(new_grade, 0, GRADES.size() - 1)}
+
+
+static func _scaled_stat(base_amount: int, grade: int) -> int:
+	var amount := float(base_amount)
+	for _step in range(clampi(grade, 0, GRADES.size() - 1)):
+		amount = amount * 2.1
+	return roundi(amount)

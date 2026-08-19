@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="GameResourceDefinition" format=3 uid="uid://b4ntu4cby2k3q"]
+
+[ext_resource type="Script" uid="uid://cm7ujus8ik8kr" path="res://Scripts/game_resource_definition.gd" id="1_definition"]
+[ext_resource type="Texture2D" uid="uid://cre3k0h4dh717" path="res://Sprites/GoldOreResource.webp" id="2_icon"]
+
+[resource]
+script = ExtResource("1_definition")
+icon = ExtResource("2_icon")
+display_color = Color(0.914, 0.776, 0.302, 1)
+maximum_amount = 10

@@ -1,0 +1,406 @@
+class_name ChickenEnemy
+extends CharacterBody2D
+
+const DAMAGE_POPUP_SCENE := preload("res://Scenes/damage_popup.tscn")
+const ITEM_PICKUP_SCENE := preload("res://Scenes/item_pickup.tscn")
+const REWARD_DAMAGE := 0
+const REWARD_HEALTH := 1
+const REWARD_RESOURCE := 2
+const REWARD_REGENERATE := 3
+const HEALTH_REGEN_DELAY := 3.0
+const HEALTH_REGEN_INTERVAL := 0.1
+const REWARD_ICON_SIZE := 16.0
+
+signal died(enemy: ChickenEnemy)
+
+@export var move_speed := 170.0
+# Spawn points own these gameplay stats so one marker configures every enemy it creates.
+var max_health := 3
+var attack_damage := 1
+@export var attack_range := 46.0
+@export var attack_cooldown := 1.0
+@export_enum("Red", "Yellow", "Blue") var enemy_color := FoxPlayer.COLOR_RED
+
+var damage_reward := 1
+var reward_type := REWARD_DAMAGE
+var damage_reward_color := FoxPlayer.COLOR_RED
+var reward_resource_id: StringName = &"gold_ore"
+var drop_table: Array[Dictionary] = []
+var health: int
+var home_cell := Vector2i.ZERO
+var _path := PackedVector2Array()
+var _path_index := 0
+var _pause_time_left := 0.0
+var _attack_time_left := 0.0
+var _attack_tween: Tween
+var _hit_tween: Tween
+var _walk_time := 0.0
+var _attack_visual_time_left := 0.0
+var _hit_visual_time_left := 0.0
+var _combat_ring: Line2D
+var _health_regen_delay_left := HEALTH_REGEN_DELAY
+var _health_regen_tick_left := 0.0
+
+@onready var chicken_sprite: Sprite2D = $ChickenSprite
+@onready var health_bar: ProgressBar = $HealthBar
+@onready var reward_label: Label = $RewardLabel
+@onready var reward_icon: Sprite2D = $RewardIcon
+@onready var health_label: Label = $HealthLabel
+@onready var color_dot: Polygon2D = $ColorDot
+@onready var reward_dot: Polygon2D = $RewardDot
+@onready var reward_dot_outline: Polygon2D = $RewardDotOutline
+
+
+func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1) -> void:
+	home_cell = spawn_cell
+	damage_reward = reward
+	reward_type = type
+	drop_table = new_drop_table.duplicate(true)
+	reward_resource_id = new_reward_resource_id
+	damage_reward_color = clampi(new_damage_reward_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
+	max_health = maxi(1, new_max_health)
+	attack_damage = maxi(0, new_attack_damage)
+
+
+func _ready() -> void:
+	add_to_group("enemies")
+	health = max_health
+	health_bar.max_value = max_health
+	health_bar.value = health
+	reward_dot.visible = false
+	reward_dot_outline.visible = false
+	_update_health_label()
+	_update_color_dot()
+	_update_reward_visual()
+	_combat_ring = _create_combat_ring()
+	add_child(_combat_ring)
+
+
+func take_damage(amount: int) -> void:
+	if health <= 0:
+		return
+	health = max(0, health - amount)
+	_health_regen_delay_left = HEALTH_REGEN_DELAY
+	_health_regen_tick_left = 0.0
+	health_bar.value = health
+	_update_health_label()
+	_show_damage_popup(amount)
+	if health == 0:
+		died.emit(self)
+		_grant_kill_reward()
+		_drop_items()
+		queue_free()
+
+
+func get_drop_table_text() -> String:
+	var entries: Array[String] = []
+	for entry in drop_table:
+		var item_name: String = str(ItemPickup.ITEM_NAMES.get(str(entry.get("item_id", "")), "Unknown item"))
+		entries.append("%s — %d%%" % [item_name, roundi(float(entry.get("chance", 0.0)) * 100.0)])
+	return "Possible drops\n" + "\n".join(entries)
+
+
+func _drop_items() -> void:
+	for entry in drop_table:
+		if randf() > float(entry.get("chance", 0.0)):
+			continue
+		var item_id := str(entry.get("item_id", "weathered_sword"))
+		var grade := int(entry.get("grade", 0))
+		var pickup := ITEM_PICKUP_SCENE.instantiate() as ItemPickup
+		pickup.setup(item_id, grade)
+		pickup.global_position = global_position + Vector2(randf_range(-12.0, 12.0), randf_range(-7.0, 7.0))
+		get_parent().add_child(pickup)
+
+
+func _physics_process(delta: float) -> void:
+	_attack_time_left = maxf(0.0, _attack_time_left - delta)
+	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
+	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
+	if _is_in_combat():
+		velocity = Vector2.ZERO
+		_path.clear()
+		_path_index = 0
+	elif _pause_time_left > 0.0:
+		_pause_time_left -= delta
+		velocity = Vector2.ZERO
+	else:
+		_patrol(delta)
+	_attack_player()
+	_update_walk_animation(delta)
+	_update_combat_ring()
+	_face_player_in_combat()
+	_update_health_regeneration(delta)
+
+
+func _update_health_regeneration(delta: float) -> void:
+	if health <= 0 or health >= max_health:
+		return
+	if _is_in_combat():
+		_health_regen_delay_left = HEALTH_REGEN_DELAY
+		_health_regen_tick_left = 0.0
+		return
+	if _health_regen_delay_left > 0.0:
+		_health_regen_delay_left = maxf(0.0, _health_regen_delay_left - delta)
+		return
+	_health_regen_tick_left -= delta
+	while _health_regen_tick_left <= 0.0 and health < max_health:
+		health = mini(max_health, health + 1)
+		_health_regen_tick_left += HEALTH_REGEN_INTERVAL
+	_update_health_bar()
+
+
+func _patrol(delta: float) -> void:
+	if _path_index >= _path.size():
+		_choose_patrol_path()
+		return
+	var target := _path[_path_index]
+	var offset := target - global_position
+	if offset.length() <= 3.0:
+		global_position = target
+		_path_index += 1
+		if _path_index >= _path.size():
+			_pause_time_left = randf_range(3.0, 7.0)
+		return
+	velocity = offset.normalized() * move_speed
+	if velocity.x < -0.1:
+		chicken_sprite.flip_h = true
+	elif velocity.x > 0.1:
+		chicken_sprite.flip_h = false
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if world and not world.can_enter_position(self, global_position + velocity * delta):
+		velocity = Vector2.ZERO
+		_path.clear()
+		_path_index = 0
+		_pause_time_left = 0.25
+		return
+	move_and_slide()
+
+
+func _choose_patrol_path() -> void:
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if world == null:
+		return
+	for attempt in range(8):
+		var destination := world.get_patrol_destination(home_cell, 2, self)
+		var candidate_path := world.get_patrol_path(global_position, destination, home_cell, 2, self)
+		if candidate_path.size() > 1:
+			_path = candidate_path
+			_path_index = 1
+			return
+	_pause_time_left = randf_range(3.0, 7.0)
+
+
+func _attack_player() -> void:
+	if _attack_time_left > 0.0:
+		return
+	var fox := get_tree().get_first_node_in_group("player") as FoxPlayer
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if fox and fox.health > 0 and world and world.are_adjacent(self, fox):
+		_face_toward(fox)
+		_play_attack_animation(fox)
+		_show_slash(fox)
+		fox.take_damage(attack_damage)
+		_attack_time_left = attack_cooldown
+
+
+func _play_attack_animation(target: Node2D) -> void:
+	if _attack_tween and _attack_tween.is_valid():
+		_attack_tween.kill()
+	_attack_visual_time_left = 0.30
+	var direction := signf(target.global_position.x - global_position.x)
+	if is_zero_approx(direction):
+		direction = 1.0 if not chicken_sprite.flip_h else -1.0
+	chicken_sprite.scale = Vector2(0.80, 1.24)
+	chicken_sprite.rotation = -0.24 * direction
+	_attack_tween = create_tween()
+	_attack_tween.set_parallel(true)
+	_attack_tween.tween_property(chicken_sprite, "position:x", direction * 11.0, 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_attack_tween.tween_property(chicken_sprite, "scale", Vector2(1.36, 0.72), 0.10).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_attack_tween.chain().set_parallel(true)
+	_attack_tween.tween_property(chicken_sprite, "position", Vector2.ZERO, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_attack_tween.tween_property(chicken_sprite, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_attack_tween.tween_property(chicken_sprite, "rotation", 0.0, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _update_walk_animation(delta: float) -> void:
+	if _attack_visual_time_left > 0.0 or _hit_visual_time_left > 0.0:
+		return
+	if velocity.length_squared() > 1.0:
+		_walk_time += delta * 10.0
+		chicken_sprite.position.y = -absf(sin(_walk_time)) * 5.0
+		chicken_sprite.rotation = sin(_walk_time) * 0.1
+	else:
+		chicken_sprite.position = Vector2.ZERO
+		chicken_sprite.rotation = 0.0
+
+
+func _update_health_label() -> void:
+	health_label.text = str(health)
+
+
+func _update_health_bar() -> void:
+	health_bar.value = health
+	_update_health_label()
+
+
+func _update_color_dot() -> void:
+	var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+	color_dot.color = colors[enemy_color]
+
+
+func _update_reward_visual() -> void:
+	var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+	var reward_color: Color = colors[damage_reward_color]
+	reward_icon.visible = true
+	reward_icon.modulate = Color.WHITE
+	reward_label.text = "+%d" % damage_reward
+	reward_label.offset_left = -2.0
+	reward_label.offset_right = 30.0
+	reward_icon.position = Vector2(-15, -57)
+	if reward_type == REWARD_HEALTH:
+		reward_color = Color("65d76e")
+		reward_icon.texture = preload("res://Sprites/Heart.webp")
+	elif reward_type == REWARD_REGENERATE:
+		reward_color = Color("65d76e")
+		reward_icon.texture = preload("res://Sprites/GreenHeart.png")
+	elif reward_type == REWARD_RESOURCE:
+		var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+		var definition := resource_manager.get_definition(reward_resource_id) if resource_manager else null
+		if definition:
+			reward_color = definition.display_color
+			reward_icon.texture = definition.icon
+			reward_icon.modulate = reward_color
+	else:
+		reward_icon.texture = preload("res://Sprites/DamageIcon.webp")
+	_set_reward_icon_size()
+	reward_label.add_theme_color_override("font_color", reward_color)
+
+
+func _set_reward_icon_size() -> void:
+	if reward_icon.texture == null:
+		return
+	var texture_width := maxf(1.0, reward_icon.texture.get_size().x)
+	reward_icon.scale = Vector2.ONE * (REWARD_ICON_SIZE / texture_width)
+
+
+func _update_combat_ring() -> void:
+	var fox := get_tree().get_first_node_in_group("player") as FoxPlayer
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	_combat_ring.visible = fox != null and world != null and fox.health > 0 and world.are_adjacent(self, fox)
+
+
+func _is_in_combat() -> bool:
+	var fox := get_tree().get_first_node_in_group("player") as FoxPlayer
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	return fox != null and world != null and fox.health > 0 and world.are_adjacent(self, fox)
+
+
+func _face_player_in_combat() -> void:
+	var fox := get_tree().get_first_node_in_group("player") as FoxPlayer
+	if fox and _is_in_combat():
+		_face_toward(fox)
+
+
+func _face_toward(target: Node2D) -> void:
+	var horizontal_offset := target.global_position.x - global_position.x
+	if horizontal_offset > 0.1:
+		chicken_sprite.flip_h = false
+	elif horizontal_offset < -0.1:
+		chicken_sprite.flip_h = true
+
+
+func _create_combat_ring() -> Line2D:
+	var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+	var ring := Line2D.new()
+	ring.width = 2.5
+	ring.default_color = colors[enemy_color]
+	ring.position = Vector2(0, 19)
+	ring.z_index = -1
+	for index in range(17):
+		var angle := TAU * float(index) / 16.0
+		ring.add_point(Vector2(cos(angle) * 22.0, sin(angle) * 8.0))
+	ring.visible = false
+	return ring
+
+
+func _show_slash(target: Node2D) -> void:
+	var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+	var slash := Node2D.new()
+	slash.z_index = 20
+	slash.position = Vector2(0, -5)
+	slash.modulate = Color(1.0, 1.0, 1.0, 0.62)
+	target.add_child(slash)
+	for offset in [-3.5, 0.0, 3.5]:
+		_add_slash_line(slash, Vector2(-14, -12 + offset), Vector2(14, 10 + offset), Color.BLACK, 6.0)
+		_add_slash_line(slash, Vector2(-14, -12 + offset), Vector2(14, 10 + offset), colors[enemy_color], 3.2)
+	var tween := slash.create_tween()
+	tween.tween_property(slash, "scale", Vector2(1.12, 1.12), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(0.10)
+	tween.tween_callback(slash.queue_free)
+
+
+func _add_slash_line(parent: Node2D, from: Vector2, to: Vector2, color: Color, width: float) -> void:
+	var line := Line2D.new()
+	line.width = width
+	line.default_color = color
+	line.add_point(from)
+	line.add_point(to)
+	parent.add_child(line)
+
+
+func _grant_kill_reward() -> void:
+	var fox := get_tree().get_first_node_in_group("player") as FoxPlayer
+	if fox == null:
+		return
+	match reward_type:
+		REWARD_DAMAGE:
+			var damage_grid := _get_hud_control("DamageGrid") as DamageGrid
+			var damage_target := damage_grid.get_color_target_screen_position(damage_reward_color) if damage_grid else Vector2(42, 42)
+			var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+			_launch_reward_orb(damage_target, colors[damage_reward_color], fox.add_color_damage.bind(damage_reward_color, damage_reward))
+		REWARD_HEALTH:
+			var health_target := fox.get_global_transform_with_canvas().origin
+			_launch_reward_orb(health_target, Color("65d76e"), fox.add_max_health.bind(damage_reward))
+		REWARD_REGENERATE:
+			var regeneration_target := fox.get_global_transform_with_canvas().origin
+			_launch_reward_orb(regeneration_target, Color("65d76e"), fox.add_passive_healing.bind(damage_reward))
+		REWARD_RESOURCE:
+			var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+			if resource_manager == null:
+				return
+			var definition := resource_manager.get_definition(reward_resource_id)
+			if definition == null:
+				return
+			var resource_panel := _get_hud_control("ResourcePanel") as ResourcePanel
+			var resource_target := resource_panel.get_resource_target_screen_position(reward_resource_id) if resource_panel else Vector2(58, get_viewport_rect().size.y - 42.0)
+			_launch_reward_orb(resource_target, definition.display_color, resource_manager.add_resource.bind(reward_resource_id, damage_reward))
+
+
+func _get_hud_control(node_name: String) -> Control:
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	return world.get_node_or_null("HUD/" + node_name) as Control if world else null
+
+
+func _launch_reward_orb(target_screen_position: Vector2, color: Color, on_arrive: Callable) -> void:
+	var target_world_position := get_viewport().get_canvas_transform().affine_inverse() * target_screen_position
+	RewardOrb.fly(get_parent(), global_position, target_world_position, color, on_arrive)
+
+
+func _show_damage_popup(amount: int) -> void:
+	var popup := DAMAGE_POPUP_SCENE.instantiate() as DamagePopup
+	popup.position = global_position + Vector2(0, -38)
+	get_parent().add_child(popup)
+	popup.show_damage(amount)
+	_play_hit_animation()
+
+
+func _play_hit_animation() -> void:
+	if _hit_tween and _hit_tween.is_valid():
+		_hit_tween.kill()
+	_hit_visual_time_left = 0.20
+	chicken_sprite.modulate = Color("fff3b0")
+	chicken_sprite.scale = Vector2(1.22, 0.78)
+	_hit_tween = create_tween()
+	_hit_tween.set_parallel(true)
+	_hit_tween.tween_property(chicken_sprite, "modulate", Color.WHITE, 0.16)
+	_hit_tween.tween_property(chicken_sprite, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

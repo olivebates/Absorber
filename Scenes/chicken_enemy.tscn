@@ -1,0 +1,101 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://Scripts/chicken_enemy.gd" id="1_enemy"]
+[ext_resource type="Texture2D" path="res://Sprites/Chicken.webp" id="2_chicken"]
+[ext_resource type="Texture2D" path="res://Sprites/Damage.webp" id="3_damage"]
+
+[sub_resource type="CircleShape2D" id="CircleShape_chicken"]
+radius = 17.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_health_background"]
+bg_color = Color(0.08, 0.11, 0.08, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0, 0, 0, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_health_fill"]
+bg_color = Color(0.16, 0.82, 0.25, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[node name="ChickenEnemy" type="CharacterBody2D"]
+z_index = 9
+script = ExtResource("1_enemy")
+
+[node name="ChickenSprite" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_chicken")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 8)
+shape = SubResource("CircleShape_chicken")
+
+[node name="RewardLabel" type="Label" parent="."]
+offset_left = -25.0
+offset_top = -70.0
+offset_right = 25.0
+offset_bottom = -44.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 16
+text = "1"
+horizontal_alignment = 0
+vertical_alignment = 2
+
+[node name="RewardIcon" type="Sprite2D" parent="."]
+position = Vector2(-17, -57)
+scale = Vector2(0.5, 0.5)
+texture_filter = 1
+texture = ExtResource("3_damage")
+
+[node name="RewardDotOutline" type="Polygon2D" parent="."]
+position = Vector2(-19, -51)
+polygon = PackedVector2Array(-5, 0, -3.5, -3.5, 0, -5, 3.5, -3.5, 5, 0, 3.5, 3.5, 0, 5, -3.5, 3.5)
+color = Color(0, 0, 0, 1)
+
+[node name="RewardDot" type="Polygon2D" parent="."]
+position = Vector2(-19, -51)
+polygon = PackedVector2Array(-3.5, 0, -2.5, -2.5, 0, -3.5, 2.5, -2.5, 3.5, 0, 2.5, 2.5, 0, 3.5, -2.5, 2.5)
+color = Color(0.898, 0.224, 0.208, 1)
+
+[node name="HealthBar" type="ProgressBar" parent="."]
+offset_left = -25.0
+offset_top = -45.0
+offset_right = 25.0
+offset_bottom = -33.0
+show_percentage = false
+theme_override_styles/background = SubResource("StyleBox_health_background")
+theme_override_styles/fill = SubResource("StyleBox_health_fill")
+
+[node name="HealthLabel" type="Label" parent="."]
+offset_left = -28.0
+offset_top = -48.0
+offset_right = 28.0
+offset_bottom = -30.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 11
+text = "3 / 3"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ColorDotOutline" type="Polygon2D" parent="."]
+position = Vector2(-20, -26)
+polygon = PackedVector2Array(-5, 0, -3.5, -3.5, 0, -5, 3.5, -3.5, 5, 0, 3.5, 3.5, 0, 5, -3.5, 3.5)
+color = Color(0, 0, 0, 1)
+
+[node name="ColorDot" type="Polygon2D" parent="."]
+position = Vector2(-20, -26)
+polygon = PackedVector2Array(-3.5, 0, -2.5, -2.5, 0, -3.5, 2.5, -2.5, 3.5, 0, 2.5, 2.5, 0, 3.5, -2.5, 2.5)
+color = Color(0.898, 0.224, 0.208, 1)
