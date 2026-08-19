@@ -49,6 +49,12 @@ func _run() -> void:
 	assert(damage_grid._grid.columns == 3 and damage_grid._grid.get_child_count() == 9, "A second active weapon type and color must add a table column and row")
 	assert(damage_grid._grid.get_child(5) is Control and not (damage_grid._grid.get_child(5) is PanelContainer), "A value of one must leave its matrix cell hidden")
 	assert((damage_grid._grid.get_child(8).get_child(0) as Label).text == "2", "The matching color and weapon cell must retain its summed damage")
+	fox.damage_by_color[FoxPlayer.COLOR_BLUE][0] = 2
+	fox.damage_matrix_changed.emit()
+	await process_frame
+	assert((damage_grid._grid.get_child(3).get_child(0) as Polygon2D).color == Color("e53935"), "The first damage row must have the red dot")
+	assert((damage_grid._grid.get_child(6).get_child(0) as Polygon2D).color == Color("fbc02d"), "The second damage row must have the yellow dot")
+	assert((damage_grid._grid.get_child(9).get_child(0) as Polygon2D).color == Color("1976d2"), "The third damage row must have the blue dot")
 	var equipment_toolbar := EquipmentToolbar.new()
 	root.add_child(equipment_toolbar)
 	await process_frame
@@ -95,7 +101,7 @@ func _run() -> void:
 	await process_frame
 	linked_enemy.take_damage(linked_enemy.health)
 	await process_frame
-	assert(not is_instance_valid(gate), "Killing an enemy from the selected spawn must remove its gate")
+	assert(gate.unlocked and not gate.visible and not gate.is_in_group("gates"), "Killing an enemy from the selected spawn must unlock and hide its gate")
 
 	var empty_drop_tooltip := EnemyDropTooltip.new()
 	root.add_child(empty_drop_tooltip)

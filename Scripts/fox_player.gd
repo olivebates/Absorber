@@ -288,6 +288,96 @@ func get_total_block() -> int:
 	return total
 
 
+func get_save_data() -> Array:
+	var flattened_damage: Array[int] = []
+	for color_values in damage_by_color:
+		for value in color_values:
+			flattened_damage.append(int(value))
+	var ever_equipped_mask := 0
+	for index in range(weapon_ever_equipped.size()):
+		if bool(weapon_ever_equipped[index]):
+			ever_equipped_mask |= 1 << index
+	var cooldown_milliseconds: Array[int] = []
+	for cooldown in _weapon_cooldowns:
+		cooldown_milliseconds.append(maxi(0, roundi(float(cooldown) * 1000.0)))
+	return [
+		roundi(global_position.x), roundi(global_position.y), health, max_health,
+		passive_healing_amount, current_weapon_index, flattened_damage,
+		_pack_items(inventory_slots), _pack_items(equipped_weapons), _pack_items(equipped_armor),
+		ever_equipped_mask, cooldown_milliseconds, maxi(0, roundi(_heal_time_left * 1000.0)),
+		maxi(1, roundi(_get_healing_speed_multiplier())),
+	]
+
+
+func load_save_data(data: Array, offline_seconds: int) -> bool:
+	if data.size() < 14:
+		return false
+	stop()
+	clear_attack_target()
+	global_position = Vector2(float(data[0]), float(data[1]))
+	max_health = maxi(1, int(data[3]))
+	passive_healing_amount = maxi(1, int(data[4]))
+	current_weapon_index = clampi(int(data[5]), 0, equipped_weapons.size() - 1)
+
+	var flattened_damage := data[6] as Array
+	var damage_index := 0
+	damage_by_color = []
+	for _color_index in range(3):
+		var color_values: Array[int] = []
+		for _weapon_index in range(4):
+			color_values.append(maxi(1, int(flattened_damage[damage_index])) if damage_index < flattened_damage.size() else 1)
+			damage_index += 1
+		damage_by_color.append(color_values)
+
+	inventory_slots = _unpack_items(data[7] as Array, 4)
+	equipped_weapons = _unpack_items(data[8] as Array, 4)
+	equipped_armor = _unpack_items(data[9] as Array, 4)
+	var ever_equipped_mask := int(data[10])
+	weapon_ever_equipped = []
+	for index in range(4):
+		weapon_ever_equipped.append((ever_equipped_mask & (1 << index)) != 0)
+
+	var saved_cooldowns := data[11] as Array
+	_weapon_cooldowns = []
+	for index in range(4):
+		var saved_milliseconds := int(saved_cooldowns[index]) if index < saved_cooldowns.size() else 0
+		_weapon_cooldowns.append(maxf(0.0, float(saved_milliseconds - offline_seconds * 1000) / 1000.0))
+
+	var healing_milliseconds := int(data[12]) - offline_seconds * 1000 * maxi(1, int(data[13]))
+	var saved_health := clampi(int(data[2]), 0, max_health)
+	if healing_milliseconds <= 0:
+		var heal_ticks := 1 + (-healing_milliseconds) / 3000
+		saved_health = mini(max_health, saved_health + heal_ticks * passive_healing_amount)
+		healing_milliseconds += heal_ticks * 3000
+	health = saved_health
+	_heal_time_left = maxf(0.001, float(healing_milliseconds) / 1000.0)
+	_pending_item_collections = 0
+	attack_damage = get_damage_for_color(COLOR_RED)
+	health_bar.max_value = max_health
+	health_bar.value = health
+	_update_health_label()
+	inventory_changed.emit()
+	equipment_changed.emit()
+	damage_matrix_changed.emit()
+	return true
+
+
+func _pack_items(items: Array[Dictionary]) -> Array:
+	var packed: Array = []
+	for item in items:
+		packed.append([] if item.is_empty() else [str(item.get("item_id", "")), ItemPickup.get_item_grade(item)])
+	return packed
+
+
+func _unpack_items(packed: Array, expected_size: int) -> Array[Dictionary]:
+	var items: Array[Dictionary] = []
+	for index in range(expected_size):
+		var packed_item := packed[index] as Array if index < packed.size() and packed[index] is Array else []
+		var item_id := str(packed_item[0]) if not packed_item.is_empty() else ""
+		items.append(ItemPickup.make_item(item_id, int(packed_item[1]) if packed_item.size() > 1 else 0) if ItemPickup.ITEM_DATA.has(item_id) else {})
+	return items
+
+
 func _get_slots(storage: String) -> Array[Dictionary]:
 	match storage:
 		"inventory":

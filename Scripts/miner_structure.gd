@@ -27,6 +27,21 @@ func _process(delta: float) -> void:
 			_show_production_feedback()
 
 
+func get_save_data() -> int:
+	return maxi(0, roundi(_production_time * 1000.0))
+
+
+func load_save_data(production_milliseconds: int, offline_seconds: int) -> void:
+	if _resource_manager == null or production_speed <= 0.0:
+		return
+	var interval := 1.0 / production_speed
+	var total_time := maxf(0.0, float(production_milliseconds) / 1000.0 + maxi(0, offline_seconds))
+	var produced_amount := floori(total_time / interval)
+	_production_time = fmod(total_time, interval)
+	if produced_amount > 0:
+		_resource_manager.add_resource(resource_id, float(produced_amount))
+
+
 func _exit_tree() -> void:
 	if _resource_manager:
 		_resource_manager.unregister_producer(self)

@@ -122,3 +122,35 @@ func unregister_producer(source: Node) -> void:
 		if not producer.is_empty():
 			var resource_id := StringName(producer.get("resource_id", &""))
 			production_changed.emit(resource_id, get_production_speed(resource_id))
+
+
+func get_save_data() -> Array:
+	var result: Array = [0]
+	var discovery_mask := 0
+	for index in range(resources.size()):
+		var definition := resources[index]
+		if definition == null:
+			result.append(0)
+			continue
+		result.append(roundi(float(_amounts.get(definition.resource_id, 0.0)) * 1000.0))
+		if has_ever_owned(definition.resource_id):
+			discovery_mask |= 1 << index
+	result[0] = discovery_mask
+	return result
+
+
+func load_save_data(data: Array) -> bool:
+	if data.is_empty():
+		return false
+	var discovery_mask := int(data[0])
+	for index in range(resources.size()):
+		var definition := resources[index]
+		if definition == null:
+			continue
+		var amount_milliseconds := int(data[index + 1]) if index + 1 < data.size() else 0
+		_amounts[definition.resource_id] = clampf(float(amount_milliseconds) / 1000.0, 0.0, float(definition.maximum_amount))
+		_ever_owned[definition.resource_id] = (discovery_mask & (1 << index)) != 0
+		if has_ever_owned(definition.resource_id):
+			resource_discovered.emit(definition.resource_id)
+		resource_changed.emit(definition.resource_id, get_amount(definition.resource_id), definition.maximum_amount)
+	return true

@@ -53,6 +53,28 @@ func _try_build_mine() -> void:
 	_hide_build_tooltip()
 
 
+func get_save_data() -> Array:
+	return [0] if _mine == null else [1, _mine.get_save_data()]
+
+
+func load_save_data(data: Array, offline_seconds: int) -> bool:
+	if data.is_empty():
+		return false
+	var should_have_mine := int(data[0]) != 0
+	if not should_have_mine:
+		if is_instance_valid(_mine):
+			_mine.free()
+		_mine = null
+		return true
+	if not is_instance_valid(_mine):
+		_mine = MINER_STRUCTURE_SCENE.instantiate() as MinerStructure
+		add_child(_mine)
+	_mine.load_save_data(int(data[1]) if data.size() > 1 else 0, offline_seconds)
+	build_button.visible = false
+	_hide_build_tooltip()
+	return true
+
+
 func _cost_text() -> String:
 	var entries: Array[String] = []
 	for resource_id in build_cost:

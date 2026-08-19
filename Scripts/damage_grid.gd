@@ -2,6 +2,7 @@ class_name DamageGrid
 extends PanelContainer
 
 const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const COLOR_ORDER := [FoxPlayer.COLOR_RED, FoxPlayer.COLOR_YELLOW, FoxPlayer.COLOR_BLUE]
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 
 var _player: FoxPlayer
@@ -49,7 +50,7 @@ func _refresh() -> void:
 
 	var weapon_count: int = _player.damage_by_color[0].size() if not _player.damage_by_color.is_empty() else 0
 	var damage_values: Array = []
-	for color_index in range(DAMAGE_COLORS.size()):
+	for color_index in COLOR_ORDER:
 		var values_for_color: Array[int] = []
 		for weapon_index in range(weapon_count):
 			values_for_color.append(_player.get_damage_for_weapon_color(color_index, weapon_index))
@@ -57,13 +58,13 @@ func _refresh() -> void:
 
 	var shown_weapon_indices: Array[int] = []
 	for weapon_index in range(weapon_count):
-		for color_index in range(DAMAGE_COLORS.size()):
+		for color_index in COLOR_ORDER:
 			if int(damage_values[color_index][weapon_index]) > 1:
 				shown_weapon_indices.append(weapon_index)
 				break
 
 	var shown_color_indices: Array[int] = []
-	for color_index in range(DAMAGE_COLORS.size()):
+	for color_index in COLOR_ORDER:
 		for weapon_index in range(weapon_count):
 			if int(damage_values[color_index][weapon_index]) > 1:
 				shown_color_indices.append(color_index)

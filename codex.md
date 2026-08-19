@@ -15,7 +15,7 @@ This document is the working index for future Codex changes. **Read it in full a
 - Engine: Godot 4.7.
 - Main scene: `res://Scenes/world.tscn`.
 - World unit: 64 × 64 pixel tiles.
-- Input: left-click a painted floor tile to move the fox; click an enemy to chase it. Clicking gold ore opens its centered Build Mine button instead of issuing a move order. Ground items are collected by stepping onto their tile, never by clicking them.
+- Input: left-click a painted floor tile to move the fox; click an enemy to chase it. Clicking gold ore opens its centered Build Mine button instead of issuing a move order. Ground items are collected by stepping onto their tile, never by clicking them. Shift+0-9 saves to that slot, while 0-9 without modifiers loads it.
 - Navigation: four-way `AStarGrid2D` with Jump Point Search enabled. It is built once when `World` enters the tree, with player/enemy occupied cells added dynamically when routes are requested.
 - Combat: actors automatically attack enemies on a directly adjacent tile. Enemies stop patrolling when engaged. Enemy rewards are Damage, Health, or Resource and are granted only when their flying orb reaches its destination. Damage is stored in a four-weapon by three-enemy-color matrix, while collectible weapons add their grade-scaled bonus.
 - HUD: the top-left panel is a filtered color-by-weapon damage table. It shows only weapon columns and color rows that contain a summed damage value above one. Compact resources appear bottom-left after discovery, and the minimap is top-right. The inventory is bottom-right with the toolbar directly below it.
@@ -47,6 +47,7 @@ Absorber/
 │   ├── enemy_spawn_point.gd              Spawn capacity and respawn lifecycle
 │   ├── game_resource_definition.gd       Inspector-editable resource definition
 │   ├── resource_manager.gd               Multi-resource amounts, caps, and producers
+│   ├── save_system.gd                    Compact save slots and offline progression
 │   ├── resource_panel.gd                 Bottom-left discovered-resource HUD
 │   ├── minimap.gd                        Top-right enemy/player map dots
 │   ├── tile_grid.gd                      Screen-space 64-pixel grid overlay
@@ -67,7 +68,8 @@ Absorber/
 │   └── *.webp.import                     Godot-generated texture import metadata
 ├── Tests/
     ├── world_smoke_test.gd               Headless integration smoke test
-    └── world_smoke_test.gd.uid           Godot-generated test-script UID metadata
+    ├── save_system_smoke_test.gd         Save/load and offline-time smoke test
+    └── *.gd.uid                          Godot-generated test-script UID metadata
 └── Resources/
     ├── gold_ore.tres                     Gold Ore definition and resource icon
     └── jewels.tres                       Jewel definition and resource icon
@@ -83,6 +85,7 @@ World (Node2D, WorldNavigation)
 ├── WallTerrain (TileMapLayer)            Hand-painted blocked tiles, rendered above floor
 ├── Fox (instanced fox.tscn, FoxPlayer)   Player and active Camera2D owner
 ├── ResourceManager                       Shared resource amounts and production sources
+├── SaveSystem                            Compact save slots and wall-clock catch-up
 ├── GoldOre (instanced gold_ore.tscn)     Mineable gold deposit
 ├── EnemySpawnPoint instances             Cow/Bull instances are added at runtime
 ├── GridOverlay (CanvasLayer)             2px black world-tile grid
@@ -182,6 +185,12 @@ The active list is explicitly rebuilt as a typed `Array[ChickenEnemy]`; do not r
 
 `show_damage(amount)` formats `-<amount>`, starts the position/scale/fade tween, and connects tween completion to `queue_free()`. It deliberately uses a completion callback rather than `await`, which keeps headless tests and shutdown clean.
 
+### `Scripts/save_system.gd` — `SaveSystem`
+
+Provides slots 0-9 at `user://s0` through `user://s9`. Shift plus a number saves; the number alone loads. State uses short positional arrays, millisecond timer integers, and bit masks. Compact JSON is compressed with whichever built-in compression mode produces the fewest bytes, then Base64-encoded as one file string. Loading validates the version and decompressed-size bound before applying data.
+
+Saved progression includes player position, health, recovery timing, stats, damage matrix, inventory/equipment, weapon cooldowns, resources/discovery, built mines and production progress, gate unlocks, ground pickups, spawn timers, and live enemy position/health. The wall-clock timestamp advances player/enemy recovery, weapon cooldowns, mine production, and every elapsed spawn interval. Offline spawn attempts stop at each marker's `max_enemies`.
+
 ## Art and tile conventions
 
 - All navigation tiles are 64 × 64 pixels; maintain this size when adding art or update `WorldNavigation.TILE_SIZE` and both TileSet region sizes together.
@@ -193,7 +202,7 @@ The active list is explicitly rebuilt as a typed `Array[ChickenEnemy]`; do not r
 ## Styling and feedback
 
 - Both health bars use opaque `StyleBoxFlat` resources with a two-pixel black outline, dark background, green fill, and centered current/max HP text.
-- The top-left damage panel is a bordered spreadsheet-style table: its blank first cell is followed by active weapon types across the top and active damage colors down the left. Each value is its color/weapon sum; values of one are not drawn, and a row or column appears only when it has a value above one. Weapon headers show their equipped item, or the generic damage icon when that damage column has no equipped item.
+- The top-left damage panel is a bordered spreadsheet-style table: its blank first cell is followed by active weapon types across the top. Active damage colors run down the left in fixed red, yellow, blue order. Each value is its color/weapon sum; values of one are not drawn, and a row or column appears only when it has a value above one. Weapon headers show their equipped item, or the generic damage icon when that damage column has no equipped item.
 - The inventory is bottom-right and the toolbar is directly below it. A gold `Auto Merge` button below the inventory slots repeatedly combines matching items in the inventory. All toolbar slots are locked except weapon slot one; only that weapon slot can receive a toolbar drag/drop. Toolbar clicks return its item to inventory.
 - Equipment is non-stackable. Dragging two matching item IDs of the same grade together deletes the dragged item and upgrades the target; compatible merge targets gain a yellow outline while dragging.
 - Item grades progress through Gray, White, Green, Blue, Purple, Orange, Pink, and Black. Every grade has a matching background in inventory, toolbar, and enemy-drop cards. A grade raises a stat to 210% of the prior grade (double plus 10%), rounded to whole damage/block values.
@@ -219,7 +228,7 @@ $env:LOCALAPPDATA = (Resolve-Path .\.godot).Path
 .\Godot_v4.7.1-stable_win64.exe --headless --rendering-method gl_compatibility --path . --script res://Tests/world_smoke_test.gd
 ```
 
-The test verifies map routing and fox flipping, occupied-tile avoidance, cow/bull spawn selection, delayed Gold Ore and Jewel rewards, selectable damage reward color, compact resource HUD text, the 5 Gold/2 Jewel mine cost, mine production feedback, HUD progression, auto merging, and respawn.
+The world test verifies map routing and fox flipping, occupied-tile avoidance, cow/bull spawn selection, delayed Gold Ore and Jewel rewards, selectable damage reward color, compact resource HUD text, the 5 Gold/2 Jewel mine cost, mine production feedback, HUD progression, auto merging, and respawn. `save_system_smoke_test.gd` verifies compressed strings, physical number-key bindings, state restoration, and ten minutes of offline health, spawn, and mine progression.
 
 When editing the project:
 
@@ -231,7 +240,7 @@ When editing the project:
 
 ## Current UI and feedback behavior
 
-- The top-left panel begins hidden and becomes a filtered damage matrix once a color/weapon sum exceeds one. Its first cell is blank; each visible weapon type is an icon header, each visible color is a dot header, and cells with a value of one are blank. An active row or column always has at least one displayed number.
+- The top-left panel begins hidden and becomes a filtered damage matrix once a color/weapon sum exceeds one. Its first cell is blank; each visible weapon type is an icon header, visible color-dot rows are always ordered red, yellow, then blue, and cells with a value of one are blank. An active row or column always has at least one displayed number.
 - The inventory sits at bottom-right, above the toolbar. Its gold `Auto Merge` button is present only while an inventory merge is possible; on click, each source item visibly travels onto its matching target before the merge resolves. The toolbar retains four weapon and four armor slots, but all are visibly locked except weapon slot one. Empty armor slots use HelmetIcon and empty weapon slots use SwordIcon, under the lock overlay where present. Clicking an unlocked toolbar item moves it to the first compatible inventory slot. Weapon slot icons have independent transparent-black cooldown overlays that shrink as cooldown expires.
 - Item and enemy drop tooltips are clamped to the camera viewport.
 - Ground pickups have a translucent elliptical shadow and a gentle vertical float.
@@ -239,6 +248,8 @@ When editing the project:
 - Enemy reward icons are 16px. Damage rewards instead show a colored, bottom-aligned `+amount` flush to the health bar's left edge, with no reward icon; all enemy reward text is 22px.
 
 ## Recent prompt log
+
+- 2026-08-19 - Fixed damage-row dots to red/yellow/blue order; added compressed save slots 0-9 with Shift-number save and number load; persisted player, resources, mines, gates, pickups, spawns, and enemies; and added wall-clock catch-up for recovery, cooldowns, production, and repeated respawns up to capacity.
 
 - 2026-08-19 - Rebuilt the top-left damage HUD as a filtered color-by-weapon sum matrix; hid values of one and empty row/column categories; made the TileGrid 20% opaque; and added HelmetIcon/SwordIcon placeholders beneath toolbar locks.
 

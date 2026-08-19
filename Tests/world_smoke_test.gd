@@ -88,7 +88,7 @@ func _run() -> void:
 	enemy.take_damage(enemy.health)
 	assert(get_nodes_in_group("reward_orbs").size() == 1, "Resource rewards should travel as an orb before they are granted")
 	await create_timer(1.0).timeout
-	assert(not is_instance_valid(gate), "A gate must disappear when an enemy from its linked spawn is killed")
+	assert(gate.unlocked and not gate.visible and not gate.is_in_group("gates"), "A gate must disappear as a blocker when an enemy from its linked spawn is killed")
 	var resource_manager := world.get_node("ResourceManager") as ResourceManager
 	assert(resource_manager.get_amount(&"gold_ore") == 5, "Gold Ore resource rewards must enter the resource manager after their orb arrives")
 	assert(resource_manager.has_ever_owned(&"gold_ore"), "Resources must become discovered when first obtained")

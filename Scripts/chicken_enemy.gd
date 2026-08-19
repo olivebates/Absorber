@@ -92,6 +92,40 @@ func take_damage(amount: int) -> void:
 		queue_free()
 
 
+func get_save_data() -> Array:
+	return [
+		roundi(global_position.x), roundi(global_position.y), home_cell.x, home_cell.y, health,
+		maxi(0, roundi(_health_regen_delay_left * 1000.0)), maxi(0, roundi(_health_regen_tick_left * 1000.0)),
+		maxi(0, roundi(_attack_time_left * 1000.0)), maxi(0, roundi(_pause_time_left * 1000.0)),
+	]
+
+
+func load_save_data(data: Array, offline_seconds: int) -> bool:
+	if data.size() < 9:
+		return false
+	health = clampi(int(data[4]), 1, max_health)
+	var offline_milliseconds := maxi(0, offline_seconds) * 1000
+	var regeneration_delay := maxi(0, int(data[5]))
+	var regeneration_tick := maxi(0, int(data[6]))
+	if health < max_health and offline_milliseconds >= regeneration_delay:
+		var regeneration_elapsed := offline_milliseconds - regeneration_delay
+		if regeneration_elapsed >= regeneration_tick:
+			var regenerated_health := 1 + (regeneration_elapsed - regeneration_tick) / 100
+			health = mini(max_health, health + regenerated_health)
+			regeneration_tick = 100 - ((regeneration_elapsed - regeneration_tick) % 100)
+		else:
+			regeneration_tick -= regeneration_elapsed
+		regeneration_delay = 0
+	else:
+		regeneration_delay = maxi(0, regeneration_delay - offline_milliseconds)
+	_health_regen_delay_left = float(regeneration_delay) / 1000.0
+	_health_regen_tick_left = float(regeneration_tick) / 1000.0
+	_attack_time_left = maxf(0.0, float(int(data[7]) - offline_milliseconds) / 1000.0)
+	_pause_time_left = maxf(0.0, float(int(data[8]) - offline_milliseconds) / 1000.0)
+	_update_health_bar()
+	return true
+
+
 func get_drop_table_text() -> String:
 	var entries: Array[String] = []
 	for entry in drop_table:

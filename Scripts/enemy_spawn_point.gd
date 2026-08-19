@@ -65,13 +65,78 @@ func _spawn_enemy() -> bool:
 	var spawn_cell := _get_available_spawn_cell(world)
 	if spawn_cell == Vector2i(-1, -1):
 		return false
+	return _create_enemy(world, world.cell_to_world(spawn_cell), spawn_cell) != null
+
+
+func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector2i, saved_data: Array = []) -> ChickenEnemy:
 	var enemy := _get_enemy_scene().instantiate() as ChickenEnemy
-	enemy.global_position = world.cell_to_world(spawn_cell)
-	enemy.setup(spawn_cell, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage)
+	enemy.global_position = spawn_position
+	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage)
 	enemy.died.connect(_on_spawned_enemy_died)
 	get_parent().add_child(enemy)
+	if not saved_data.is_empty():
+		enemy.load_save_data(saved_data, 0)
 	_spawned_enemies.append(enemy)
 	queue_redraw()
+	return enemy
+
+
+func get_save_data() -> Array:
+	var saved_enemies: Array = []
+	for enemy in _spawned_enemies:
+		if is_instance_valid(enemy) and enemy.health > 0:
+			saved_enemies.append(enemy.get_save_data())
+	return [maxi(0, roundi(_respawn_time_left * 1000.0)), saved_enemies]
+
+
+func clear_for_load() -> void:
+	for enemy in _spawned_enemies:
+		if is_instance_valid(enemy):
+			enemy.free()
+	_spawned_enemies.clear()
+	_initial_spawn_complete = true
+	_was_empty = true
+
+
+func load_save_data(data: Array, offline_seconds: int) -> bool:
+	if data.size() < 2:
+		return false
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if world == null:
+		return false
+	var saved_enemies := data[1] as Array
+	for raw_enemy_data in saved_enemies:
+		if _spawned_enemies.size() >= max_enemies or not raw_enemy_data is Array:
+			break
+		var enemy_data := raw_enemy_data as Array
+		if enemy_data.size() < 9:
+			continue
+		var saved_position := Vector2(float(enemy_data[0]), float(enemy_data[1]))
+		var saved_cell := world.world_to_cell(saved_position)
+		if not world.is_walkable(saved_cell) or world.is_cell_occupied(saved_cell) or world.is_gold_ore_cell(saved_cell):
+			saved_cell = _get_available_spawn_cell(world)
+			if saved_cell == Vector2i(-1, -1):
+				continue
+			saved_position = world.cell_to_world(saved_cell)
+		var home := Vector2i(int(enemy_data[2]), int(enemy_data[3]))
+		var enemy := _create_enemy(world, saved_position, home)
+		if enemy:
+			enemy.load_save_data(enemy_data, offline_seconds)
+
+	var interval_milliseconds := maxi(1, roundi(respawn_time * 1000.0))
+	var time_left_milliseconds := maxi(0, int(data[0]))
+	if _spawned_enemies.size() < max_enemies:
+		time_left_milliseconds -= maxi(0, offline_seconds) * 1000
+		while _spawned_enemies.size() < max_enemies and time_left_milliseconds <= 0:
+			if not _spawn_enemy():
+				break
+			time_left_milliseconds += interval_milliseconds
+	_respawn_time_left = float(maxi(0, time_left_milliseconds)) / 1000.0
+	if _spawned_enemies.size() >= max_enemies:
+		_respawn_time_left = respawn_time
+	_initial_spawn_complete = true
+	_was_empty = _spawned_enemies.is_empty()
+	_update_respawn_indicator()
 	return true
 
 

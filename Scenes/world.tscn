@@ -21,6 +21,7 @@
 [ext_resource type="PackedScene" path="res://Scenes/campfire.tscn" id="15_campfire"]
 [ext_resource type="Script" uid="uid://b7nd0l1skhgw0" path="res://Scripts/build_mine_tooltip.gd" id="16_mine_tooltip"]
 [ext_resource type="PackedScene" path="res://Scenes/gate.tscn" id="21_pyn1s"]
+[ext_resource type="Script" path="res://Scripts/save_system.gd" id="22_save"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_5ukr8"]
 texture = ExtResource("2_8j60k")
@@ -362,6 +363,7 @@ drop_table = Array[Dictionary]([{
 position = Vector2(992, 672)
 respawn_time = 420.0
 max_enemies = 1
+damage_reward_color = 1
 reward_resource_id = &"jewels"
 enemy_health = 22
 enemy_type = 1
@@ -420,3 +422,6 @@ script = ExtResource("16_mine_tooltip")
 [node name="Gate" parent="." unique_id=601078806 node_paths=PackedStringArray("unlock_enemy_spawn") instance=ExtResource("21_pyn1s")]
 position = Vector2(1824, 1184)
 unlock_enemy_spawn = NodePath("../ChickenSpawn8")
+
+[node name="SaveSystem" type="Node" parent="."]
+script = ExtResource("22_save")

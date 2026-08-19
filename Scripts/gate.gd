@@ -12,11 +12,12 @@ extends StaticBody2D
 		return _unlock_enemy_spawn
 
 var _unlock_enemy_spawn: EnemySpawnPoint
+var unlocked := false
 
 
 func _ready() -> void:
-	add_to_group("gates")
 	_connect_unlock_spawn()
+	set_unlocked(unlocked)
 
 
 func _exit_tree() -> void:
@@ -32,4 +33,16 @@ func _connect_unlock_spawn() -> void:
 
 
 func _on_unlock_enemy_killed(_enemy: ChickenEnemy) -> void:
-	queue_free()
+	set_unlocked(true)
+
+
+func set_unlocked(value: bool) -> void:
+	unlocked = value
+	visible = not unlocked
+	if unlocked:
+		remove_from_group("gates")
+	else:
+		add_to_group("gates")
+	var collision := get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if collision:
+		collision.set_deferred("disabled", unlocked)
