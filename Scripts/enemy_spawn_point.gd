@@ -14,6 +14,8 @@ const ENEMY_SCENES: Array[PackedScene] = [
 	preload("res://Scenes/camel_enemy.tscn"),
 	preload("res://Scenes/crocodile_enemy.tscn"),
 	preload("res://Scenes/mouse_enemy.tscn"),
+	preload("res://Scenes/kangaroo_rat_enemy.tscn"),
+	preload("res://Scenes/mad_coyote_enemy.tscn"),
 ]
 
 signal enemy_killed(enemy: ChickenEnemy)
@@ -29,9 +31,11 @@ const SPAWN_RADIUS_TILES := 2
 @export var reward_resource_id: StringName = &"gold_ore"
 @export_category("Enemy Stats")
 @export_range(1, 999, 1) var enemy_health := 3
-@export_range(0, 999, 1) var enemy_damage := 1
+@export_range(1, 999, 1) var enemy_damage := 1
+@export_enum("Red", "Yellow", "Blue") var enemy_damage_color := FoxPlayer.COLOR_RED
+@export_range(0, 999, 1) var enemy_armor := 0
 @export_category("Spawning")
-@export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse") var enemy_type := 0
+@export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse", "Kangaroo Rat", "Mad Coyote") var enemy_type := 0
 @export var enemy_scene: PackedScene
 @export_category("Drops")
 ## Add one EnemyDropEntry per possible item. Each entry exposes a simple item,
@@ -81,7 +85,7 @@ func _spawn_enemy() -> bool:
 func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector2i, saved_data: Array = []) -> ChickenEnemy:
 	var enemy := _get_enemy_scene().instantiate() as ChickenEnemy
 	enemy.global_position = spawn_position
-	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage)
+	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor)
 	enemy.died.connect(_on_spawned_enemy_died)
 	get_parent().add_child(enemy)
 	if not saved_data.is_empty():

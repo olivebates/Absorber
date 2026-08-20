@@ -2,6 +2,7 @@ class_name WorldNavigation
 extends Node2D
 
 const TILE_SIZE := 64
+const EXPLORATION_RADIUS_TILES := 3
 
 @onready var floor_layer: TileMapLayer = $FloorTerrain
 @onready var wall_layer: TileMapLayer = $WallTerrain
@@ -10,11 +11,65 @@ const TILE_SIZE := 64
 var _pathfinder := AStarGrid2D.new()
 var _walkable_cells: Dictionary = {}
 var _navigation_region := Rect2i()
+var explored_cells: Dictionary = {}
+var visited_campfires: Dictionary = {}
 
 
 func _ready() -> void:
 	add_to_group("world_navigation")
 	_build_navigation_grid_from_tilemaps()
+	_update_exploration()
+
+
+func _process(_delta: float) -> void:
+	_update_exploration()
+
+
+func _update_exploration() -> void:
+	if not is_instance_valid(player):
+		return
+	var player_cell := world_to_cell(player.global_position)
+	for y in range(player_cell.y - EXPLORATION_RADIUS_TILES, player_cell.y + EXPLORATION_RADIUS_TILES + 1):
+		for x in range(player_cell.x - EXPLORATION_RADIUS_TILES, player_cell.x + EXPLORATION_RADIUS_TILES + 1):
+			var cell := Vector2i(x, y)
+			if (cell - player_cell).length_squared() <= EXPLORATION_RADIUS_TILES * EXPLORATION_RADIUS_TILES and _navigation_region.has_point(cell):
+				explored_cells[cell] = true
+	for node in get_tree().get_nodes_in_group("campfires"):
+		if node is Campfire and is_instance_valid(node) and node.is_player_in_range(player):
+			visited_campfires[world_to_cell(node.global_position)] = true
+
+
+func is_cell_explored(cell: Vector2i) -> bool:
+	return explored_cells.has(cell)
+
+
+func is_campfire_visited(campfire: Campfire) -> bool:
+	return is_instance_valid(campfire) and visited_campfires.has(world_to_cell(campfire.global_position))
+
+
+func get_exploration_save_data() -> Array:
+	_update_exploration()
+	var explored: Array = []
+	for cell in explored_cells:
+		explored.append([cell.x, cell.y])
+	var campfires: Array = []
+	for cell in visited_campfires:
+		campfires.append([cell.x, cell.y])
+	return [explored, campfires]
+
+
+func load_exploration_save_data(data: Array) -> void:
+	explored_cells.clear()
+	visited_campfires.clear()
+	if data.size() > 0 and data[0] is Array:
+		for raw_cell in data[0]:
+			if raw_cell is Array and raw_cell.size() >= 2:
+				explored_cells[Vector2i(int(raw_cell[0]), int(raw_cell[1]))] = true
+	if data.size() > 1 and data[1] is Array:
+		for raw_cell in data[1]:
+			if raw_cell is Array and raw_cell.size() >= 2:
+				visited_campfires[Vector2i(int(raw_cell[0]), int(raw_cell[1]))] = true
+	_update_exploration()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -81,12 +136,11 @@ func find_path(from_world: Vector2, to_world: Vector2, moving_actor: Node2D = nu
 	if not is_walkable(start) or not is_walkable(goal):
 		return PackedVector2Array()
 	var occupied := get_occupied_cells(moving_actor)
-	if moving_actor is ChickenEnemy:
-		for ore in get_tree().get_nodes_in_group("gold_ores"):
-			if ore is GoldOre and is_instance_valid(ore):
-				var ore_cell := world_to_cell(ore.global_position)
-				if ore_cell != start:
-					occupied[ore_cell] = true
+	for ore in get_tree().get_nodes_in_group("gold_ores"):
+		if ore is GoldOre and is_instance_valid(ore):
+			var ore_cell := world_to_cell(ore.global_position)
+			if ore_cell != start:
+				occupied[ore_cell] = true
 	# The caller may omit moving_actor; its own starting tile must remain usable.
 	occupied.erase(start)
 	if occupied.has(goal):
@@ -115,7 +169,7 @@ func get_patrol_destination(home_cell: Vector2i, radius_tiles: int, moving_actor
 		for x in range(home_cell.x - radius_tiles, home_cell.x + radius_tiles + 1):
 			var candidate := Vector2i(x, y)
 			var offset := candidate - home_cell
-			if offset.length_squared() <= radius_tiles * radius_tiles and is_walkable(candidate) and not (moving_actor is ChickenEnemy and is_gold_ore_cell(candidate)):
+			if offset.length_squared() <= radius_tiles * radius_tiles and is_walkable(candidate) and not is_gold_ore_cell(candidate):
 				candidates.append(candidate)
 	if candidates.is_empty():
 		return home_cell
@@ -150,7 +204,7 @@ func can_enter_position(actor: Node2D, world_position: Vector2) -> bool:
 		# A structure may be built beneath an actor. Let it cross its current tile
 		# so it can reach the unoccupied destination chosen by pathfinding.
 		return is_walkable(cell)
-	return is_walkable(cell) and not is_cell_occupied(cell, actor) and not (actor is ChickenEnemy and is_gold_ore_cell(cell))
+	return is_walkable(cell) and not is_cell_occupied(cell, actor) and not is_gold_ore_cell(cell)
 
 
 func is_gold_ore_cell(cell: Vector2i) -> bool:

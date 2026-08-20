@@ -6,7 +6,7 @@ func _init() -> void:
 
 
 func _run() -> void:
-	var expected_sprites := ["Snake.webp", "Camel.webp", "Crocodile.webp", "Mouse.webp"]
+	var expected_sprites := ["Snake.webp", "Camel.webp", "Crocodile.webp", "Mouse.webp", "KangarooRat.webp", "MadCoyote.webp"]
 	for index in range(expected_sprites.size()):
 		var enemy := EnemySpawnPoint.ENEMY_SCENES[index + 8].instantiate() as ChickenEnemy
 		assert((enemy.get_node("ChickenSprite") as Sprite2D).texture.resource_path == "res://Sprites/%s" % expected_sprites[index], "New enemy variants must use their matching sprites")
@@ -16,8 +16,9 @@ func _run() -> void:
 	root.add_child(world)
 	await process_frame
 	await process_frame
-	var tiger := world.get_node("WhiteTiger") as WhiteTiger
+	var tiger := get_first_node_in_group("shopkeepers") as WhiteTiger
 	assert((tiger.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/WhiteTiger.webp", "The shopkeeper must use WhiteTiger")
+	assert((tiger.get_node("Sprite2D") as Sprite2D).flip_h, "The White Tiger must face its horizontally flipped default direction")
 	assert(world.is_walkable(world.world_to_cell(tiger.global_position)), "The White Tiger must be placed on a walkable tile")
 	assert(world.is_npc_cell(world.world_to_cell(tiger.global_position)), "The White Tiger must block its own tile")
 	assert(world._get_shopkeeper_at_position(tiger.global_position) == tiger, "World clicks must find the White Tiger")
@@ -28,6 +29,11 @@ func _run() -> void:
 	tiger._process(0.0)
 	var shop := tiger._shop
 	assert(shop != null and shop.visible, "The shop must open once the player is adjacent")
+	assert((shop.get_panel().find_child("Title", true, false) as Label).text == "Stats Shop", "The shop must be named Stats Shop")
+	assert(shop._rows[0] is Button and shop._rows[0].get_child_count() == 1, "Each upgrade row must be one full-width button")
+	assert(shop._price_icons[0].texture.resource_path == "res://Sprites/GoldOreResource.webp" and shop._price_labels[0].text == "5", "The row's right side must show the resource icon and price")
+	assert(shop._rows[0].find_child("DamageColorDot", true, false) != null, "Red damage must show a red dot between its stat icon and amount")
+	assert(shop._price_labels[0].get_theme_color("font_color") == Color("ef5350"), "Unaffordable shop prices must be red")
 	assert(shop.is_upgrade_visible(0), "The Gold upgrade must be visible by default")
 	assert(not shop.is_upgrade_visible(1) and not shop.is_upgrade_visible(2) and not shop.is_upgrade_visible(3), "Other upgrades must remain hidden until their resource is discovered")
 	var style := shop.get_panel().get_theme_stylebox("panel")
@@ -39,8 +45,8 @@ func _run() -> void:
 	manager.fill_all_to_maximum()
 	assert(shop.is_upgrade_visible(2) and shop.is_upgrade_visible(3), "Fish and Wood upgrades must reveal after discovery")
 	var old_red_damage := world.player.get_base_damage_for_color(FoxPlayer.COLOR_RED)
-	assert(shop.get_upgrade_price(0) == 10 and shop.buy_upgrade(0), "The first red damage upgrade must cost ten Gold")
-	assert(world.player.get_base_damage_for_color(FoxPlayer.COLOR_RED) == old_red_damage + 1 and shop.get_upgrade_price(0) == 20, "Gold must grant red damage and raise its price by ten")
+	assert(shop.get_upgrade_price(0) == 5 and shop.buy_upgrade(0), "The first red damage upgrade must cost five Gold")
+	assert(world.player.get_base_damage_for_color(FoxPlayer.COLOR_RED) == old_red_damage + 1 and shop.get_upgrade_price(0) == 10, "Gold must grant red damage and raise its price by five")
 	var old_regeneration := world.player.passive_healing_amount
 	assert(shop.get_upgrade_price(1) == 5 and shop.buy_upgrade(1), "The first regeneration upgrade must cost five Jewels")
 	assert(world.player.passive_healing_amount == old_regeneration + 1 and shop.get_upgrade_price(1) == 10, "Jewels must grant regeneration and raise its price by five")

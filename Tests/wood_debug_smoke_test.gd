@@ -16,8 +16,14 @@ func _run() -> void:
 	assert(wood != null and wood.icon.resource_path == "res://Sprites/WoodResource.webp", "Wood must use WoodResource")
 	assert(wood.maximum_amount == 10, "Wood must start with ten capacity")
 
-	var oak := world.get_node("OakTree") as GoldOre
-	var palm := world.get_node("PalmTree") as GoldOre
+	var oak: GoldOre
+	var palm: GoldOre
+	for node in get_nodes_in_group("gold_ores"):
+		if node is GoldOre and node.mined_resource_id == &"wood" and is_equal_approx(node.mine_production_speed, 1.0 / 300.0) and oak == null:
+			oak = node as GoldOre
+		elif node is GoldOre and node.mined_resource_id == &"wood" and is_equal_approx(node.mine_production_speed, 1.0 / 180.0) and palm == null:
+			palm = node as GoldOre
+	assert(oak != null and palm != null, "The world must contain Oak and Palm resource nodes")
 	assert(world.is_walkable(world.world_to_cell(oak.global_position)), "The oak must be placed on a walkable tile")
 	assert(world.is_walkable(world.world_to_cell(palm.global_position)), "The palm must be placed on a walkable tile")
 	assert(is_equal_approx(oak.mine_production_speed, 1.0 / 300.0), "Oak lodges must produce one wood every five minutes")

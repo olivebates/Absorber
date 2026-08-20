@@ -36,6 +36,10 @@ func _run() -> void:
 	refill_spawn.respawn_time = 60.0
 	refill_spawn._respawn_time_left = 60.0
 	gate.set_unlocked(false)
+	var campfire := world.get_node("Campfire") as Campfire
+	player.global_position = campfire.global_position
+	world._update_exploration()
+	assert(world.is_campfire_visited(campfire), "The save test must begin with a visited campfire")
 
 	var raw_json := JSON.stringify(save_system._capture_state(1000))
 	var encoded := save_system.create_save_string(1000)
@@ -43,6 +47,8 @@ func _run() -> void:
 	player.health = player.max_health
 	player.damage_by_color[FoxPlayer.COLOR_RED][0] = 1
 	player.inventory_slots[0] = {}
+	world.explored_cells.clear()
+	world.visited_campfires.clear()
 	gate.set_unlocked(true)
 	assert(save_system.load_save_string(encoded, 1600), "A compact save string must decompress and load")
 	await process_frame
@@ -55,6 +61,7 @@ func _run() -> void:
 	assert(resource_manager.get_amount(&"gold_ore") == resource_manager.get_maximum_amount(&"gold_ore"), "Built mines must produce resources during offline time")
 	assert(is_instance_valid(ore._mine), "Built mines must survive save/load")
 	assert(not gate.unlocked and gate.visible and gate.is_in_group("gates"), "Loading an older slot must restore a locked gate")
+	assert(world.is_campfire_visited(campfire), "Explored areas and visited campfires must survive save/load")
 
 	var save_key := InputEventKey.new()
 	save_key.pressed = true

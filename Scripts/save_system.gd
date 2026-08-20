@@ -123,6 +123,7 @@ func _capture_state(timestamp: int) -> Array:
 		resource_manager.get_save_data() if resource_manager else [],
 		spawn_data, ore_data, gate_mask, pickup_data, building_data,
 		_get_shopkeeper().get_save_data() if _get_shopkeeper() else [],
+		_world.get_exploration_save_data(),
 	]
 
 
@@ -168,6 +169,7 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 
 	if not _world.player.load_save_data(state[2] as Array, offline_seconds):
 		return false
+	_world.load_exploration_save_data(state[10] as Array if state.size() > 10 and state[10] is Array else [])
 	var shopkeeper := _get_shopkeeper()
 	if shopkeeper:
 		shopkeeper.load_save_data(state[9] as Array if state.size() > 9 and state[9] is Array else [])

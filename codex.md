@@ -15,7 +15,7 @@ This document is the working index for future Codex changes. **Read it in full a
 - Engine: Godot 4.7.
 - Main scene: `res://Scenes/world.tscn`.
 - World unit: 64 × 64 pixel tiles.
-- Input: left-click a painted floor tile to move the fox; click an enemy to chase it. Clicking a resource deposit opens its centered construction button; clicking a built producer opens capacity-building buttons on valid adjacent tiles. Clicking the White Tiger routes the fox adjacent and opens its stat shop. Ground items are collected by stepping onto their tile, never by clicking them. Shift+0-9 saves, 0-9 loads, Shift+P fills every resource to capacity, and Shift+O toggles the debug stat menu.
+- Input: left-click a painted floor tile to move the fox; click an enemy to chase it. Clicking a resource deposit opens its centered construction button; clicking a built producer opens capacity-building buttons on valid adjacent tiles. Clicking the White Tiger routes the fox adjacent and opens the Stats Shop. Ground items are collected by stepping onto their tile, never by clicking them. Shift+0-9 saves, 0-9 loads, Shift+P fills every resource to capacity, Shift+O toggles the debug stat menu, and Tab opens the world map for campfire teleportation.
 - Navigation: four-way `AStarGrid2D` with Jump Point Search enabled. It is built once when `World` enters the tree, with player/enemy occupied cells added dynamically when routes are requested.
 - Combat: actors automatically attack enemies on a directly adjacent tile. Enemies stop patrolling when engaged. Enemy rewards are Damage, Health, or Resource and are granted only when their flying orb reaches its destination. Damage is stored in a four-weapon by three-enemy-color matrix, while collectible weapons add their grade-scaled bonus.
 - HUD: the top-left panel is a filtered color-by-weapon damage table. It shows only weapon columns and color rows that contain a summed damage value above one. Compact resources appear bottom-left after discovery, and the minimap is top-right. The inventory is bottom-right with the toolbar directly below it.
@@ -38,7 +38,7 @@ Absorber/
 │   ├── bull_enemy.tscn                   Bull variant of the reusable enemy
 │   ├── evil_goat_enemy.tscn / crab_enemy.tscn  Additional reusable enemy variants
 │   ├── snake/camel/crocodile/mouse_enemy.tscn  Sprite-swapped reusable enemy variants
-│   ├── white_tiger.tscn                 Static clickable stat-shop NPC
+│   ├── white_tiger.tscn                 Roaming clickable stat-shop NPC
 │   ├── enemy_spawn_point.tscn            Reusable enemy-spawn marker scene
 │   ├── gold_ore.tscn                     Clickable ore deposit and mine-build button
 │   ├── miner_structure.tscn              Mine production visual
@@ -63,6 +63,8 @@ Absorber/
 │   ├── debug_stat_menu.gd                Shift+O manual stat adjustment panel
 │   ├── white_tiger.gd                    Shopkeeper interaction and saved purchases
 │   ├── tiger_shop.gd                     Resource-priced stat shop interface
+│   ├── world_map.gd                      Tab-toggle full world map overlay
+│   ├── world_map_canvas.gd               Terrain rendering and campfire selectors
 │   ├── minimap.gd                        Top-right enemy/player map dots
 │   ├── tile_grid.gd                      Screen-space 64-pixel grid overlay
 │   ├── gold_ore.gd                       Ore selection and mine construction
@@ -150,17 +152,17 @@ Builds the navigation grid from the already-painted tilemaps in `_ready()`.
 - Empty cells outside the floor artwork are solid, preventing paths through unpainted space.
 - Diagonal routes are disabled.
 - Jump Point Search is enabled for efficient long-distance uniform-grid searches.
-- `find_path(from_world, to_world, moving_actor)` returns centered, direction-compressed movement waypoints while treating other actors' cells as temporary blockers.
+- `find_path(from_world, to_world, moving_actor)` returns centered, direction-compressed movement waypoints while treating other actors, buildings, and resource deposits as blockers. A moving actor's starting cell is always released so actors already overlapping a structure or deposit can leave it.
 - `get_patrol_destination()` chooses a random walkable cell within a circular tile radius.
 - `get_patrol_path()` rejects a route that would leave that patrol radius.
 
-The script handles left clicks. Clicking a valid painted floor cell asks the fox to follow the calculated path; clicking an enemy starts chase behavior. Clicking the White Tiger selects the shortest available adjacent tile and routes the fox there before opening the shop. NPC tiles participate in navigation and construction blocking. Clicking a pickup does not collect it and instead behaves as a floor click when applicable.
+The script handles left clicks. Clicking a valid painted floor cell asks the fox to follow the calculated path; clicking an enemy starts chase behavior. Clicking the White Tiger selects the shortest available adjacent tile and routes the fox there before opening the shop. NPC, building, and ore/tree tiles participate in navigation and construction blocking for both player and enemies unless the moving actor already overlaps that tile. Clicking a pickup does not collect it and instead behaves as a floor click when applicable.
 
 ### `Scripts/fox_player.gd` — `FoxPlayer`
 
 Exports `move_speed`, `max_health`, `attack_damage`, `attack_range`, and `attack_cooldown`.
 
-The fox follows dynamically occupied-cell-aware waypoint paths, flips its sprite on rightward movement, and bounces/rotates while walking. When a chicken is on an adjacent tile, it attacks automatically after its current weapon's cooldown using the summed damage for that enemy color. Each weapon has an independent cooldown. The fox reserves an inventory slot when it steps onto a pickup tile, then the pickup shrinks and moves into the fox before being added to inventory. Receiving damage updates the numeric health bar, creates a damage popup, and plays a hit reaction.
+The fox follows dynamically occupied-cell-aware waypoint paths, flips its sprite on rightward movement, and bounces/rotates while walking. When a chicken is on an adjacent tile, it attacks automatically after its current weapon's cooldown using the summed damage for that enemy's configured taken-damage color. Each weapon has an independent cooldown. The fox reserves an inventory slot when it steps onto a pickup tile, then the pickup shrinks and moves into the fox before being added to inventory. Receiving damage subtracts equipment block plus the saved hidden `defense` stat, with a minimum of one damage, then updates the numeric health bar, creates a damage popup, and plays a hit reaction.
 
 Player attacks lunge, squash/stretch, and create three compact semi-transparent weapon-grade colored slash lines with black outlines on the target. The player has a white ground ring while adjacent to an enemy.
 
@@ -178,12 +180,12 @@ Chickens:
 - pause for a random 3–7 seconds after reaching a patrol target;
 - avoid occupied player/enemy tiles while selecting and following patrol routes;
 - bounce and rotate while walking;
-- attack a fox on a directly adjacent tile once per cooldown, for the `enemy_damage` configured by their spawn point;
+- attack a fox on a directly adjacent tile once per cooldown, for the `enemy_damage` and outgoing color configured by their spawn point;
 - show the reward amount above the health bar; Resource rewards use the GoldOreResource icon tinted to the selected resource color;
 - launch a randomized reward orb to the matching damage HUD row, player, or resource HUD before the configured Damage, Health, or Resource reward is applied;
 - own an item drop table, exposed through the enemy hover tooltip, and roll configured item pickups when their health reaches zero.
 
-Enemies clear their patrol path and remain stationary while directly adjacent to the fox. Their attacks use the same lunge/squash and compact semi-transparent outlined slash treatment. Enemies have a ground ring in their own damage color while in combat.
+Enemies clear their patrol path and remain stationary while directly adjacent to the fox. Their attacks use the same lunge/squash and compact semi-transparent outlined slash treatment. Enemy armor is a flat reduction with a minimum of one incoming damage. Beneath the health bar, DamageIcon plus an outgoing-color dot and amount is separated from ShieldIcon plus the taken-damage color and armor amount. The combat ring and slash use the outgoing damage color.
 
 ### `Scripts/enemy_spawn_point.gd` — `EnemySpawnPoint`
 
@@ -194,6 +196,9 @@ Exports:
 - `stat_reward_amount`: displayed stat reward value;
 - `enemy_health`: health assigned to every chicken created by this marker;
 - `enemy_damage`: attack damage assigned to every chicken created by this marker;
+- `enemy_damage_color`: outgoing attack/slash color;
+- `enemy_armor`: flat incoming-damage reduction;
+- `enemy_damage_taken_color`: selects which player damage-color row applies;
 - `enemy_type`: Inspector selection for Chicken, Cow, Bull, Mole, Mole 2, Goat, Evil Goat, Crab, Snake, Camel, Crocodile, or Mouse;
 - `enemy_scene`: optional custom-scene override;
 - `reward_type`: Damage, Health, or Resource;
@@ -210,7 +215,7 @@ The active list is explicitly rebuilt as a typed `Array[ChickenEnemy]`; do not r
 
 Provides slots 0-9 at `user://s0` through `user://s9`. Shift plus a number saves; the number alone loads. State uses short positional arrays, millisecond timer integers, and bit masks. Compact JSON is compressed with whichever built-in compression mode produces the fewest bytes, then Base64-encoded as one file string. Loading validates the version and decompressed-size bound before applying data.
 
-Saved progression includes player position, health, recovery timing, stats, damage matrix, inventory/equipment, weapon cooldowns, resources/discovery, built producers and production progress, typed Gold/Gem/Fish/Wood capacity-building positions, White Tiger purchase counts, gate unlocks, ground pickups, spawn timers, and live enemy position/health. The wall-clock timestamp advances player/enemy recovery, weapon cooldowns, all mine/lodge production, and every elapsed spawn interval. Offline spawn attempts stop at each marker's `max_enemies`.
+Saved progression includes player position, health, recovery timing, hidden defense, stats, damage matrix, inventory/equipment, weapon cooldowns, resources/discovery, built producers and production progress, typed Gold/Gem/Fish/Wood capacity-building positions, White Tiger purchase counts and position, gate unlocks, ground pickups, spawn timers, and live enemy position/health. The wall-clock timestamp advances player/enemy recovery, weapon cooldowns, all mine/lodge production, and every elapsed spawn interval. Offline spawn attempts stop at each marker's `max_enemies`.
 
 ## Art and tile conventions
 
@@ -232,7 +237,7 @@ Saved progression includes player position, health, recovery timing, stats, dama
 
 ## Current additions: enemies, resources, and UI
 
-- `EnemySpawnPoint` exports a stat reward amount, Damage/Health/Resource reward type, damage reward color, resource id, Enemy Type selector (Chicken, Cow, or Bull), and optional custom scene override. Cow and Bull reuse the common enemy behavior while swapping their sprite scenes.
+- `EnemySpawnPoint` exports rewards, health, damage, one shared red/yellow/blue combat color, flat armor, a typed drop list, and an Enemy Type selector. Its sprite variants are Chicken, Cow, Bull, Mole, Mole 2, Goat, Evil Goat, Crab, Snake, Camel, Crocodile, Mouse, Kangaroo Rat, and Mad Coyote.
 - `ResourceManager` is a scalable resource economy backed by `GameResourceDefinition`. Each definition has an id, name, icon, display color, maximum amount, starting amount, and base production speed. Gold Ore, Jewels, Fish, and Wood are current definitions.
 - Resource rewards launch an orb to the resource HUD before adding their amount. The bottom-left resource panel begins explicitly hidden and appears as soon as the first resource is acquired; it uses an exact 8px outer margin and displays only `amount/max +speed/s` beside the icon.
 - The GoldOre scene uses `Gold Ore.webp`. Hovering an empty ore or built mine outlines its tile in yellow. Clicking an empty ore reveals a centered Build Mine button without moving the fox. Its hover card is content-fitted with an 8px margin, places `Costs:` and resource rows on the left, shows the full-size building sprite on the right, and stays above the button. Its default build cost is 5 Gold Ore and 2 Jewels. Each MinerStructure registers 1 Gold Ore per 60 seconds and displays a green floating `+1` when it produces on screen.
@@ -272,13 +277,19 @@ When editing the project:
 - `FishingSpot` uses `FishSillouhettes.webp`; its construction button says `Build Hut`, the built producer uses `FishingMine.webp`, and it produces one Fish every 60 seconds. Fish starts with 20 capacity, and an adjacent 10-Fish `FishCrate` adds 5 capacity.
 - `OakTree` and `PalmTree` use their matching sprites and build `WoodCuttingLodge.webp` producers. Oak produces one Wood every five minutes and palm every three minutes. Both offer adjacent 10-Wood `WoodCrate` storage that adds 15 capacity. Wood uses `WoodResource.webp`, starts at 10 capacity, and lodge progress continues during offline save/load time.
 - The debug menu is hidden by default beneath the top-left damage grid. Shift+O toggles it; its plus/minus controls edit max health, regeneration, and current-weapon red/yellow/blue base damage while enforcing minimum stat values of one.
-- The White Tiger shop opens only after the fox reaches an adjacent tile. Its centered box fits visible rows with exact 8px content margins and closes via its top-right X, Escape, or an outside click. Gold damage is always shown; Jewel regeneration, Fish health, and Wood health rows reveal permanently after that resource is first owned. Purchases grant +1 red damage for Gold (base 10), +1 regeneration for Jewels (base 5), or +20 max health for Fish/Wood (base 5/3). Each repeat adds its base price, and purchase counts persist in saves.
+- The horizontally flipped White Tiger roams within two tiles of its scene position using the fox's bob-and-tilt walk cycle, and pauses while approached or shopped. Hovering it shows a yellow tile outline. The Stats Shop opens only after the fox reaches an adjacent tile. Its centered box fits visible rows with exact 8px content margins and closes via its top-right X, Escape, or an outside click. Each upgrade is a full-row button showing the stat icon and `+amount` on the left and `Price:`, resource icon, and amount on the right. Red damage includes a red dot and starts at 5 Gold; unaffordable price numbers are red. Gold damage is always shown; Jewel regeneration, Fish health, and Wood health rows reveal permanently after that resource is first owned. Each repeat adds its base price, and purchase counts plus tiger position persist in saves.
+- Tab opens a terrain-scaled world map overlay with persistent fog of war. Explored terrain uses atlas-type colors (green for the first three row-one tiles, yellow for row three, brown for row five), while discovered wall and structure obstacles are dark gray even without underlying floor. Only visited Campfires appear and accept teleporting. Discovered resource nodes and the White Tiger shop appear with sprite markers. Exploration and Campfire visits persist in saves; Tab toggles and Escape closes the map.
+- Enemy health bars use the original compact colored dot beneath the bar. A spawner's single enemy combat color now controls both the damage color it deals and the color of player damage used against it; armor remains a flat reduction with minimum-one damage.
 - Mine hover stats display production as a per-second rate with two decimals, or three decimals below 0.01/s. Tooltip hides are owner-aware so leaving one structure cannot dismiss another structure's popup.
 - Actors standing on a newly built structure may traverse their current cell and path to an unoccupied neighboring tile, preventing players and enemies from becoming trapped.
 - Enemy patrol targets are reserved deterministically. When enemies select the same tile or one selects another enemy's occupied tile, the yielding enemy targets its own current tile instead of pushing indefinitely.
 - Enemy reward icons are 16px. Damage rewards instead show a colored, bottom-aligned `+amount` flush to the health bar's left edge, with no reward icon; all enemy reward text is 22px.
 
 ## Recent prompt log
+
+- 2026-08-20 - Added persistent explored-area fog of war and discovered-only Campfire/resource/shop map markers; drew independent dark-gray obstacles and terrain-type colors; restored compact enemy color dots and merged enemy combat colors; flipped and animated the shop tiger; improved unaffordable/damage shop presentation and lowered damage's base cost to 5 Gold; and added Kangaroo Rat and Mad Coyote enemies.
+
+- 2026-08-20 - Renamed and rebuilt the Stats Shop with icon-led full-row purchase buttons; made buildings and deposits conditional universal route blockers; added enemy outgoing/taken colors, flat armor, combat-stat icons, and minimum-one damage; saved hidden player defense; made the White Tiger roam and highlight; and added a Tab world map with campfire teleport buttons.
 
 - 2026-08-20 - Added Snake, Camel, Crocodile, and Mouse enemy variants; added a blocking clickable White Tiger that the fox approaches before opening a content-fitted shop; implemented discovery-gated Gold/Jewel/Fish/Wood stat purchases with linearly escalating prices; and persisted purchase counts with X, Escape, and outside-click closing.
 

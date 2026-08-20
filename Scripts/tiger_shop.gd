@@ -1,19 +1,23 @@
 class_name TigerShop
 extends Control
 
+const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
+const REGENERATION_ICON := preload("res://Sprites/GreenHeart.png")
+const HEALTH_ICON := preload("res://Sprites/Heart.webp")
 const UPGRADES := [
-	{"resource_id": &"gold_ore", "base_price": 10, "label": "Red Damage +1"},
-	{"resource_id": &"jewels", "base_price": 5, "label": "Regeneration +1"},
-	{"resource_id": &"fish", "base_price": 5, "label": "Max Health +20"},
-	{"resource_id": &"wood", "base_price": 3, "label": "Max Health +20"},
+	{"resource_id": &"gold_ore", "base_price": 5, "amount": 1, "stat_icon": DAMAGE_ICON},
+	{"resource_id": &"jewels", "base_price": 5, "amount": 1, "stat_icon": REGENERATION_ICON},
+	{"resource_id": &"fish", "base_price": 5, "amount": 20, "stat_icon": HEALTH_ICON},
+	{"resource_id": &"wood", "base_price": 3, "amount": 20, "stat_icon": HEALTH_ICON},
 ]
 
 var _tiger: WhiteTiger
 var _player: FoxPlayer
 var _resource_manager: ResourceManager
 var _panel: PanelContainer
-var _rows: Array[HBoxContainer] = []
-var _buy_buttons: Array[Button] = []
+var _rows: Array[Button] = []
+var _price_icons: Array[TextureRect] = []
+var _price_labels: Array[Label] = []
 
 
 func _ready() -> void:
@@ -97,7 +101,8 @@ func _build_interface() -> void:
 	var title_row := HBoxContainer.new()
 	content.add_child(title_row)
 	var title := Label.new()
-	title.text = "White Tiger's Shop"
+	title.name = "Title"
+	title.text = "Stats Shop"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_color_override("font_color", Color("ffe082"))
 	title.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -109,36 +114,74 @@ func _build_interface() -> void:
 	close_button.custom_minimum_size = Vector2(28, 26)
 	close_button.pressed.connect(close)
 	title_row.add_child(close_button)
-
-	var separator := HSeparator.new()
-	content.add_child(separator)
+	content.add_child(HSeparator.new())
 	for index in range(UPGRADES.size()):
-		var row := _make_upgrade_row(index)
+		var row := _make_upgrade_button(index)
 		_rows.append(row)
 		content.add_child(row)
 
 
-func _make_upgrade_row(upgrade_index: int) -> HBoxContainer:
+func _make_upgrade_button(upgrade_index: int) -> Button:
 	var upgrade: Dictionary = UPGRADES[upgrade_index]
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(310, 40)
+	button.pressed.connect(buy_upgrade.bind(upgrade_index))
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 8)
+	margin.add_theme_constant_override("margin_right", 8)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(margin)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 7)
+	row.add_theme_constant_override("separation", 6)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(row)
+	row.add_child(_make_icon(upgrade["stat_icon"] as Texture2D, Vector2(24, 24)))
+	if upgrade_index == 0:
+		var damage_dot := Panel.new()
+		damage_dot.name = "DamageColorDot"
+		damage_dot.custom_minimum_size = Vector2(10, 10)
+		damage_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var dot_style := StyleBoxFlat.new()
+		dot_style.bg_color = Color("e64343")
+		dot_style.border_color = Color.BLACK
+		dot_style.set_border_width_all(1)
+		dot_style.set_corner_radius_all(5)
+		damage_dot.add_theme_stylebox_override("panel", dot_style)
+		row.add_child(damage_dot)
+	var amount := Label.new()
+	amount.text = "+%d" % int(upgrade["amount"])
+	amount.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	amount.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(amount)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(spacer)
+	var price_text := Label.new()
+	price_text.text = "Price:"
+	price_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	price_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(price_text)
+	var price_icon := _make_icon(null, Vector2(22, 22))
+	_price_icons.append(price_icon)
+	row.add_child(price_icon)
+	var price_amount := Label.new()
+	price_amount.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	price_amount.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_price_labels.append(price_amount)
+	row.add_child(price_amount)
+	return button
+
+
+func _make_icon(texture: Texture2D, minimum_size: Vector2) -> TextureRect:
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(28, 28)
+	icon.texture = texture
+	icon.custom_minimum_size = minimum_size
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(icon)
-	var label := Label.new()
-	label.text = str(upgrade["label"])
-	label.custom_minimum_size = Vector2(132, 28)
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	row.add_child(label)
-	var button := Button.new()
-	button.custom_minimum_size = Vector2(90, 28)
-	button.pressed.connect(buy_upgrade.bind(upgrade_index))
-	row.add_child(button)
-	_buy_buttons.append(button)
-	return row
+	return icon
 
 
 func _refresh() -> void:
@@ -147,13 +190,13 @@ func _refresh() -> void:
 	for index in range(UPGRADES.size()):
 		var resource_id := StringName(UPGRADES[index]["resource_id"])
 		var definition := _resource_manager.get_definition(resource_id)
-		var row_visible := index == 0 or _resource_manager.has_ever_owned(resource_id)
-		_rows[index].visible = row_visible
-		var icon := _rows[index].get_child(0) as TextureRect
-		icon.texture = definition.icon if definition else null
+		_rows[index].visible = index == 0 or _resource_manager.has_ever_owned(resource_id)
+		_price_icons[index].texture = definition.icon if definition else null
 		var price := get_upgrade_price(index)
-		_buy_buttons[index].text = "Buy %d" % price
-		_buy_buttons[index].disabled = not _resource_manager.can_afford({resource_id: price})
+		_price_labels[index].text = str(price)
+		var can_afford := _resource_manager.can_afford({resource_id: price})
+		_price_labels[index].add_theme_color_override("font_color", Color.WHITE if can_afford else Color("ef5350"))
+		_rows[index].disabled = not can_afford
 
 
 func _on_resource_changed(_resource_id: StringName, _amount: int, _maximum_amount: int) -> void:

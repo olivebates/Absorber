@@ -20,6 +20,7 @@ signal merge_completed(merged_item: Dictionary, target_storage: String, target_i
 
 var health: int
 var passive_healing_amount := 1
+var defense := 0
 var current_weapon_index := 0
 var damage_by_color := [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]
 var equipped_armor: Array[Dictionary] = [{}, {}, {}, {}]
@@ -95,10 +96,11 @@ func is_moving() -> bool:
 func take_damage(amount: int) -> void:
 	if health <= 0:
 		return
-	health = max(0, health - max(0, amount - get_total_block()))
+	var applied_damage := maxi(1, amount - get_total_block())
+	health = max(0, health - applied_damage)
 	health_bar.value = health
 	_update_health_label()
-	_show_damage_popup(amount)
+	_show_damage_popup(applied_damage)
 	if health == 0:
 		_respawn()
 
@@ -292,7 +294,7 @@ func get_damage_for_weapon_color(color_index: int, weapon_index: int) -> int:
 
 
 func get_total_block() -> int:
-	var total := 0
+	var total := maxi(0, defense)
 	for item in equipped_armor:
 		total += ItemPickup.get_block_amount(item)
 	return total
@@ -316,6 +318,7 @@ func get_save_data() -> Array:
 		_pack_items(inventory_slots), _pack_items(equipped_weapons), _pack_items(equipped_armor),
 		ever_equipped_mask, cooldown_milliseconds, maxi(0, roundi(_heal_time_left * 1000.0)),
 		maxi(1, roundi(_get_healing_speed_multiplier())),
+		maxi(0, defense),
 	]
 
 
@@ -327,6 +330,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	global_position = Vector2(float(data[0]), float(data[1]))
 	max_health = maxi(1, int(data[3]))
 	passive_healing_amount = maxi(1, int(data[4]))
+	defense = maxi(0, int(data[14])) if data.size() > 14 else 0
 	current_weapon_index = clampi(int(data[5]), 0, equipped_weapons.size() - 1)
 
 	var flattened_damage := data[6] as Array

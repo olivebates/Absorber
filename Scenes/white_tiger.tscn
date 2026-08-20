@@ -10,3 +10,4 @@ script = ExtResource("1_tiger")
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 1
 texture = ExtResource("2_sprite")
+flip_h = true

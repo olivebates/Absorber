@@ -17,6 +17,7 @@ signal died(enemy: ChickenEnemy)
 # Spawn points own these gameplay stats so one marker configures every enemy it creates.
 var max_health := 3
 var attack_damage := 1
+var armor := 0
 @export var attack_range := 46.0
 @export var attack_cooldown := 1.0
 @export_enum("Red", "Yellow", "Blue") var enemy_color := FoxPlayer.COLOR_RED
@@ -51,7 +52,7 @@ var _health_regen_tick_left := 0.0
 @onready var reward_dot_outline: Polygon2D = $RewardDotOutline
 
 
-func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1) -> void:
+func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1, new_damage_color := FoxPlayer.COLOR_RED, new_armor := 0) -> void:
 	home_cell = spawn_cell
 	damage_reward = reward
 	reward_type = type
@@ -59,7 +60,9 @@ func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_ta
 	reward_resource_id = new_reward_resource_id
 	damage_reward_color = clampi(new_damage_reward_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
 	max_health = maxi(1, new_max_health)
-	attack_damage = maxi(0, new_attack_damage)
+	attack_damage = maxi(1, new_attack_damage)
+	armor = maxi(0, new_armor)
+	enemy_color = clampi(new_damage_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
 
 
 func _ready() -> void:
@@ -79,12 +82,13 @@ func _ready() -> void:
 func take_damage(amount: int) -> void:
 	if health <= 0:
 		return
-	health = max(0, health - amount)
+	var applied_damage := maxi(1, amount - armor)
+	health = max(0, health - applied_damage)
 	_health_regen_delay_left = HEALTH_REGEN_DELAY
 	_health_regen_tick_left = 0.0
 	health_bar.value = health
 	_update_health_label()
-	_show_damage_popup(amount)
+	_show_damage_popup(applied_damage)
 	if health == 0:
 		died.emit(self)
 		_grant_kill_reward()
@@ -357,9 +361,9 @@ func _face_toward(target: Node2D) -> void:
 
 
 func _create_combat_ring() -> Line2D:
-	var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 	var ring := Line2D.new()
 	ring.width = 2.5
+	var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 	ring.default_color = colors[enemy_color]
 	ring.position = Vector2(0, 19)
 	ring.z_index = -1
