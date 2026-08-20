@@ -15,7 +15,7 @@ This document is the working index for future Codex changes. **Read it in full a
 - Engine: Godot 4.7.
 - Main scene: `res://Scenes/world.tscn`.
 - World unit: 64 × 64 pixel tiles.
-- Input: left-click a painted floor tile to move the fox; click an enemy to chase it. Clicking gold ore opens its centered Build Mine button instead of issuing a move order. Ground items are collected by stepping onto their tile, never by clicking them. Shift+0-9 saves to that slot, while 0-9 without modifiers loads it.
+- Input: left-click a painted floor tile to move the fox; click an enemy to chase it. Clicking a resource deposit opens its centered construction button; clicking a built producer opens capacity-building buttons on valid adjacent tiles. Clicking the White Tiger routes the fox adjacent and opens its stat shop. Ground items are collected by stepping onto their tile, never by clicking them. Shift+0-9 saves, 0-9 loads, Shift+P fills every resource to capacity, and Shift+O toggles the debug stat menu.
 - Navigation: four-way `AStarGrid2D` with Jump Point Search enabled. It is built once when `World` enters the tree, with player/enemy occupied cells added dynamically when routes are requested.
 - Combat: actors automatically attack enemies on a directly adjacent tile. Enemies stop patrolling when engaged. Enemy rewards are Damage, Health, or Resource and are granted only when their flying orb reaches its destination. Damage is stored in a four-weapon by three-enemy-color matrix, while collectible weapons add their grade-scaled bonus.
 - HUD: the top-left panel is a filtered color-by-weapon damage table. It shows only weapon columns and color rows that contain a summed damage value above one. Compact resources appear bottom-left after discovery, and the minimap is top-right. The inventory is bottom-right with the toolbar directly below it.
@@ -36,23 +36,38 @@ Absorber/
 │   ├── chicken_enemy.tscn                Reusable chicken enemy scene
 │   ├── cow_enemy.tscn                    Cow variant of the reusable enemy
 │   ├── bull_enemy.tscn                   Bull variant of the reusable enemy
+│   ├── evil_goat_enemy.tscn / crab_enemy.tscn  Additional reusable enemy variants
+│   ├── snake/camel/crocodile/mouse_enemy.tscn  Sprite-swapped reusable enemy variants
+│   ├── white_tiger.tscn                 Static clickable stat-shop NPC
 │   ├── enemy_spawn_point.tscn            Reusable enemy-spawn marker scene
 │   ├── gold_ore.tscn                     Clickable ore deposit and mine-build button
 │   ├── miner_structure.tscn              Mine production visual
+│   ├── gold_shack.tscn                   Placeable +15 Gold capacity building
+│   ├── gem_ore.tscn                      PileOfGems deposit and 3-minute Jewel mine
+│   ├── gem_shack.tscn                    Placeable +10 Jewel capacity building
+│   ├── fishing_spot.tscn                 Fish deposit and one-minute fishing mine
+│   ├── fish_crate.tscn                   Placeable +5 Fish capacity building
+│   ├── oak_tree.tscn / palm_tree.tscn    Wood deposits with five-/three-minute lodges
+│   ├── wood_crate.tscn                   Placeable +15 Wood capacity building
 │   └── damage_popup.tscn                 Reusable floating combat-damage label
 ├── Scripts/
 │   ├── world.gd                          Tilemap navigation service and click-to-move handling
 │   ├── fox_player.gd                     Fox movement, health, attacks, and damage UI effects
 │   ├── chicken_enemy.gd                  Chicken patrol, health, attacks, and damage UI effects
 │   ├── enemy_spawn_point.gd              Spawn capacity and respawn lifecycle
+│   ├── enemy_drop_entry.gd               Inspector-friendly item/chance/grade drop row
 │   ├── game_resource_definition.gd       Inspector-editable resource definition
 │   ├── resource_manager.gd               Multi-resource amounts, caps, and producers
 │   ├── save_system.gd                    Compact save slots and offline progression
 │   ├── resource_panel.gd                 Bottom-left discovered-resource HUD
+│   ├── debug_stat_menu.gd                Shift+O manual stat adjustment panel
+│   ├── white_tiger.gd                    Shopkeeper interaction and saved purchases
+│   ├── tiger_shop.gd                     Resource-priced stat shop interface
 │   ├── minimap.gd                        Top-right enemy/player map dots
 │   ├── tile_grid.gd                      Screen-space 64-pixel grid overlay
 │   ├── gold_ore.gd                       Ore selection and mine construction
 │   ├── miner_structure.gd                Registers mine output with resources
+│   ├── gold_shack.gd                     Registers a stackable Gold capacity bonus
 │   ├── reward_orb.gd                     Animated enemy-reward travel orb
 │   ├── damage_popup.gd                   Popup tween animation and cleanup
 │   └── *.gd.uid                          Godot-generated script UID metadata; do not hand-edit
@@ -64,15 +79,19 @@ Absorber/
 │   ├── Cow.webp and Bull.webp             64 × 64 enemy variant sprites
 │   ├── Gold Ore.webp                      Gold ore deposit sprite
 │   ├── MinerStructure.webp                Built mine sprite
+│   ├── GoldShack.webp                    Gold capacity building sprite
 │   ├── GoldOreResource.webp               Gold Ore resource HUD/drop icon
 │   └── *.webp.import                     Godot-generated texture import metadata
 ├── Tests/
     ├── world_smoke_test.gd               Headless integration smoke test
     ├── save_system_smoke_test.gd         Save/load and offline-time smoke test
+    ├── building_smoke_test.gd            Mine, shack, tooltip, and debug-key test
     └── *.gd.uid                          Godot-generated test-script UID metadata
 └── Resources/
     ├── gold_ore.tres                     Gold Ore definition and resource icon
-    └── jewels.tres                       Jewel definition and resource icon
+    ├── jewels.tres                       Jewel definition and resource icon
+    ├── fish.tres                         Fish definition, icon, and base capacity
+    └── wood.tres                         Wood definition and WoodResource icon
 ```
 
 `.godot/` is Godot editor/cache state and is intentionally excluded from this map. `Godot_v4.7.1-stable_win64.exe` is the local engine executable, not a game resource.
@@ -86,7 +105,9 @@ World (Node2D, WorldNavigation)
 ├── Fox (instanced fox.tscn, FoxPlayer)   Player and active Camera2D owner
 ├── ResourceManager                       Shared resource amounts and production sources
 ├── SaveSystem                            Compact save slots and wall-clock catch-up
-├── GoldOre (instanced gold_ore.tscn)     Mineable gold deposit
+├── GoldOre/FishingSpot/Tree instances     Mineable resource deposits
+├── GoldShack/GemShack/Fish/Wood crates    Player-built resource capacity structures
+├── WhiteTiger (WhiteTiger)                Click-to-approach persistent stat shop
 ├── EnemySpawnPoint instances             Cow/Bull instances are added at runtime
 ├── GridOverlay (CanvasLayer)             2px black world-tile grid
 └── HUD (CanvasLayer)                     Damage, resource, minimap, and inventory UI
@@ -104,7 +125,7 @@ Add additional enemy locations by instancing `enemy_spawn_point.tscn` under `Wor
 
 Contains a `CharacterBody2D`, fox sprite, collision shape, outlined green `HealthBar` with numeric HP overlay, and child `Camera2D`.
 
-The camera has zero local offset and is enabled, so its target is the fox's position. Position smoothing is enabled at speed `7.0`; this produces follow lag while keeping the camera centered on the player target. The fox regenerates one health every three seconds, faces right with a horizontal flip, snaps to a tile center whenever idle, and immediately respawns at its original scene position with full health on death.
+The camera has zero local offset and is enabled, so its target is the fox's position. Position smoothing is enabled at speed `7.0`; this produces follow lag while keeping the camera centered on the player target. The fox's base regeneration is one health every three seconds; higher regeneration preserves the total rate but spaces it into continuous one-health restores instead of three-second bursts. The fox faces right with a horizontal flip, snaps to a tile center whenever idle, and immediately respawns at its original scene position with full health on death.
 
 ### `Scenes/chicken_enemy.tscn`
 
@@ -133,7 +154,7 @@ Builds the navigation grid from the already-painted tilemaps in `_ready()`.
 - `get_patrol_destination()` chooses a random walkable cell within a circular tile radius.
 - `get_patrol_path()` rejects a route that would leave that patrol radius.
 
-The script handles left clicks. Clicking a valid painted floor cell asks the fox to follow the calculated path; clicking an enemy starts chase behavior. Clicking a pickup does not collect it and instead behaves as a floor click when applicable.
+The script handles left clicks. Clicking a valid painted floor cell asks the fox to follow the calculated path; clicking an enemy starts chase behavior. Clicking the White Tiger selects the shortest available adjacent tile and routes the fox there before opening the shop. NPC tiles participate in navigation and construction blocking. Clicking a pickup does not collect it and instead behaves as a floor click when applicable.
 
 ### `Scripts/fox_player.gd` — `FoxPlayer`
 
@@ -173,13 +194,13 @@ Exports:
 - `stat_reward_amount`: displayed stat reward value;
 - `enemy_health`: health assigned to every chicken created by this marker;
 - `enemy_damage`: attack damage assigned to every chicken created by this marker;
-- `enemy_type`: Inspector selection for Chicken, Cow, or Bull;
+- `enemy_type`: Inspector selection for Chicken, Cow, Bull, Mole, Mole 2, Goat, Evil Goat, Crab, Snake, Camel, Crocodile, or Mouse;
 - `enemy_scene`: optional custom-scene override;
 - `reward_type`: Damage, Health, or Resource;
 - `damage_reward_color`: the color increased by a Damage reward;
 - `reward_resource_id`: the resource granted by a Resource reward.
 
-The active list is explicitly rebuilt as a typed `Array[ChickenEnemy]`; do not replace it with `Array.filter()` without a safe typed conversion, because Godot returns an untyped `Array` and will raise a type-assignment error. Item and resource drop tables control the drops for every spawned enemy.
+The active list is explicitly rebuilt as a typed `Array[ChickenEnemy]`; do not replace it with `Array.filter()` without a safe typed conversion, because Godot returns an untyped `Array` and will raise a type-assignment error. `item_drops` is an Inspector-friendly array of `EnemyDropEntry` resources, each with item, chance, and grade selectors. The hidden legacy dictionary table remains load-compatible with already placed spawners.
 
 ### `Scripts/damage_popup.gd` — `DamagePopup`
 
@@ -189,7 +210,7 @@ The active list is explicitly rebuilt as a typed `Array[ChickenEnemy]`; do not r
 
 Provides slots 0-9 at `user://s0` through `user://s9`. Shift plus a number saves; the number alone loads. State uses short positional arrays, millisecond timer integers, and bit masks. Compact JSON is compressed with whichever built-in compression mode produces the fewest bytes, then Base64-encoded as one file string. Loading validates the version and decompressed-size bound before applying data.
 
-Saved progression includes player position, health, recovery timing, stats, damage matrix, inventory/equipment, weapon cooldowns, resources/discovery, built mines and production progress, gate unlocks, ground pickups, spawn timers, and live enemy position/health. The wall-clock timestamp advances player/enemy recovery, weapon cooldowns, mine production, and every elapsed spawn interval. Offline spawn attempts stop at each marker's `max_enemies`.
+Saved progression includes player position, health, recovery timing, stats, damage matrix, inventory/equipment, weapon cooldowns, resources/discovery, built producers and production progress, typed Gold/Gem/Fish/Wood capacity-building positions, White Tiger purchase counts, gate unlocks, ground pickups, spawn timers, and live enemy position/health. The wall-clock timestamp advances player/enemy recovery, weapon cooldowns, all mine/lodge production, and every elapsed spawn interval. Offline spawn attempts stop at each marker's `max_enemies`.
 
 ## Art and tile conventions
 
@@ -212,11 +233,12 @@ Saved progression includes player position, health, recovery timing, stats, dama
 ## Current additions: enemies, resources, and UI
 
 - `EnemySpawnPoint` exports a stat reward amount, Damage/Health/Resource reward type, damage reward color, resource id, Enemy Type selector (Chicken, Cow, or Bull), and optional custom scene override. Cow and Bull reuse the common enemy behavior while swapping their sprite scenes.
-- `ResourceManager` is a scalable resource economy backed by `GameResourceDefinition`. Each definition has an id, name, icon, display color, maximum amount, starting amount, and base production speed. Gold Ore and Jewels are current definitions.
+- `ResourceManager` is a scalable resource economy backed by `GameResourceDefinition`. Each definition has an id, name, icon, display color, maximum amount, starting amount, and base production speed. Gold Ore, Jewels, Fish, and Wood are current definitions.
 - Resource rewards launch an orb to the resource HUD before adding their amount. The bottom-left resource panel begins explicitly hidden and appears as soon as the first resource is acquired; it uses an exact 8px outer margin and displays only `amount/max +speed/s` beside the icon.
-- The GoldOre scene uses `Gold Ore.webp`. World clicks on it reveal a centered Build Mine button, without moving the fox. The button is reparented into the HUD canvas at runtime so it always renders above the black grid, shows its full cost on hover, and is disabled until the shared resources can pay it. Its default build cost is 5 Gold Ore and 2 Jewels. Each MinerStructure registers 1 Gold Ore per 60 seconds and displays a green floating `+1` when it produces on screen.
+- The GoldOre scene uses `Gold Ore.webp`. Hovering an empty ore or built mine outlines its tile in yellow. Clicking an empty ore reveals a centered Build Mine button without moving the fox. Its hover card is content-fitted with an 8px margin, places `Costs:` and resource rows on the left, shows the full-size building sprite on the right, and stays above the button. Its default build cost is 5 Gold Ore and 2 Jewels. Each MinerStructure registers 1 Gold Ore per 60 seconds and displays a green floating `+1` when it produces on screen.
+- Clicking a built mine shows `Build Shack` buttons on valid cardinally adjacent floor tiles without walls, ores, actors, gates, or buildings. A Gold Shack costs 10 Gold and adds 15 to Gold capacity; bonuses stack and shack tiles become navigation/placement blockers.
 - TileGrid is a 20%-opaque screen overlay aligned to the moving world and draws 2px black lines for every visible 64x64 tile. The minimap is top-right and draws a white player dot plus red, yellow, or blue enemy dots from each enemy's color.
-- The damage grid starts hidden, then filters its color-by-weapon sums to values above one. Its first header cell is blank, its weapon headers use the equipped item or a generic 16px Damage icon, and color headers use color dots. Empty armor and weapon toolbar slots show HelmetIcon and SwordIcon respectively; both remain beneath their lock overlay. Weapon slots that can accept a dragged weapon are outlined yellow. Successful merges now pulse, flash, and show an `UP!` burst.
+- The damage grid starts hidden, then filters its color-by-weapon sums to values above one. Its first header cell is blank, its weapon headers use the equipped item or a generic 16px Damage icon, and red/yellow/blue color dots use an explicit foreground z-index above the cell panels. Empty armor and weapon toolbar slots show HelmetIcon and SwordIcon respectively; both remain beneath their lock overlay. Weapon slots that can accept a dragged weapon are outlined yellow. Successful merges now pulse, flash, and show an `UP!` burst.
 
 ## Testing and maintenance
 
@@ -228,7 +250,7 @@ $env:LOCALAPPDATA = (Resolve-Path .\.godot).Path
 .\Godot_v4.7.1-stable_win64.exe --headless --rendering-method gl_compatibility --path . --script res://Tests/world_smoke_test.gd
 ```
 
-The world test verifies map routing and fox flipping, occupied-tile avoidance, cow/bull spawn selection, delayed Gold Ore and Jewel rewards, selectable damage reward color, compact resource HUD text, the 5 Gold/2 Jewel mine cost, mine production feedback, HUD progression, auto merging, and respawn. `save_system_smoke_test.gd` verifies compressed strings, physical number-key bindings, state restoration, and ten minutes of offline health, spawn, and mine progression.
+The world test verifies map routing and fox flipping, occupied-tile avoidance, cow/bull spawn selection, delayed Gold Ore and Jewel rewards, selectable damage reward color, compact resource HUD text, the 5 Gold/2 Jewel mine cost, mine production feedback, HUD progression, auto merging, and respawn. `save_system_smoke_test.gd` verifies compressed strings, physical number-key bindings, state restoration, and ten minutes of offline health, spawn, and mine progression. `building_smoke_test.gd` verifies visible damage dots, tooltip layout, hover outlines, valid shack placement, stacked capacity, save restoration, and Shift+P.
 
 When editing the project:
 
@@ -244,10 +266,29 @@ When editing the project:
 - The inventory sits at bottom-right, above the toolbar. Its gold `Auto Merge` button is present only while an inventory merge is possible; on click, each source item visibly travels onto its matching target before the merge resolves. The toolbar retains four weapon and four armor slots, but all are visibly locked except weapon slot one. Empty armor slots use HelmetIcon and empty weapon slots use SwordIcon, under the lock overlay where present. Clicking an unlocked toolbar item moves it to the first compatible inventory slot. Weapon slot icons have independent transparent-black cooldown overlays that shrink as cooldown expires.
 - Item and enemy drop tooltips are clamped to the camera viewport.
 - Ground pickups have a translucent elliptical shadow and a gentle vertical float.
-- Resources are stored in a content-fitted bottom-left panel only after first acquisition. Its rows show icon plus `amount/max +speed/s`; the panel has an 8px content margin. The top-right minimap shows a white player dot and color-coded enemy dots. A 20%-opaque black 2px grid follows every visible 64x64 world tile.
+- Resources are stored in a content-fitted bottom-left panel only after first acquisition. Removed rows are detached immediately so invisible queued controls never affect sizing; its rows show icon plus `amount/max +speed/s`, and the panel has an exact 8px content margin. The top-right minimap shows a white player dot and color-coded enemy dots. A 20%-opaque black 2px grid follows every visible 64x64 world tile.
+- Mines and shacks show resource-icon hover cards for production and capacity. Shack buttons remain available on temporarily actor-occupied cells, while walls, gates, deposits, and buildings remain permanent blockers. A built mine has no yellow hover outline once every adjacent shack tile is permanently blocked.
+- `GemOre` uses `PileOfGems.webp`; its mine costs 5 Jewels and 2 Gold and produces one Jewel every 180 seconds. Its adjacent `GemShack` costs 10 Jewels, uses `GemShack.webp`, and adds 10 Jewel capacity.
+- `FishingSpot` uses `FishSillouhettes.webp`; its construction button says `Build Hut`, the built producer uses `FishingMine.webp`, and it produces one Fish every 60 seconds. Fish starts with 20 capacity, and an adjacent 10-Fish `FishCrate` adds 5 capacity.
+- `OakTree` and `PalmTree` use their matching sprites and build `WoodCuttingLodge.webp` producers. Oak produces one Wood every five minutes and palm every three minutes. Both offer adjacent 10-Wood `WoodCrate` storage that adds 15 capacity. Wood uses `WoodResource.webp`, starts at 10 capacity, and lodge progress continues during offline save/load time.
+- The debug menu is hidden by default beneath the top-left damage grid. Shift+O toggles it; its plus/minus controls edit max health, regeneration, and current-weapon red/yellow/blue base damage while enforcing minimum stat values of one.
+- The White Tiger shop opens only after the fox reaches an adjacent tile. Its centered box fits visible rows with exact 8px content margins and closes via its top-right X, Escape, or an outside click. Gold damage is always shown; Jewel regeneration, Fish health, and Wood health rows reveal permanently after that resource is first owned. Purchases grant +1 red damage for Gold (base 10), +1 regeneration for Jewels (base 5), or +20 max health for Fish/Wood (base 5/3). Each repeat adds its base price, and purchase counts persist in saves.
+- Mine hover stats display production as a per-second rate with two decimals, or three decimals below 0.01/s. Tooltip hides are owner-aware so leaving one structure cannot dismiss another structure's popup.
+- Actors standing on a newly built structure may traverse their current cell and path to an unoccupied neighboring tile, preventing players and enemies from becoming trapped.
+- Enemy patrol targets are reserved deterministically. When enemies select the same tile or one selects another enemy's occupied tile, the yielding enemy targets its own current tile instead of pushing indefinitely.
 - Enemy reward icons are 16px. Damage rewards instead show a colored, bottom-aligned `+amount` flush to the health bar's left edge, with no reward icon; all enemy reward text is 22px.
 
 ## Recent prompt log
+
+- 2026-08-20 - Added Snake, Camel, Crocodile, and Mouse enemy variants; added a blocking clickable White Tiger that the fox approaches before opening a content-fitted shop; implemented discovery-gated Gold/Jewel/Fish/Wood stat purchases with linearly escalating prices; and persisted purchase counts with X, Escape, and outside-click closing.
+
+- 2026-08-20 - Added Inspector-friendly typed enemy drop rows; renamed the fishing construction action to Build Hut; changed higher regeneration into evenly spaced one-health restores; added the Shift+O debug stat menu; and added persistent Oak/Palm wood lodges plus +15 Wood Crates using the requested sprites and production intervals.
+
+- 2026-08-20 - Allowed players and enemies to leave tiles occupied by newly built structures; made building tooltip ownership robust; changed mine production hover text to per-second rates; added Evil Goat and Crab enemy variants; and added the Fish resource, Fishing Spot/Mine, +5 Fish Crate capacity building, placement, production, and save support.
+
+- 2026-08-19 - Made damage dots renderer-safe; corrected exact resource-panel content fitting; kept shack buttons available under actors and suppressed exhausted mine highlights; added icon-led mine/shack stat hover cards; resolved enemy shared-target pushing by yielding to the current tile; and added persistent PileOfGems mines plus +10-capacity Gem Shacks with the requested Jewel/Gold costs and three-minute production.
+
+- 2026-08-19 - Raised damage dots above grid cells; rebuilt the mine-cost card with a full-size image, left-side costs, 8px margins, and above-button placement; added yellow ore/mine hover outlines; added adjacent Gold Shack construction for 10 Gold with stackable +15 capacity and save support; and added Shift+P resource filling.
 
 - 2026-08-19 - Fixed damage-row dots to red/yellow/blue order; added compressed save slots 0-9 with Shift-number save and number load; persisted player, resources, mines, gates, pickups, spawns, and enemies; and added wall-clock catch-up for recovery, cooldowns, production, and repeated respawns up to capacity.
 

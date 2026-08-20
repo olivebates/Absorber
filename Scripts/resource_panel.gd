@@ -44,6 +44,7 @@ func _refresh() -> void:
 	if _resource_manager == null or _rows == null:
 		return
 	for child in _rows.get_children():
+		_rows.remove_child(child)
 		child.queue_free()
 	_resource_rows.clear()
 	var has_visible_resource := false
@@ -71,10 +72,13 @@ func get_resource_target_screen_position(resource_id: StringName) -> Vector2:
 func _fit_to_content() -> void:
 	if not visible:
 		return
-	size = get_combined_minimum_size()
+	var content_size := _rows.get_combined_minimum_size()
+	var panel_style := get_theme_stylebox("panel")
+	var fitted_size := content_size + panel_style.get_minimum_size()
+	size = fitted_size
 	set_offset(SIDE_LEFT, 12.0)
-	set_offset(SIDE_TOP, -12.0 - size.y)
-	set_offset(SIDE_RIGHT, 12.0 + size.x)
+	set_offset(SIDE_TOP, -12.0 - fitted_size.y)
+	set_offset(SIDE_RIGHT, 12.0 + fitted_size.x)
 	set_offset(SIDE_BOTTOM, -12.0)
 
 
@@ -90,14 +94,14 @@ func _make_resource_row(definition: GameResourceDefinition) -> HBoxContainer:
 	var amount := Label.new()
 	amount.text = "%d/%d" % [
 		_resource_manager.get_amount(definition.resource_id),
-		definition.maximum_amount,
+		_resource_manager.get_maximum_amount(definition.resource_id),
 	]
 	amount.add_theme_color_override("font_color", Color.WHITE)
 	amount.add_theme_color_override("font_outline_color", Color.BLACK)
 	amount.add_theme_constant_override("outline_size", 2)
 	row.add_child(amount)
 	var production_speed := _resource_manager.get_production_speed(definition.resource_id)
-	if production_speed > 0.0 and _resource_manager.get_amount(definition.resource_id) < definition.maximum_amount:
+	if production_speed > 0.0 and _resource_manager.get_amount(definition.resource_id) < _resource_manager.get_maximum_amount(definition.resource_id):
 		var production := Label.new()
 		production.text = "+%s/s" % _format_speed(production_speed)
 		production.add_theme_color_override("font_color", Color("65d76e"))
@@ -110,9 +114,9 @@ func _make_resource_row(definition: GameResourceDefinition) -> HBoxContainer:
 func _format_speed(speed: float) -> String:
 	if is_zero_approx(speed):
 		return "0"
-	if speed < 0.1:
-		return "%.02f" % speed
-	return "%.1f" % speed
+	if speed < 0.01:
+		return "%.3f" % speed
+	return "%.2f" % speed
 
 
 func _set_style() -> void:

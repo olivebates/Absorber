@@ -112,16 +112,26 @@ func heal(amount: int) -> void:
 
 
 func add_max_health(amount: int) -> void:
-	if amount <= 0:
+	if amount == 0:
 		return
-	max_health += amount
+	var old_max_health := max_health
+	max_health = maxi(1, max_health + amount)
 	health_bar.max_value = max_health
-	heal(amount)
+	if max_health > old_max_health:
+		heal(max_health - old_max_health)
+	else:
+		health = mini(health, max_health)
+		health_bar.value = health
+		_update_health_label()
 
 
 func add_passive_healing(amount: int) -> void:
-	if amount > 0:
-		passive_healing_amount += amount
+	if amount == 0:
+		return
+	var old_interval := _get_passive_heal_interval()
+	passive_healing_amount = maxi(1, passive_healing_amount + amount)
+	var progress_left := clampf(_heal_time_left / old_interval, 0.0, 1.0)
+	_heal_time_left = _get_passive_heal_interval() * progress_left
 
 
 func add_attack_damage(amount: int) -> void:
@@ -131,7 +141,7 @@ func add_attack_damage(amount: int) -> void:
 func add_color_damage(color_index: int, amount: int) -> void:
 	if color_index < 0 or color_index >= damage_by_color.size():
 		return
-	damage_by_color[color_index][current_weapon_index] += amount
+	damage_by_color[color_index][current_weapon_index] = maxi(1, damage_by_color[color_index][current_weapon_index] + amount)
 	attack_damage = get_damage_for_color(COLOR_RED)
 	damage_matrix_changed.emit()
 
@@ -343,12 +353,14 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 		var saved_milliseconds := int(saved_cooldowns[index]) if index < saved_cooldowns.size() else 0
 		_weapon_cooldowns.append(maxf(0.0, float(saved_milliseconds - offline_seconds * 1000) / 1000.0))
 
-	var healing_milliseconds := int(data[12]) - offline_seconds * 1000 * maxi(1, int(data[13]))
+	var healing_speed_multiplier := maxi(1, int(data[13]))
+	var healing_milliseconds := int(data[12]) - offline_seconds * 1000 * healing_speed_multiplier
+	var healing_interval_milliseconds := maxf(1.0, 3000.0 / float(maxi(1, passive_healing_amount)))
 	var saved_health := clampi(int(data[2]), 0, max_health)
 	if healing_milliseconds <= 0:
-		var heal_ticks := 1 + (-healing_milliseconds) / 3000
-		saved_health = mini(max_health, saved_health + heal_ticks * passive_healing_amount)
-		healing_milliseconds += heal_ticks * 3000
+		var heal_ticks := 1 + floori(float(-healing_milliseconds) / healing_interval_milliseconds)
+		saved_health = mini(max_health, saved_health + heal_ticks)
+		healing_milliseconds += roundi(float(heal_ticks) * healing_interval_milliseconds)
 	health = saved_health
 	_heal_time_left = maxf(0.001, float(healing_milliseconds) / 1000.0)
 	_pending_item_collections = 0
@@ -403,8 +415,8 @@ func _physics_process(delta: float) -> void:
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
 	_heal_time_left -= delta * _get_healing_speed_multiplier()
 	while _heal_time_left <= 0.0:
-		heal(passive_healing_amount)
-		_heal_time_left += 3.0
+		heal(1)
+		_heal_time_left += _get_passive_heal_interval()
 	_update_campfire_healing_visual()
 	_update_enemy_chase()
 	_move_along_path(delta)
@@ -498,6 +510,10 @@ func _face_toward(target: Node2D) -> void:
 
 func _get_healing_speed_multiplier() -> float:
 	return 5.0 if _is_near_campfire() else 1.0
+
+
+func _get_passive_heal_interval() -> float:
+	return 3.0 / float(maxi(1, passive_healing_amount))
 
 
 func _is_near_campfire() -> bool:

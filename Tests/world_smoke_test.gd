@@ -40,6 +40,8 @@ func _run() -> void:
 	assert(fox.fox_sprite.flip_h, "Fox sprite should flip while moving right")
 	var spawn: EnemySpawnPoint = world.get_node("ChickenSpawn2")
 	spawn.stat_reward_amount = 5
+	spawn.reward_type = ChickenEnemy.REWARD_RESOURCE
+	spawn.reward_resource_id = &"gold_ore"
 	var expected_sprite_paths: Array[String] = ["res://Sprites/Mole.webp", "res://Sprites/Mole2.webp", "res://Sprites/Goat.webp"]
 	for index in range(3):
 		var variant_enemy := EnemySpawnPoint.ENEMY_SCENES[index + 3].instantiate() as ChickenEnemy
@@ -116,7 +118,7 @@ func _run() -> void:
 	assert(ore.build_button.visible, "Clicking an ore should reveal a build-mine button instead of moving the player")
 	ore._show_build_tooltip()
 	var mine_tooltip := world.get_node("HUD/BuildMineTooltip") as BuildMineTooltip
-	assert(not ore.build_button.disabled and mine_tooltip.visible and mine_tooltip._content.get_child_count() == 3, "Affordable mine controls must instantly show a vertical icon cost tooltip")
+	assert(not ore.build_button.disabled and mine_tooltip.visible and mine_tooltip._content.get_child_count() == 2, "Affordable mine controls must show costs to the left of the full-size mine image")
 	assert(ore.build_button.get_parent() == world.get_node("HUD"), "The mine control must render in the HUD above the grid")
 	ore._try_build_mine()
 	await process_frame
@@ -127,6 +129,7 @@ func _run() -> void:
 	assert(gold_row.get_child_count() == 3 and (gold_row.get_child(2) as Label).text == "+0.02/s", "Resource HUD must show active gain speed separately")
 	assert((gold_row.get_child(2) as Label).get_theme_color("font_color") == Color("65d76e"), "Active resource gain must be green")
 	var mine := ore.get_node("MinerStructure") as MinerStructure
+	ore.global_position = fox.global_position
 	mine._process(60.0)
 	assert(resource_manager.get_amount(&"gold_ore") == 1, "Mine production should add gold ore to the capped resource amount")
 	assert(mine.get_child_count() > 1, "On-screen mines must create green +1 production feedback")

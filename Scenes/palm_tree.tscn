@@ -1,0 +1,31 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://Scripts/gold_ore.gd" id="1_tree"]
+[ext_resource type="Texture2D" path="res://Sprites/PalmTree.webp" id="2_tree"]
+[ext_resource type="PackedScene" path="res://Scenes/wood_crate.tscn" id="3_crate"]
+[ext_resource type="Texture2D" path="res://Sprites/WoodCrate.webp" id="4_crate_icon"]
+[ext_resource type="Texture2D" path="res://Sprites/WoodCuttingLodge.webp" id="5_lodge"]
+
+[node name="PalmTree" type="Node2D"]
+z_index = 4
+script = ExtResource("1_tree")
+mined_resource_id = &"wood"
+mine_production_speed = 0.00555555555556
+shack_build_cost = {"wood": 10}
+shack_scene = ExtResource("3_crate")
+shack_icon = ExtResource("4_crate_icon")
+mine_icon = ExtResource("5_lodge")
+mine_build_label = "Build Lodge"
+capacity_build_label = "Build Crate"
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_tree")
+
+[node name="BuildMineButton" type="Button" parent="."]
+offset_left = -52.0
+offset_top = -15.0
+offset_right = 52.0
+offset_bottom = 15.0
+mouse_filter = 0
+text = "Build Lodge"

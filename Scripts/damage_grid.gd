@@ -120,7 +120,23 @@ func _add_color_header(color_index: int) -> PanelContainer:
 	dot.polygon = PackedVector2Array([-6, 0, -4, -4, 0, -6, 4, -4, 6, 0, 4, 4, 0, 6, -4, 4])
 	dot.color = DAMAGE_COLORS[color_index]
 	dot.position = cell.custom_minimum_size * 0.5
+	dot.z_as_relative = false
+	dot.z_index = 100
 	cell.add_child(dot)
+	# Polygon2D children of Controls are unreliable on some compatibility renderers.
+	# Keep the polygon as the reward target and add a Control-native visible dot.
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var visible_dot := Panel.new()
+	visible_dot.custom_minimum_size = Vector2(12, 12)
+	visible_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dot_style := StyleBoxFlat.new()
+	dot_style.bg_color = DAMAGE_COLORS[color_index]
+	dot_style.set_corner_radius_all(6)
+	visible_dot.add_theme_stylebox_override("panel", dot_style)
+	center.add_child(visible_dot)
+	cell.add_child(center)
 	_grid.add_child(cell)
 	return cell
 

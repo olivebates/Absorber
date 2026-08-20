@@ -19,6 +19,11 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var clicked_shopkeeper := _get_shopkeeper_at_position(get_global_mouse_position())
+		if clicked_shopkeeper:
+			_hide_ore_build_buttons()
+			clicked_shopkeeper.request_interaction(player, self)
+			return
 		var clicked_ore := _get_gold_ore_at_position(get_global_mouse_position())
 		if clicked_ore:
 			_show_ore_build_button(clicked_ore)
@@ -32,6 +37,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target_cell := world_to_cell(get_global_mouse_position())
 		if is_walkable(target_cell) and not is_cell_occupied(target_cell, player):
 			player.follow_path(find_path(player.global_position, cell_to_world(target_cell), player))
+
+
+func _get_shopkeeper_at_position(world_position: Vector2) -> WhiteTiger:
+	for shopkeeper in get_tree().get_nodes_in_group("shopkeepers"):
+		if shopkeeper is WhiteTiger and is_instance_valid(shopkeeper) and shopkeeper.global_position.distance_to(world_position) <= 30.0:
+			return shopkeeper
+	return null
 
 
 func _get_enemy_at_position(world_position: Vector2) -> ChickenEnemy:
@@ -123,6 +135,8 @@ func get_occupied_cells(except_actor: Node2D = null) -> Dictionary:
 	var actors := get_tree().get_nodes_in_group("enemies")
 	actors.append_array(get_tree().get_nodes_in_group("player"))
 	actors.append_array(get_tree().get_nodes_in_group("gates"))
+	actors.append_array(get_tree().get_nodes_in_group("buildings"))
+	actors.append_array(get_tree().get_nodes_in_group("npcs"))
 	for actor in actors:
 		if actor != except_actor and actor is Node2D and is_instance_valid(actor):
 			occupied[world_to_cell(actor.global_position)] = true
@@ -131,12 +145,64 @@ func get_occupied_cells(except_actor: Node2D = null) -> Dictionary:
 
 func can_enter_position(actor: Node2D, world_position: Vector2) -> bool:
 	var cell := world_to_cell(world_position)
+	var current_cell := world_to_cell(actor.global_position)
+	if cell == current_cell:
+		# A structure may be built beneath an actor. Let it cross its current tile
+		# so it can reach the unoccupied destination chosen by pathfinding.
+		return is_walkable(cell)
 	return is_walkable(cell) and not is_cell_occupied(cell, actor) and not (actor is ChickenEnemy and is_gold_ore_cell(cell))
 
 
 func is_gold_ore_cell(cell: Vector2i) -> bool:
 	for ore in get_tree().get_nodes_in_group("gold_ores"):
 		if ore is GoldOre and is_instance_valid(ore) and world_to_cell(ore.global_position) == cell:
+			return true
+	return false
+
+
+func is_building_cell(cell: Vector2i) -> bool:
+	for building in get_tree().get_nodes_in_group("buildings"):
+		if building is Node2D and is_instance_valid(building) and world_to_cell(building.global_position) == cell:
+			return true
+	return false
+
+
+func can_build_at_cell(cell: Vector2i) -> bool:
+	# Actors are temporary occupants and may step away after construction.
+	return is_permanently_buildable_cell(cell)
+
+
+func is_permanently_buildable_cell(cell: Vector2i) -> bool:
+	return is_walkable(cell) \
+		and wall_layer.get_cell_source_id(cell) == -1 \
+		and not is_gold_ore_cell(cell) \
+		and not is_building_cell(cell) \
+		and not is_npc_cell(cell) \
+		and not is_gate_cell(cell)
+
+
+func is_npc_cell(cell: Vector2i) -> bool:
+	for npc in get_tree().get_nodes_in_group("npcs"):
+		if npc is Node2D and is_instance_valid(npc) and world_to_cell(npc.global_position) == cell:
+			return true
+	return false
+
+
+func is_gate_cell(cell: Vector2i) -> bool:
+	for gate in get_tree().get_nodes_in_group("gates"):
+		if gate is Node2D and is_instance_valid(gate) and world_to_cell(gate.global_position) == cell:
+			return true
+	return false
+
+
+func is_enemy_target_conflicted(actor: ChickenEnemy, target_cell: Vector2i) -> bool:
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if node == actor or not node is ChickenEnemy or not is_instance_valid(node):
+			continue
+		var other := node as ChickenEnemy
+		if world_to_cell(other.global_position) == target_cell:
+			return true
+		if other.get_movement_target_cell(self) == target_cell and other.get_instance_id() < actor.get_instance_id():
 			return true
 	return false
 

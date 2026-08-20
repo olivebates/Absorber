@@ -8,12 +8,15 @@ signal production_changed(resource_id: StringName, production_speed: float)
 @export var resources: Array[GameResourceDefinition] = [
 	preload("res://Resources/gold_ore.tres"),
 	preload("res://Resources/jewels.tres"),
+	preload("res://Resources/fish.tres"),
+	preload("res://Resources/wood.tres"),
 ]
 
 var _definitions: Dictionary = {}
 var _amounts: Dictionary = {}
 var _ever_owned: Dictionary = {}
 var _producer_speeds: Dictionary = {}
+var _capacity_bonuses: Dictionary = {}
 
 
 func _ready() -> void:
@@ -52,7 +55,13 @@ func get_amount(resource_id: StringName) -> int:
 
 func get_maximum_amount(resource_id: StringName) -> int:
 	var definition := get_definition(resource_id)
-	return definition.maximum_amount if definition else 0
+	if definition == null:
+		return 0
+	var maximum := definition.maximum_amount
+	for bonus in _capacity_bonuses.values():
+		if bonus is Dictionary and StringName(bonus.get("resource_id", &"")) == resource_id:
+			maximum += int(bonus.get("amount", 0))
+	return maximum
 
 
 func has_ever_owned(resource_id: StringName) -> bool:
@@ -74,14 +83,15 @@ func add_resource(resource_id: StringName, amount: float) -> int:
 		return get_amount(resource_id)
 	var was_discovered := has_ever_owned(resource_id)
 	var old_amount := get_amount(resource_id)
-	_amounts[resource_id] = minf(float(definition.maximum_amount), float(_amounts.get(resource_id, 0.0)) + amount)
+	var maximum_amount := get_maximum_amount(resource_id)
+	_amounts[resource_id] = minf(float(maximum_amount), float(_amounts.get(resource_id, 0.0)) + amount)
 	var new_amount := get_amount(resource_id)
 	if new_amount > 0:
 		_ever_owned[resource_id] = true
 	if not was_discovered and has_ever_owned(resource_id):
 		resource_discovered.emit(resource_id)
 	if old_amount != new_amount:
-		resource_changed.emit(resource_id, new_amount, definition.maximum_amount)
+		resource_changed.emit(resource_id, new_amount, maximum_amount)
 	return new_amount
 
 
@@ -104,7 +114,7 @@ func spend_resources(cost: Dictionary) -> bool:
 		_amounts[resource_id] = maxf(0.0, float(_amounts.get(resource_id, 0.0)) - float(cost[raw_resource_id]))
 		var new_amount := get_amount(resource_id)
 		if old_amount != new_amount:
-			resource_changed.emit(resource_id, new_amount, definition.maximum_amount)
+			resource_changed.emit(resource_id, new_amount, get_maximum_amount(resource_id))
 	return true
 
 
@@ -122,6 +132,40 @@ func unregister_producer(source: Node) -> void:
 		if not producer.is_empty():
 			var resource_id := StringName(producer.get("resource_id", &""))
 			production_changed.emit(resource_id, get_production_speed(resource_id))
+
+
+func register_capacity_bonus(source: Node, resource_id: StringName, amount: int) -> void:
+	if source == null or get_definition(resource_id) == null:
+		return
+	_capacity_bonuses[source.get_instance_id()] = {"resource_id": resource_id, "amount": maxi(0, amount)}
+	var definition := get_definition(resource_id)
+	resource_changed.emit(resource_id, get_amount(resource_id), get_maximum_amount(resource_id))
+	if definition and get_amount(resource_id) > 0:
+		_ever_owned[resource_id] = true
+
+
+func unregister_capacity_bonus(source: Node) -> void:
+	if source == null:
+		return
+	var bonus := _capacity_bonuses.get(source.get_instance_id()) as Dictionary
+	_capacity_bonuses.erase(source.get_instance_id())
+	if bonus.is_empty():
+		return
+	var resource_id := StringName(bonus.get("resource_id", &""))
+	var maximum_amount := get_maximum_amount(resource_id)
+	_amounts[resource_id] = minf(float(_amounts.get(resource_id, 0.0)), float(maximum_amount))
+	resource_changed.emit(resource_id, get_amount(resource_id), maximum_amount)
+
+
+func fill_all_to_maximum() -> void:
+	for resource_id in _definitions:
+		var maximum_amount := get_maximum_amount(resource_id)
+		var was_discovered := has_ever_owned(resource_id)
+		_amounts[resource_id] = float(maximum_amount)
+		_ever_owned[resource_id] = true
+		if not was_discovered:
+			resource_discovered.emit(resource_id)
+		resource_changed.emit(resource_id, maximum_amount, maximum_amount)
 
 
 func get_save_data() -> Array:
@@ -148,9 +192,10 @@ func load_save_data(data: Array) -> bool:
 		if definition == null:
 			continue
 		var amount_milliseconds := int(data[index + 1]) if index + 1 < data.size() else 0
-		_amounts[definition.resource_id] = clampf(float(amount_milliseconds) / 1000.0, 0.0, float(definition.maximum_amount))
+		var maximum_amount := get_maximum_amount(definition.resource_id)
+		_amounts[definition.resource_id] = clampf(float(amount_milliseconds) / 1000.0, 0.0, float(maximum_amount))
 		_ever_owned[definition.resource_id] = (discovery_mask & (1 << index)) != 0
 		if has_ever_owned(definition.resource_id):
 			resource_discovered.emit(definition.resource_id)
-		resource_changed.emit(definition.resource_id, get_amount(definition.resource_id), definition.maximum_amount)
+		resource_changed.emit(definition.resource_id, get_amount(definition.resource_id), maximum_amount)
 	return true

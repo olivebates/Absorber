@@ -7,6 +7,10 @@ signal game_loaded(slot: int)
 const SAVE_VERSION := 1
 const MAX_UNCOMPRESSED_BYTES := 1048576
 const ITEM_PICKUP_SCENE := preload("res://Scenes/item_pickup.tscn")
+const GOLD_SHACK_SCENE := preload("res://Scenes/gold_shack.tscn")
+const GEM_SHACK_SCENE := preload("res://Scenes/gem_shack.tscn")
+const FISH_CRATE_SCENE := preload("res://Scenes/fish_crate.tscn")
+const WOOD_CRATE_SCENE := preload("res://Scenes/wood_crate.tscn")
 const COMPRESSION_MODES := [
 	FileAccess.COMPRESSION_FASTLZ,
 	FileAccess.COMPRESSION_DEFLATE,
@@ -27,6 +31,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	var key_event := event as InputEventKey
 	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
+	if key == KEY_P and key_event.shift_pressed and not key_event.ctrl_pressed and not key_event.alt_pressed and not key_event.meta_pressed:
+		var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+		if resource_manager:
+			resource_manager.fill_all_to_maximum()
+		get_viewport().set_input_as_handled()
+		return
 	if key < KEY_0 or key > KEY_9 or key_event.ctrl_pressed or key_event.alt_pressed or key_event.meta_pressed:
 		return
 	var slot := int(key - KEY_0)
@@ -104,10 +114,15 @@ func _capture_state(timestamp: int) -> Array:
 		if node is ItemPickup and is_instance_valid(node):
 			var pickup := node as ItemPickup
 			pickup_data.append([roundi(pickup.global_position.x), roundi(pickup.global_position.y), pickup.item_id, pickup.grade])
+	var building_data: Array = []
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if node is GoldShack and is_instance_valid(node):
+			building_data.append([roundi(node.global_position.x), roundi(node.global_position.y), node.building_type])
 	return [
 		SAVE_VERSION, timestamp, _world.player.get_save_data(),
 		resource_manager.get_save_data() if resource_manager else [],
-		spawn_data, ore_data, gate_mask, pickup_data,
+		spawn_data, ore_data, gate_mask, pickup_data, building_data,
+		_get_shopkeeper().get_save_data() if _get_shopkeeper() else [],
 	]
 
 
@@ -123,6 +138,19 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 	for node in get_tree().get_nodes_in_group("item_pickups"):
 		if is_instance_valid(node):
 			node.free()
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if node is GoldShack and is_instance_valid(node):
+			node.free()
+	var saved_buildings := state[8] as Array if state.size() > 8 and state[8] is Array else []
+	for raw_building in saved_buildings:
+		if not raw_building is Array or (raw_building as Array).size() < 2:
+			continue
+		var building_position := raw_building as Array
+		var building_type := int(building_position[2]) if building_position.size() > 2 else 0
+		var shack_scene := WOOD_CRATE_SCENE if building_type == 3 else FISH_CRATE_SCENE if building_type == 2 else GEM_SHACK_SCENE if building_type == 1 else GOLD_SHACK_SCENE
+		var shack := shack_scene.instantiate() as GoldShack
+		shack.global_position = Vector2(float(building_position[0]), float(building_position[1]))
+		_world.add_child(shack)
 
 	var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
 	if resource_manager:
@@ -140,6 +168,9 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 
 	if not _world.player.load_save_data(state[2] as Array, offline_seconds):
 		return false
+	var shopkeeper := _get_shopkeeper()
+	if shopkeeper:
+		shopkeeper.load_save_data(state[9] as Array if state.size() > 9 and state[9] is Array else [])
 	var spawn_data := state[4] as Array
 	for index in range(spawns.size()):
 		var saved_spawn := spawn_data[index] as Array if index < spawn_data.size() and spawn_data[index] is Array else [roundi(spawns[index].respawn_time * 1000.0), []]
@@ -214,3 +245,7 @@ func _get_gates() -> Array[Gate]:
 		if child is Gate:
 			result.append(child)
 	return result
+
+
+func _get_shopkeeper() -> WhiteTiger:
+	return get_tree().get_first_node_in_group("shopkeepers") as WhiteTiger

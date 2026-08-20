@@ -6,6 +6,7 @@ extends Node2D
 
 var _resource_manager: ResourceManager
 var _production_time := 0.0
+var _hovered := false
 
 
 func _ready() -> void:
@@ -15,6 +16,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_update_tooltip()
 	if _resource_manager == null or production_speed <= 0.0:
 		return
 	_production_time += delta
@@ -25,6 +27,30 @@ func _process(delta: float) -> void:
 		var new_amount := _resource_manager.add_resource(resource_id, 1.0)
 		if new_amount > previous_amount and _is_on_screen():
 			_show_production_feedback()
+
+
+func _update_tooltip() -> void:
+	var hovered := Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
+	if hovered == _hovered:
+		return
+	_hovered = hovered
+	var tooltip := _get_building_tooltip()
+	if tooltip == null:
+		return
+	if hovered:
+		var definition := _resource_manager.get_definition(resource_id) if _resource_manager else null
+		tooltip.show_stat(definition.icon if definition else null, "Production", "+%s/s" % _format_speed(production_speed), self)
+	else:
+		tooltip.hide_tooltip(self)
+
+
+func _format_speed(speed: float) -> String:
+	return "%.3f" % speed if speed < 0.01 else "%.2f" % speed
+
+
+func _get_building_tooltip() -> BuildMineTooltip:
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	return world.get_node_or_null("HUD/BuildMineTooltip") as BuildMineTooltip if world else null
 
 
 func get_save_data() -> int:

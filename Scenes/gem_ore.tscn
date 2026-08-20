@@ -1,0 +1,28 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://Scripts/gold_ore.gd" id="1_ore"]
+[ext_resource type="Texture2D" path="res://Sprites/PileOfGems.webp" id="2_ore"]
+[ext_resource type="PackedScene" path="res://Scenes/gem_shack.tscn" id="3_shack"]
+[ext_resource type="Texture2D" path="res://Sprites/GemShack.webp" id="4_shack_icon"]
+
+[node name="GemOre" type="Node2D"]
+z_index = 4
+script = ExtResource("1_ore")
+build_cost = {"gold_ore": 2, "jewels": 5}
+mined_resource_id = &"jewels"
+mine_production_speed = 0.00555555555556
+shack_build_cost = {"jewels": 10}
+shack_scene = ExtResource("3_shack")
+shack_icon = ExtResource("4_shack_icon")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_ore")
+
+[node name="BuildMineButton" type="Button" parent="."]
+offset_left = -52.0
+offset_top = -15.0
+offset_right = 52.0
+offset_bottom = 15.0
+mouse_filter = 0
+text = "Build Mine"

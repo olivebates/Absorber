@@ -188,6 +188,10 @@ func _patrol(delta: float) -> void:
 		_choose_patrol_path()
 		return
 	var target := _path[_path_index]
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if world and world.is_enemy_target_conflicted(self, world.world_to_cell(target)):
+		_set_target_to_own_tile(world)
+		return
 	var offset := target - global_position
 	if offset.length() <= 3.0:
 		global_position = target
@@ -200,14 +204,23 @@ func _patrol(delta: float) -> void:
 		chicken_sprite.flip_h = true
 	elif velocity.x > 0.1:
 		chicken_sprite.flip_h = false
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 	if world and not world.can_enter_position(self, global_position + velocity * delta):
-		velocity = Vector2.ZERO
-		_path.clear()
-		_path_index = 0
-		_pause_time_left = 0.25
+		_set_target_to_own_tile(world)
 		return
 	move_and_slide()
+
+
+func get_movement_target_cell(world: WorldNavigation) -> Vector2i:
+	if _path_index < _path.size():
+		return world.world_to_cell(_path[_path_index])
+	return world.world_to_cell(global_position)
+
+
+func _set_target_to_own_tile(world: WorldNavigation) -> void:
+	velocity = Vector2.ZERO
+	_path = PackedVector2Array([world.cell_to_world(world.world_to_cell(global_position))])
+	_path_index = 0
+	_pause_time_left = 0.25
 
 
 func _choose_patrol_path() -> void:

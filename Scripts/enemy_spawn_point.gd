@@ -8,6 +8,12 @@ const ENEMY_SCENES: Array[PackedScene] = [
 	preload("res://Scenes/mole_enemy.tscn"),
 	preload("res://Scenes/mole2_enemy.tscn"),
 	preload("res://Scenes/goat_enemy.tscn"),
+	preload("res://Scenes/evil_goat_enemy.tscn"),
+	preload("res://Scenes/crab_enemy.tscn"),
+	preload("res://Scenes/snake_enemy.tscn"),
+	preload("res://Scenes/camel_enemy.tscn"),
+	preload("res://Scenes/crocodile_enemy.tscn"),
+	preload("res://Scenes/mouse_enemy.tscn"),
 ]
 
 signal enemy_killed(enemy: ChickenEnemy)
@@ -25,10 +31,14 @@ const SPAWN_RADIUS_TILES := 2
 @export_range(1, 999, 1) var enemy_health := 3
 @export_range(0, 999, 1) var enemy_damage := 1
 @export_category("Spawning")
-@export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat") var enemy_type := 0
+@export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse") var enemy_type := 0
 @export var enemy_scene: PackedScene
 @export_category("Drops")
-@export var drop_table: Array[Dictionary] = []
+## Add one EnemyDropEntry per possible item. Each entry exposes a simple item,
+## chance, and grade picker in the Inspector.
+@export var item_drops: Array[EnemyDropEntry] = []
+## Kept only so existing placed spawners and old scenes retain their drop data.
+@export_storage var drop_table: Array[Dictionary] = []
 
 var _respawn_time_left := 0.0
 var _spawned_enemies: Array[ChickenEnemy] = []
@@ -179,6 +189,12 @@ func _get_available_spawn_cell(world: WorldNavigation) -> Vector2i:
 
 
 func _get_drop_table() -> Array[Dictionary]:
+	if not item_drops.is_empty():
+		var result: Array[Dictionary] = []
+		for entry in item_drops:
+			if entry != null:
+				result.append(entry.to_drop_dictionary())
+		return result
 	return drop_table.duplicate(true)
 
 
