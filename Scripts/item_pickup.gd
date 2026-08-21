@@ -23,8 +23,8 @@ const GRADES := [
 ]
 
 const ITEM_DATA := {
-	"weathered_armor": {"block": 1, "slot": "armor"},
-	"weathered_sword": {"damage": 1, "slot": "weapon"},
+	"weathered_armor": {"block": 2, "slot": "armor"},
+	"weathered_sword": {"damage": 3, "slot": "weapon"},
 }
 
 var item_id := "weathered_sword"
@@ -62,14 +62,16 @@ func collect(player: FoxPlayer) -> void:
 
 
 func begin_collect(player: FoxPlayer) -> bool:
-	if _collecting or not is_instance_valid(player) or not player.reserve_item_collection():
+	if _collecting or not is_instance_valid(player) or not player.reserve_item_collection(item_id):
 		return false
 	_collecting = true
 	$CollisionShape2D.set_deferred("disabled", true)
+	var target_screen_position := player.get_item_collection_target_screen_position(item_id)
+	var target_world_position := get_viewport().get_canvas_transform().affine_inverse() * target_screen_position
 	var tween := create_tween()
 	tween.set_parallel(true)
-	tween.tween_property(self, "global_position", player.global_position, 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tween.tween_property(self, "scale", Vector2.ZERO, 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "global_position", target_world_position, 0.38).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "scale", Vector2.ZERO, 0.38).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tween.chain().tween_callback(func() -> void:
 		if is_instance_valid(player):
 			player.complete_item_collection(item_id, grade)

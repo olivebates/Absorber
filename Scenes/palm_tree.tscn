@@ -11,6 +11,7 @@ z_index = 4
 script = ExtResource("1_tree")
 mined_resource_id = &"wood"
 mine_production_speed = 0.00555555555556
+build_cost = {"fish": 2, "wood": 5}
 shack_build_cost = {"wood": 10}
 shack_scene = ExtResource("3_crate")
 shack_icon = ExtResource("4_crate_icon")

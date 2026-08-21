@@ -28,6 +28,14 @@ func _run() -> void:
 	assert(world.is_walkable(world.world_to_cell(palm.global_position)), "The palm must be placed on a walkable tile")
 	assert(is_equal_approx(oak.mine_production_speed, 1.0 / 300.0), "Oak lodges must produce one wood every five minutes")
 	assert(is_equal_approx(palm.mine_production_speed, 1.0 / 180.0), "Palm lodges must produce one wood every three minutes")
+	assert(oak.build_cost == {"fish": 2, "wood": 5} and oak.shack_build_cost == {"wood": 10}, "Wood lodges must use their resource cost and Wood storage must start at ten Wood")
+	var gem_ore: GoldOre
+	for node in get_nodes_in_group("gold_ores"):
+		if node is GoldOre and node.mined_resource_id == &"jewels":
+			gem_ore = node as GoldOre
+			break
+	assert(gem_ore != null, "The world must contain a Gem deposit")
+	assert(gem_ore.build_cost == {"jewels": 5, "wood": 2} and gem_ore.shack_build_cost == {"jewels": 10}, "Gem storage must start at ten Gems")
 
 	var fishing_spot := world.get_node("FishingSpot") as GoldOre
 	fishing_spot.show_build_button()
@@ -36,10 +44,11 @@ func _run() -> void:
 
 	manager.fill_all_to_maximum()
 	oak._try_build_mine()
+	manager.fill_all_to_maximum()
 	palm._try_build_mine()
 	assert((oak._mine.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/WoodCuttingLodge.webp", "Oak mines must use the woodcutting lodge")
 	assert((palm._mine.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/WoodCuttingLodge.webp", "Palm mines must use the woodcutting lodge")
-	manager.spend_resources({"wood": 10})
+	manager.spend_resources({"wood": manager.get_amount(&"wood")})
 
 	var saved := (world.get_node("SaveSystem") as SaveSystem).create_save_string(1000)
 	assert((world.get_node("SaveSystem") as SaveSystem).load_save_string(saved, 1301), "Wood production save must load")

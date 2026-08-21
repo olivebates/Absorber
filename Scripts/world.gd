@@ -2,7 +2,7 @@ class_name WorldNavigation
 extends Node2D
 
 const TILE_SIZE := 64
-const EXPLORATION_RADIUS_TILES := 3
+const EXPLORATION_RADIUS_TILES := 6
 
 @onready var floor_layer: TileMapLayer = $FloorTerrain
 @onready var wall_layer: TileMapLayer = $WallTerrain
@@ -13,16 +13,30 @@ var _walkable_cells: Dictionary = {}
 var _navigation_region := Rect2i()
 var explored_cells: Dictionary = {}
 var visited_campfires: Dictionary = {}
+var second_campfire_tab_prompt_dismissed := false
+var map_show_enemies := false
+var map_show_buildings := false
+var interaction_locked := false
+var _tab_prompt: Label
+var _actor_cache_frame := -1
+var _cached_actor_counts: Dictionary = {}
+var _cached_actor_single_ids: Dictionary = {}
+var _cached_enemy_target_min_ids: Dictionary = {}
 
 
 func _ready() -> void:
 	add_to_group("world_navigation")
 	_build_navigation_grid_from_tilemaps()
+	_create_tab_prompt()
 	_update_exploration()
 
 
 func _process(_delta: float) -> void:
 	_update_exploration()
+
+
+func _physics_process(_delta: float) -> void:
+	_refresh_actor_cache()
 
 
 func _update_exploration() -> void:
@@ -37,6 +51,9 @@ func _update_exploration() -> void:
 	for node in get_tree().get_nodes_in_group("campfires"):
 		if node is Campfire and is_instance_valid(node) and node.is_player_in_range(player):
 			visited_campfires[world_to_cell(node.global_position)] = true
+			player.set_respawn_position((node as Campfire).get_respawn_position())
+			if node.name == &"Campfire2" and not second_campfire_tab_prompt_dismissed:
+				_tab_prompt.visible = true
 
 
 func is_cell_explored(cell: Vector2i) -> bool:
@@ -55,7 +72,7 @@ func get_exploration_save_data() -> Array:
 	var campfires: Array = []
 	for cell in visited_campfires:
 		campfires.append([cell.x, cell.y])
-	return [explored, campfires]
+	return [explored, campfires, second_campfire_tab_prompt_dismissed, map_show_enemies, map_show_buildings]
 
 
 func load_exploration_save_data(data: Array) -> void:
@@ -69,15 +86,50 @@ func load_exploration_save_data(data: Array) -> void:
 		for raw_cell in data[1]:
 			if raw_cell is Array and raw_cell.size() >= 2:
 				visited_campfires[Vector2i(int(raw_cell[0]), int(raw_cell[1]))] = true
+	second_campfire_tab_prompt_dismissed = bool(data[2]) if data.size() > 2 else false
+	map_show_enemies = bool(data[3]) if data.size() > 3 else false
+	map_show_buildings = bool(data[4]) if data.size() > 4 else false
+	if is_instance_valid(_tab_prompt):
+		_tab_prompt.visible = false
 	_update_exploration()
+	var map := get_node_or_null("HUD/WorldMap") as WorldMap
+	if map and is_instance_valid(map._canvas):
+		map._canvas.apply_saved_preferences()
+
+
+func dismiss_second_campfire_tab_prompt() -> void:
+	if not is_instance_valid(_tab_prompt) or not _tab_prompt.visible:
+		return
+	second_campfire_tab_prompt_dismissed = true
+	_tab_prompt.hide()
+
+
+func _create_tab_prompt() -> void:
+	_tab_prompt = Label.new()
+	_tab_prompt.name = "CampfireTabPrompt"
+	_tab_prompt.text = "TAB to Teleport"
+	_tab_prompt.position = Vector2(-24, -82)
+	_tab_prompt.size = Vector2(48, 28)
+	_tab_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tab_prompt.add_theme_font_size_override("font_size", 20)
+	_tab_prompt.add_theme_color_override("font_color", Color("ffe082"))
+	_tab_prompt.add_theme_color_override("font_outline_color", Color.BLACK)
+	_tab_prompt.add_theme_constant_override("outline_size", 4)
+	_tab_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tab_prompt.z_index = 30
+	_tab_prompt.visible = false
+	player.add_child(_tab_prompt)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if interaction_locked:
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		var clicked_shopkeeper := _get_shopkeeper_at_position(get_global_mouse_position())
-		if clicked_shopkeeper:
+		var clicked_character := _get_story_character_at_position(get_global_mouse_position())
+		if clicked_character:
 			_hide_ore_build_buttons()
-			clicked_shopkeeper.request_interaction(player, self)
+			clicked_character.request_interaction(player, self)
 			return
 		var clicked_ore := _get_gold_ore_at_position(get_global_mouse_position())
 		if clicked_ore:
@@ -94,10 +146,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			player.follow_path(find_path(player.global_position, cell_to_world(target_cell), player))
 
 
-func _get_shopkeeper_at_position(world_position: Vector2) -> WhiteTiger:
+func _get_shopkeeper_at_position(world_position: Vector2) -> FoxAsha:
 	for shopkeeper in get_tree().get_nodes_in_group("shopkeepers"):
-		if shopkeeper is WhiteTiger and is_instance_valid(shopkeeper) and shopkeeper.global_position.distance_to(world_position) <= 30.0:
+		if shopkeeper is FoxAsha and is_instance_valid(shopkeeper) and shopkeeper.global_position.distance_to(world_position) <= 30.0:
 			return shopkeeper
+	return null
+
+
+func _get_story_character_at_position(world_position: Vector2) -> Node2D:
+	for character in get_tree().get_nodes_in_group("story_characters"):
+		if character is Node2D and is_instance_valid(character) and character.global_position.distance_to(world_position) <= 32.0:
+			return character
 	return null
 
 
@@ -191,6 +250,7 @@ func get_occupied_cells(except_actor: Node2D = null) -> Dictionary:
 	actors.append_array(get_tree().get_nodes_in_group("gates"))
 	actors.append_array(get_tree().get_nodes_in_group("buildings"))
 	actors.append_array(get_tree().get_nodes_in_group("npcs"))
+	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
 	for actor in actors:
 		if actor != except_actor and actor is Node2D and is_instance_valid(actor):
 			occupied[world_to_cell(actor.global_position)] = true
@@ -204,7 +264,7 @@ func can_enter_position(actor: Node2D, world_position: Vector2) -> bool:
 		# A structure may be built beneath an actor. Let it cross its current tile
 		# so it can reach the unoccupied destination chosen by pathfinding.
 		return is_walkable(cell)
-	return is_walkable(cell) and not is_cell_occupied(cell, actor) and not is_gold_ore_cell(cell)
+	return is_walkable(cell) and not _is_cached_actor_cell_occupied(cell, actor) and not is_gold_ore_cell(cell)
 
 
 func is_gold_ore_cell(cell: Vector2i) -> bool:
@@ -250,15 +310,52 @@ func is_gate_cell(cell: Vector2i) -> bool:
 
 
 func is_enemy_target_conflicted(actor: ChickenEnemy, target_cell: Vector2i) -> bool:
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if node == actor or not node is ChickenEnemy or not is_instance_valid(node):
+	_refresh_actor_cache()
+	var actor_id := actor.get_instance_id()
+	var occupied_count := int(_cached_actor_counts.get(target_cell, 0))
+	if occupied_count > 1:
+		return true
+	if occupied_count == 1 and int(_cached_actor_single_ids.get(target_cell, -1)) != actor_id:
+		return true
+	return int(_cached_enemy_target_min_ids.get(target_cell, actor_id)) < actor_id
+
+
+func _is_cached_actor_cell_occupied(cell: Vector2i, except_actor: Node2D = null) -> bool:
+	_refresh_actor_cache()
+	var count := int(_cached_actor_counts.get(cell, 0))
+	if count <= 0:
+		return false
+	if except_actor == null:
+		return true
+	return count > 1 or int(_cached_actor_single_ids.get(cell, -1)) != except_actor.get_instance_id()
+
+
+func _refresh_actor_cache() -> void:
+	var physics_frame := Engine.get_physics_frames()
+	if _actor_cache_frame == physics_frame:
+		return
+	_actor_cache_frame = physics_frame
+	_cached_actor_counts.clear()
+	_cached_actor_single_ids.clear()
+	_cached_enemy_target_min_ids.clear()
+	var actors := get_tree().get_nodes_in_group("enemies")
+	actors.append_array(get_tree().get_nodes_in_group("player"))
+	actors.append_array(get_tree().get_nodes_in_group("gates"))
+	actors.append_array(get_tree().get_nodes_in_group("buildings"))
+	actors.append_array(get_tree().get_nodes_in_group("npcs"))
+	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
+	for actor in actors:
+		if not actor is Node2D or not is_instance_valid(actor):
 			continue
-		var other := node as ChickenEnemy
-		if world_to_cell(other.global_position) == target_cell:
-			return true
-		if other.get_movement_target_cell(self) == target_cell and other.get_instance_id() < actor.get_instance_id():
-			return true
-	return false
+		var actor_id := actor.get_instance_id()
+		var cell := world_to_cell(actor.global_position)
+		var count := int(_cached_actor_counts.get(cell, 0)) + 1
+		_cached_actor_counts[cell] = count
+		_cached_actor_single_ids[cell] = actor_id if count == 1 else -1
+		if actor is ChickenEnemy:
+			var target_cell := (actor as ChickenEnemy).get_movement_target_cell(self)
+			var previous_id := int(_cached_enemy_target_min_ids.get(target_cell, actor_id))
+			_cached_enemy_target_min_ids[target_cell] = mini(previous_id, actor_id)
 
 
 func are_adjacent(first: Node2D, second: Node2D) -> bool:

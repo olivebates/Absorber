@@ -32,6 +32,7 @@ func _run() -> void:
 	assert(resource_manager.get_amount(&"gold_ore") == 10 and resource_manager.get_amount(&"jewels") == 10, "Shift+P must fill every resource to capacity")
 
 	var ore := world.get_node("GoldOre") as GoldOre
+	assert(ore.get_current_build_cost() == {"gold_ore": 5, "jewels": 2}, "The first Gold mine must use its base price")
 	ore._update_hover_highlight(ore.global_position)
 	assert(ore._tile_highlight.visible and is_equal_approx(ore._tile_highlight.width, 2.0) and ore._tile_highlight.default_color == Color.YELLOW, "Hovering an unbuilt ore must show a yellow two-pixel tile outline")
 	ore.show_build_button()
@@ -49,11 +50,20 @@ func _run() -> void:
 
 	ore._try_build_mine()
 	assert(is_instance_valid(ore._mine), "The mine must build before shack placement becomes available")
+	ore._update_mine_build_hover_label(ore.global_position)
+	assert(ore._build_hover_label.visible and ore._build_hover_label is Label and ore._build_hover_label.mouse_filter == Control.MOUSE_FILTER_IGNORE and ore._build_hover_label.get_theme_color("font_color") == Color.WHITE, "A built mine must show a plain white Build label on hover")
+	ore.show_build_button()
+	assert(not ore._build_hover_label.visible, "The Build hover label must disappear when the mine is clicked")
+	var world_map := world.get_node("HUD/WorldMap") as WorldMap
+	assert(world_map._canvas._get_marker_sprite(ore._mine).texture.resource_path == "res://Sprites/MinerStructure.webp", "Built producers must expose their sprite to the map overlay")
+	var second_ore := world.get_node("GoldOre2") as GoldOre
+	assert(second_ore.get_current_build_cost() == {"gold_ore": 7, "jewels": 3}, "A second Gold mine must cost 25 percent more, rounded up per resource")
 	ore._update_hover_highlight(ore.global_position)
 	assert(ore._tile_highlight.visible, "Hovering a built mine must show the yellow tile outline")
 	resource_manager.fill_all_to_maximum()
 	ore.show_build_button()
 	assert(not ore._shack_buttons.is_empty(), "Clicking a mine must show Build Shack buttons on valid adjacent tiles")
+	assert(ore.get_current_shack_cost() == {"gold_ore": 10}, "The first capacity building must cost ten of its stored resource")
 	for button in ore._shack_buttons:
 		assert(button.text == "Build Shack" and world.can_build_at_cell(Vector2i(button.get_meta("build_cell"))), "Shack buttons must only occupy valid adjacent tiles")
 	var first_cell := Vector2i(ore._shack_buttons[0].get_meta("build_cell"))
@@ -61,6 +71,7 @@ func _run() -> void:
 	assert(world.get_tree().get_nodes_in_group("buildings").size() == 1, "Build Shack must create a Gold Shack")
 	assert(resource_manager.get_maximum_amount(&"gold_ore") == 25, "Each Gold Shack must add fifteen gold capacity")
 	assert(world.is_building_cell(first_cell) and not world.can_build_at_cell(first_cell), "A Gold Shack tile must become occupied for navigation and placement")
+	assert(ore.get_current_shack_cost() == {"gold_ore": 13}, "The next capacity building price must rise by 25 percent from the previous rounded price")
 
 	resource_manager.fill_all_to_maximum()
 	ore.show_build_button()

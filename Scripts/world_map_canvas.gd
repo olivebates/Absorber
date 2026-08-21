@@ -10,20 +10,27 @@ const GREEN_FLOOR := Color("4f8a46")
 const YELLOW_FLOOR := Color("a69a3f")
 const BROWN_FLOOR := Color("795638")
 const OBSTACLE_COLOR := Color("303238")
+const WATER_COLOR := Color("2d7fc4")
 
 var _world: WorldNavigation
 var _campfires: Array[Campfire] = []
 var _campfire_buttons: Array[Button] = []
+var _show_enemies := false
+var _show_buildings := false
+var _enemies_toggle: CheckButton
+var _buildings_toggle: CheckButton
 
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(900, 540)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	resized.connect(_position_campfire_buttons)
+	_build_layer_toggles()
 
 
 func setup(world: WorldNavigation) -> void:
 	_world = world
+	apply_saved_preferences()
 	refresh_markers()
 	queue_redraw()
 
@@ -50,19 +57,32 @@ func _draw() -> void:
 		draw_rect(Rect2(center - Vector2.ONE * cell_size * 0.5, Vector2.ONE * maxf(1.0, cell_size)), _get_floor_color(cell), true)
 	for cell in _world.wall_layer.get_used_cells():
 		if _world.is_cell_explored(cell):
-			_draw_obstacle_cell(cell, cell_size)
-	for group_name in [&"buildings", &"gates"]:
+			_draw_wall_cell(cell, cell_size)
+	for group_name in [&"gates"]:
 		for node in get_tree().get_nodes_in_group(group_name):
 			if node is Node2D and is_instance_valid(node):
 				var cell := _world.world_to_cell(node.global_position)
 				if _world.is_cell_explored(cell):
 					_draw_obstacle_cell(cell, cell_size)
+	if _show_buildings:
+		for node in get_tree().get_nodes_in_group("buildings"):
+			if node is Node2D and is_instance_valid(node):
+				_draw_discovered_node_marker(node)
+		for node in get_tree().get_nodes_in_group("gold_ores"):
+			if node is GoldOre and is_instance_valid(node) and is_instance_valid(node._mine):
+				_draw_discovered_node_marker(node._mine)
+	if _show_enemies:
+		for node in get_tree().get_nodes_in_group("enemies"):
+			if node is Node2D and is_instance_valid(node):
+				_draw_discovered_node_marker(node)
 	for node in get_tree().get_nodes_in_group("gold_ores"):
 		if node is Node2D and is_instance_valid(node):
+			if _show_buildings and node is GoldOre and is_instance_valid(node._mine):
+				continue
 			_draw_discovered_node_marker(node)
-	var tiger := get_tree().get_first_node_in_group("shopkeepers") as WhiteTiger
-	if tiger and is_instance_valid(tiger):
-		_draw_discovered_node_marker(tiger)
+	for shopkeeper in get_tree().get_nodes_in_group("shopkeepers"):
+		if shopkeeper is Node2D and is_instance_valid(shopkeeper):
+			_draw_discovered_node_marker(shopkeeper)
 	if is_instance_valid(_world.player):
 		var player_position := _cell_to_map(_world.world_to_cell(_world.player.global_position))
 		draw_circle(player_position, 5.0, Color.BLACK)
@@ -89,18 +109,80 @@ func _draw_obstacle_cell(cell: Vector2i, cell_size: float) -> void:
 	draw_rect(Rect2(center - Vector2.ONE * cell_size * 0.5, Vector2.ONE * maxf(1.0, cell_size)), OBSTACLE_COLOR, true)
 
 
+func _draw_wall_cell(cell: Vector2i, cell_size: float) -> void:
+	var atlas := _world.wall_layer.get_cell_atlas_coords(cell)
+	var source := _world.wall_layer.get_cell_source_id(cell)
+	var color := WATER_COLOR if source == 3 and atlas.y == 1 and atlas.x >= 3 else OBSTACLE_COLOR
+	var center := _cell_to_map(cell)
+	draw_rect(Rect2(center - Vector2.ONE * cell_size * 0.5, Vector2.ONE * maxf(1.0, cell_size)), color, true)
+
+
+func _build_layer_toggles() -> void:
+	var toggles := VBoxContainer.new()
+	toggles.name = "MapLayerToggles"
+	toggles.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	toggles.position = Vector2(8, -62)
+	toggles.size = Vector2(170, 54)
+	toggles.add_theme_constant_override("separation", 0)
+	add_child(toggles)
+	_enemies_toggle = CheckButton.new()
+	_enemies_toggle.name = "ShowEnemiesToggle"
+	_enemies_toggle.text = "Show Enemies"
+	_enemies_toggle.button_pressed = false
+	_enemies_toggle.toggled.connect(_on_show_enemies_toggled)
+	toggles.add_child(_enemies_toggle)
+	_buildings_toggle = CheckButton.new()
+	_buildings_toggle.name = "ShowBuildingsToggle"
+	_buildings_toggle.text = "Show Buildings"
+	_buildings_toggle.button_pressed = false
+	_buildings_toggle.toggled.connect(_on_show_buildings_toggled)
+	toggles.add_child(_buildings_toggle)
+
+
+func _on_show_enemies_toggled(enabled: bool) -> void:
+	_show_enemies = enabled
+	if _world:
+		_world.map_show_enemies = enabled
+	queue_redraw()
+
+
+func _on_show_buildings_toggled(enabled: bool) -> void:
+	_show_buildings = enabled
+	if _world:
+		_world.map_show_buildings = enabled
+	queue_redraw()
+
+
+func apply_saved_preferences() -> void:
+	if _world == null:
+		return
+	_show_enemies = _world.map_show_enemies
+	_show_buildings = _world.map_show_buildings
+	if is_instance_valid(_enemies_toggle):
+		_enemies_toggle.set_pressed_no_signal(_show_enemies)
+	if is_instance_valid(_buildings_toggle):
+		_buildings_toggle.set_pressed_no_signal(_show_buildings)
+	queue_redraw()
+
+
 func _draw_discovered_node_marker(node: Node2D) -> void:
 	var cell := _world.world_to_cell(node.global_position)
 	if not _world.is_cell_explored(cell):
 		return
-	var sprite := node.get_node_or_null("Sprite2D") as Sprite2D
-	if sprite == null:
-		sprite = node.get_node_or_null("Sprite") as Sprite2D
+	var sprite := _get_marker_sprite(node)
 	if sprite == null or sprite.texture == null:
 		return
 	var marker_size := clampf(_get_cell_size() * 1.8, 12.0, 24.0)
 	var rect := Rect2(_cell_to_map(cell) - Vector2.ONE * marker_size * 0.5, Vector2.ONE * marker_size)
 	draw_texture_rect(sprite.texture, rect, false)
+
+
+func _get_marker_sprite(node: Node2D) -> Sprite2D:
+	for candidate in node.find_children("*", "Sprite2D", true, false):
+		var sprite := candidate as Sprite2D
+		if sprite.texture:
+			return sprite
+	return null
 
 
 func _rebuild_campfire_buttons() -> void:
@@ -140,12 +222,18 @@ func _position_campfire_buttons() -> void:
 func _teleport_to_campfire(campfire: Campfire) -> void:
 	if _world == null or not is_instance_valid(campfire) or not _world.is_campfire_visited(campfire):
 		return
+	var was_outside_destination := not campfire.is_player_in_range(_world.player)
 	_world.player.stop()
 	_world.player.clear_attack_target()
 	_world.player.global_position = campfire.global_position
+	_world.player.set_respawn_position(campfire.get_respawn_position())
 	var map := get_parent().get_parent().get_parent().get_parent() as WorldMap
 	if map:
 		map.close()
+	if was_outside_destination:
+		var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+		if story:
+			story.on_campfire_teleported()
 
 
 func _get_cell_size() -> float:

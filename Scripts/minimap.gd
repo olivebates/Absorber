@@ -3,8 +3,10 @@ extends Control
 
 const ENEMY_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 const VISIBLE_RADIUS_TILES := 8.0
+const REDRAW_INTERVAL := 0.1
 
 var _world: WorldNavigation
+var _redraw_time_left := 0.0
 
 
 func _ready() -> void:
@@ -21,8 +23,11 @@ func _connect_world() -> void:
 	_world = get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 
 
-func _process(_delta: float) -> void:
-	queue_redraw()
+func _process(delta: float) -> void:
+	_redraw_time_left -= delta
+	if _redraw_time_left <= 0.0:
+		_redraw_time_left = REDRAW_INTERVAL
+		queue_redraw()
 
 
 func _draw() -> void:
@@ -38,6 +43,11 @@ func _draw() -> void:
 			var dot_position := _world_to_minimap(enemy.global_position, map_rect)
 			draw_circle(dot_position, 4.0, Color.BLACK)
 			draw_circle(dot_position, 2.5, ENEMY_COLORS[clampi(enemy.enemy_color, 0, ENEMY_COLORS.size() - 1)])
+	for shopkeeper in get_tree().get_nodes_in_group("shopkeepers"):
+		if shopkeeper is Node2D and is_instance_valid(shopkeeper):
+			var shop_position := _world_to_minimap(shopkeeper.global_position, map_rect)
+			draw_circle(shop_position, 4.0, Color.BLACK)
+			draw_circle(shop_position, 2.5, Color("ffe082"))
 	var player := _world.player if _world else null
 	if player:
 		var player_position := map_rect.get_center()

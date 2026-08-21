@@ -1,6 +1,8 @@
 class_name Gate
 extends StaticBody2D
 
+signal gate_opened
+
 ## The gate stays solid until an enemy made by this spawn point is defeated.
 @export var unlock_enemy_spawn: EnemySpawnPoint:
 	set(value):
@@ -37,6 +39,7 @@ func _on_unlock_enemy_killed(_enemy: ChickenEnemy) -> void:
 
 
 func set_unlocked(value: bool) -> void:
+	var was_unlocked := unlocked
 	unlocked = value
 	visible = not unlocked
 	if unlocked:
@@ -46,3 +49,5 @@ func set_unlocked(value: bool) -> void:
 	var collision := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if collision:
 		collision.set_deferred("disabled", unlocked)
+	if unlocked and not was_unlocked:
+		gate_opened.emit()

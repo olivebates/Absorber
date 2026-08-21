@@ -100,7 +100,7 @@ func _capture_state(timestamp: int) -> Array:
 	var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
 	var spawn_data: Array = []
 	for spawn in _get_spawns():
-		spawn_data.append(spawn.get_save_data())
+		spawn_data.append([str(spawn.name), spawn.get_save_data()])
 	var ore_data: Array = []
 	for ore in _get_ores():
 		ore_data.append(ore.get_save_data())
@@ -124,6 +124,8 @@ func _capture_state(timestamp: int) -> Array:
 		spawn_data, ore_data, gate_mask, pickup_data, building_data,
 		_get_shopkeeper().get_save_data() if _get_shopkeeper() else [],
 		_world.get_exploration_save_data(),
+		_get_story_manager().get_save_data() if _get_story_manager() else [],
+		_get_luca().get_save_data() if _get_luca() else [],
 	]
 
 
@@ -170,12 +172,29 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 	if not _world.player.load_save_data(state[2] as Array, offline_seconds):
 		return false
 	_world.load_exploration_save_data(state[10] as Array if state.size() > 10 and state[10] is Array else [])
+	var story := _get_story_manager()
+	if story:
+		story.load_save_data(state[11] as Array if state.size() > 11 and state[11] is Array else [])
 	var shopkeeper := _get_shopkeeper()
 	if shopkeeper:
 		shopkeeper.load_save_data(state[9] as Array if state.size() > 9 and state[9] is Array else [])
+	var luca: FoxAsha = _get_luca()
+	if luca:
+		luca.load_save_data(state[12] as Array if state.size() > 12 and state[12] is Array else [])
 	var spawn_data := state[4] as Array
+	var saved_spawns_by_name: Dictionary = {}
+	var uses_named_spawns := false
+	for raw_spawn in spawn_data:
+		if raw_spawn is Array and raw_spawn.size() >= 2 and raw_spawn[0] is String and raw_spawn[1] is Array:
+			uses_named_spawns = true
+			saved_spawns_by_name[str(raw_spawn[0])] = raw_spawn[1]
 	for index in range(spawns.size()):
-		var saved_spawn := spawn_data[index] as Array if index < spawn_data.size() and spawn_data[index] is Array else [roundi(spawns[index].respawn_time * 1000.0), []]
+		var default_spawn := [roundi(spawns[index].respawn_time * 1000.0), []]
+		var saved_spawn: Array
+		if uses_named_spawns:
+			saved_spawn = saved_spawns_by_name.get(str(spawns[index].name), default_spawn) as Array
+		else:
+			saved_spawn = spawn_data[index] as Array if index < spawn_data.size() and spawn_data[index] is Array else default_spawn
 		spawns[index].load_save_data(saved_spawn, offline_seconds)
 
 	for raw_pickup in state[7] as Array:
@@ -249,5 +268,13 @@ func _get_gates() -> Array[Gate]:
 	return result
 
 
-func _get_shopkeeper() -> WhiteTiger:
-	return get_tree().get_first_node_in_group("shopkeepers") as WhiteTiger
+func _get_shopkeeper() -> FoxAsha:
+	return _world.get_node_or_null("FoxAsha") as FoxAsha
+
+
+func _get_luca() -> FoxAsha:
+	return _world.get_node_or_null("FoxLuca") as FoxAsha
+
+
+func _get_story_manager() -> StoryManager:
+	return get_tree().get_first_node_in_group("story_manager") as StoryManager

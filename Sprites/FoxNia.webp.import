@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dxlnmxi4ogt46"
-path="res://.godot/imported/WhiteTiger.webp-f89c8a3be603575d9772f1cc78310827.ctex"
+uid="uid://7pboe56ejk5"
+path="res://.godot/imported/FoxNia.webp-c333b0c75996f807fe7024d859235fb5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/WhiteTiger.webp"
-dest_files=["res://.godot/imported/WhiteTiger.webp-f89c8a3be603575d9772f1cc78310827.ctex"]
+source_file="res://Sprites/FoxNia.webp"
+dest_files=["res://.godot/imported/FoxNia.webp-c333b0c75996f807fe7024d859235fb5.ctex"]
 
 [params]
 

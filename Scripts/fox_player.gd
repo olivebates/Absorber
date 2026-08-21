@@ -7,8 +7,10 @@ const COLOR_YELLOW := 1
 const COLOR_BLUE := 2
 
 signal damage_matrix_changed
+signal vitals_changed
 signal inventory_changed
 signal equipment_changed
+signal enemy_health_absorbed(amount: int)
 signal merge_targets_changed(dragged_item: Dictionary, source_storage: String, source_index: int)
 signal merge_completed(merged_item: Dictionary, target_storage: String, target_index: int)
 
@@ -20,13 +22,20 @@ signal merge_completed(merged_item: Dictionary, target_storage: String, target_i
 
 var health: int
 var passive_healing_amount := 1
-var defense := 0
 var current_weapon_index := 0
 var damage_by_color := [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]
+var defense_by_color: Array[int] = [0, 0, 0]
+var defense: int:
+	set(value):
+		defense_by_color[COLOR_RED] = maxi(0, value)
+		damage_matrix_changed.emit()
+	get:
+		return defense_by_color[COLOR_RED]
 var equipped_armor: Array[Dictionary] = [{}, {}, {}, {}]
 var equipped_weapons: Array[Dictionary] = [{}, {}, {}, {}]
 var inventory_slots: Array[Dictionary] = [{}, {}, {}, {}]
 var weapon_ever_equipped := [false, false, false, false]
+var armor_ever_equipped := false
 var _weapon_cooldowns := [0.0, 0.0, 0.0, 0.0]
 var _heal_time_left := 3.0
 var _path := PackedVector2Array()
@@ -93,14 +102,16 @@ func is_moving() -> bool:
 	return _path_index < _path.size()
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, color_index := COLOR_RED) -> void:
 	if health <= 0:
 		return
-	var applied_damage := maxi(1, amount - get_total_block())
+	var applied_damage := maxi(1, amount - get_defense_for_color(color_index))
+	var blocked_damage := maxi(0, amount - applied_damage)
 	health = max(0, health - applied_damage)
 	health_bar.value = health
 	_update_health_label()
-	_show_damage_popup(applied_damage)
+	vitals_changed.emit()
+	_show_damage_popup(amount, color_index, blocked_damage)
 	if health == 0:
 		_respawn()
 
@@ -111,6 +122,7 @@ func heal(amount: int) -> void:
 	health = min(max_health, health + amount)
 	health_bar.value = health
 	_update_health_label()
+	vitals_changed.emit()
 
 
 func add_max_health(amount: int) -> void:
@@ -125,6 +137,12 @@ func add_max_health(amount: int) -> void:
 		health = mini(health, max_health)
 		health_bar.value = health
 		_update_health_label()
+	vitals_changed.emit()
+
+
+func absorb_enemy_health(amount: int) -> void:
+	add_max_health(amount)
+	enemy_health_absorbed.emit(amount)
 
 
 func add_passive_healing(amount: int) -> void:
@@ -134,6 +152,7 @@ func add_passive_healing(amount: int) -> void:
 	passive_healing_amount = maxi(1, passive_healing_amount + amount)
 	var progress_left := clampf(_heal_time_left / old_interval, 0.0, 1.0)
 	_heal_time_left = _get_passive_heal_interval() * progress_left
+	vitals_changed.emit()
 
 
 func add_attack_damage(amount: int) -> void:
@@ -148,9 +167,29 @@ func add_color_damage(color_index: int, amount: int) -> void:
 	damage_matrix_changed.emit()
 
 
+func add_color_defense(color_index: int, amount: int) -> void:
+	if color_index < 0 or color_index >= defense_by_color.size():
+		return
+	defense_by_color[color_index] = maxi(0, defense_by_color[color_index] + amount)
+	damage_matrix_changed.emit()
+
+
 func collect_item(item_id: String, grade := 0) -> bool:
 	if not ItemPickup.ITEM_DATA.has(item_id):
 		return false
+	var equipment_storage := "weapon" if ItemPickup.is_weapon(item_id) else "armor" if ItemPickup.is_armor(item_id) else ""
+	if not equipment_storage.is_empty():
+		var equipment_slots := _get_slots(equipment_storage)
+		if equipment_slots[0].is_empty():
+			equipment_slots[0] = ItemPickup.make_item(item_id, grade)
+			if equipment_storage == "weapon":
+				weapon_ever_equipped[0] = true
+			else:
+				armor_ever_equipped = true
+			attack_damage = get_damage_for_color(COLOR_RED)
+			equipment_changed.emit()
+			damage_matrix_changed.emit()
+			return true
 	for index in range(inventory_slots.size()):
 		if inventory_slots[index].is_empty():
 			inventory_slots[index] = ItemPickup.make_item(item_id, grade)
@@ -159,11 +198,15 @@ func collect_item(item_id: String, grade := 0) -> bool:
 	return false
 
 
-func reserve_item_collection() -> bool:
+func reserve_item_collection(item_id := "") -> bool:
 	var empty_slots := 0
 	for item in inventory_slots:
 		if item.is_empty():
 			empty_slots += 1
+	if ItemPickup.is_weapon(item_id) and equipped_weapons[0].is_empty():
+		empty_slots += 1
+	elif ItemPickup.is_armor(item_id) and equipped_armor[0].is_empty():
+		empty_slots += 1
 	if empty_slots <= _pending_item_collections:
 		return false
 	_pending_item_collections += 1
@@ -173,6 +216,25 @@ func reserve_item_collection() -> bool:
 func complete_item_collection(item_id: String, grade: int) -> void:
 	_pending_item_collections = max(0, _pending_item_collections - 1)
 	collect_item(item_id, grade)
+
+
+func get_item_collection_target_screen_position(item_id: String) -> Vector2:
+	var preferred_storage := "weapon" if ItemPickup.is_weapon(item_id) else "armor" if ItemPickup.is_armor(item_id) else "inventory"
+	var preferred_index := 0
+	if preferred_storage != "inventory" and not _get_slots(preferred_storage)[0].is_empty():
+		preferred_storage = "inventory"
+		for index in range(inventory_slots.size()):
+			if inventory_slots[index].is_empty():
+				preferred_index = index
+				break
+	for node in get_tree().get_nodes_in_group("item_slots"):
+		if node is ItemSlot and node.storage == preferred_storage and node.slot_index == preferred_index:
+			return (node as ItemSlot).get_global_rect().get_center()
+	return get_viewport_rect().size - Vector2(42, 42)
+
+
+func set_respawn_position(new_position: Vector2) -> void:
+	_spawn_position = new_position
 
 
 func get_weapon_cooldown_ratio(weapon_index: int) -> float:
@@ -212,8 +274,12 @@ func move_or_merge(source_storage: String, source_index: int, target_storage: St
 		target_slots[target_index] = source_item
 	if target_storage == "weapon" and not target_slots[target_index].is_empty():
 		weapon_ever_equipped[target_index] = true
+	if target_storage == "armor" and not target_slots[target_index].is_empty():
+		armor_ever_equipped = true
 	if source_storage == "weapon" and not source_slots[source_index].is_empty():
 		weapon_ever_equipped[source_index] = true
+	if source_storage == "armor" and not source_slots[source_index].is_empty():
+		armor_ever_equipped = true
 	attack_damage = get_damage_for_color(COLOR_RED)
 	inventory_changed.emit()
 	equipment_changed.emit()
@@ -294,7 +360,17 @@ func get_damage_for_weapon_color(color_index: int, weapon_index: int) -> int:
 
 
 func get_total_block() -> int:
-	var total := maxi(0, defense)
+	return get_defense_for_color(COLOR_RED)
+
+
+func get_base_defense_for_color(color_index: int) -> int:
+	if color_index < 0 or color_index >= defense_by_color.size():
+		return 0
+	return defense_by_color[color_index]
+
+
+func get_defense_for_color(color_index: int) -> int:
+	var total := get_base_defense_for_color(color_index)
 	for item in equipped_armor:
 		total += ItemPickup.get_block_amount(item)
 	return total
@@ -319,6 +395,8 @@ func get_save_data() -> Array:
 		ever_equipped_mask, cooldown_milliseconds, maxi(0, roundi(_heal_time_left * 1000.0)),
 		maxi(1, roundi(_get_healing_speed_multiplier())),
 		maxi(0, defense),
+		defense_by_color.duplicate(), armor_ever_equipped,
+		roundi(_spawn_position.x), roundi(_spawn_position.y),
 	]
 
 
@@ -330,7 +408,11 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	global_position = Vector2(float(data[0]), float(data[1]))
 	max_health = maxi(1, int(data[3]))
 	passive_healing_amount = maxi(1, int(data[4]))
-	defense = maxi(0, int(data[14])) if data.size() > 14 else 0
+	var legacy_defense := maxi(0, int(data[14])) if data.size() > 14 else 0
+	defense_by_color = []
+	var saved_color_defense := data[15] as Array if data.size() > 15 and data[15] is Array else []
+	for color_index in range(3):
+		defense_by_color.append(maxi(0, int(saved_color_defense[color_index])) if color_index < saved_color_defense.size() else legacy_defense)
 	current_weapon_index = clampi(int(data[5]), 0, equipped_weapons.size() - 1)
 
 	var flattened_damage := data[6] as Array
@@ -346,6 +428,9 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	inventory_slots = _unpack_items(data[7] as Array, 4)
 	equipped_weapons = _unpack_items(data[8] as Array, 4)
 	equipped_armor = _unpack_items(data[9] as Array, 4)
+	armor_ever_equipped = bool(data[16]) if data.size() > 16 else has_equipped_armor()
+	if data.size() > 18:
+		_spawn_position = Vector2(float(data[17]), float(data[18]))
 	var ever_equipped_mask := int(data[10])
 	weapon_ever_equipped = []
 	for index in range(4):
@@ -372,6 +457,9 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	health_bar.max_value = max_health
 	health_bar.value = health
 	_update_health_label()
+	damage_matrix_changed.emit()
+	equipment_changed.emit()
+	vitals_changed.emit()
 	inventory_changed.emit()
 	equipment_changed.emit()
 	damage_matrix_changed.emit()
@@ -625,10 +713,11 @@ func _respawn() -> void:
 	stop()
 	clear_attack_target()
 	global_position = _spawn_position
-	health = max_health
+	health = 1
 	health_bar.value = health
 	_update_health_label()
 	_heal_time_left = 3.0
+	vitals_changed.emit()
 
 
 func _play_attack_animation(target: Node2D) -> void:
@@ -666,11 +755,11 @@ func _update_health_label() -> void:
 	health_label.text = str(health)
 
 
-func _show_damage_popup(amount: int) -> void:
+func _show_damage_popup(amount: int, color_index: int, blocked_damage: int) -> void:
 	var popup := DAMAGE_POPUP_SCENE.instantiate() as DamagePopup
 	popup.position = global_position + Vector2(0, -38)
 	get_parent().add_child(popup)
-	popup.show_damage(amount)
+	popup.show_damage(amount, color_index, blocked_damage)
 	_play_hit_animation()
 
 

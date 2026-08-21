@@ -19,6 +19,7 @@ var _merge_tween: Tween
 
 
 func configure(new_owner: Control, new_storage: String, new_slot_index: int, new_item: Dictionary, highlight := false, is_locked := false) -> void:
+	add_to_group("item_slots")
 	owner_ui = new_owner
 	storage = new_storage
 	slot_index = new_slot_index

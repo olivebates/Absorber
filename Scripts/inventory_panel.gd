@@ -127,6 +127,8 @@ func drop_in_slot(source: ItemSlot, target: ItemSlot) -> void:
 func click_slot(slot: ItemSlot) -> void:
 	if ItemPickup.is_weapon(str(slot.item.get("item_id", ""))):
 		_player.move_or_merge(slot.storage, slot.slot_index, "weapon", 0)
+	elif ItemPickup.is_armor(str(slot.item.get("item_id", ""))):
+		_player.move_or_merge(slot.storage, slot.slot_index, "armor", 0)
 
 
 func _on_auto_merge_pressed() -> void:

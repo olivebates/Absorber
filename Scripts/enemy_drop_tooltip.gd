@@ -39,6 +39,10 @@ func _process(_delta: float) -> void:
 func _place_inside_camera(mouse_position: Vector2) -> void:
 	var viewport_size := get_viewport_rect().size
 	var desired := mouse_position + Vector2(18, 18)
+	if desired.x + size.x > viewport_size.x:
+		desired.x = mouse_position.x - size.x - 18.0
+	if desired.y + size.y > viewport_size.y:
+		desired.y = mouse_position.y - size.y - 18.0
 	position = Vector2(
 		clampf(desired.x, 0.0, maxf(0.0, viewport_size.x - size.x)),
 		clampf(desired.y, 0.0, maxf(0.0, viewport_size.y - size.y))

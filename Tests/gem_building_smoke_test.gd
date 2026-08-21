@@ -12,8 +12,8 @@ func _run() -> void:
 	await process_frame
 	var manager := world.get_node("ResourceManager") as ResourceManager
 	var gem_ore := world.get_node("GemOre2") as GoldOre
-	assert(gem_ore.build_cost == {"gold_ore": 2, "jewels": 5}, "Gem mines must cost two gold and five jewels")
-	assert(gem_ore.mined_resource_id == &"jewels" and is_equal_approx(gem_ore.mine_production_speed, 1.0 / 180.0), "Gem mines must produce one jewel every three minutes")
+	assert(gem_ore.build_cost == {"jewels": 5, "wood": 2} and gem_ore.shack_build_cost == {"jewels": 10}, "Gem mines must use their resource cost and Gem storage must start at ten Gems")
+	assert(gem_ore.mined_resource_id == &"jewels" and is_equal_approx(gem_ore.mine_production_speed, 1.0 / 600.0), "Gem mines must produce one jewel every ten minutes")
 	manager.fill_all_to_maximum()
 	gem_ore._try_build_mine()
 	assert(is_instance_valid(gem_ore._mine) and gem_ore._mine.resource_id == &"jewels", "The gem deposit must build a jewel-producing mine")
@@ -43,9 +43,9 @@ func _run() -> void:
 	await process_frame
 	assert((tooltip._content.get_child(0) as TextureRect).texture == definition.icon, "Building stats must put the resource icon on the left")
 	assert((tooltip._content.get_child(1) as Label).text == "Capacity: +10", "Shack hover stats must show capacity")
-	tooltip.show_stat(definition.icon, "Production", "+0.006/s", gem_ore)
+	tooltip.show_stat(definition.icon, "Production", "+0.002/s", gem_ore)
 	await process_frame
-	assert((tooltip._content.get_child(1) as Label).text == "Production: +0.006/s", "Mine hover stats must show per-second production")
+	assert((tooltip._content.get_child(1) as Label).text == "Production: +0.002/s", "Mine hover stats must show per-second production")
 	var resource_panel := world.get_node("HUD/ResourcePanel") as ResourcePanel
 	await process_frame
 	await process_frame
@@ -72,6 +72,7 @@ func _run() -> void:
 	var shared_target := world.cell_to_world(Vector2i(2, 2))
 	first_enemy._path = PackedVector2Array([shared_target])
 	second_enemy._path = PackedVector2Array([shared_target])
+	world._actor_cache_frame = -1
 	assert(world.is_enemy_target_conflicted(second_enemy, Vector2i(2, 2)), "A later enemy must yield a shared target tile")
 	second_enemy._patrol(0.01)
 	assert(second_enemy.get_movement_target_cell(world) == world.world_to_cell(second_enemy.global_position), "A yielding enemy must target its own tile")

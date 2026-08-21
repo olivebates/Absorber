@@ -1,15 +1,15 @@
-class_name WhiteTiger
+class_name StoryFox
 extends Node2D
 
 const ADJACENT_OFFSETS := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
 const PATROL_RADIUS_TILES := 2
 const MOVE_SPEED := 120.0
 
-var purchase_counts: Array[int] = [0, 0, 0, 0]
+@export var character_id: StringName
+
 var _waiting_for_player := false
 var _player: FoxPlayer
 var _world: WorldNavigation
-var _shop: TigerShop
 var _home_cell := Vector2i.ZERO
 var _path := PackedVector2Array()
 var _path_index := 0
@@ -19,12 +19,12 @@ var _initialized := false
 var _walk_time := 0.0
 var _is_walking := false
 
-@onready var tiger_sprite: Sprite2D = $Sprite2D
+@onready var fox_sprite: Sprite2D = $Sprite2D
 
 
 func _ready() -> void:
-	add_to_group("shopkeepers")
 	add_to_group("npcs")
+	add_to_group("story_characters")
 	_world = get_parent() as WorldNavigation
 	_player = _world.player if _world else get_tree().get_first_node_in_group("player") as FoxPlayer
 	_highlight = _create_tile_highlight()
@@ -41,6 +41,10 @@ func _finish_setup() -> void:
 func _process(delta: float) -> void:
 	_highlight.visible = Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
 	_is_walking = false
+	if _dialogue_is_open():
+		_stop_patrol()
+		_update_walk_animation(delta)
+		return
 	if not _initialized:
 		_update_walk_animation(delta)
 		return
@@ -48,10 +52,7 @@ func _process(delta: float) -> void:
 		if is_instance_valid(_player) and is_instance_valid(_world) and _world.are_adjacent(_player, self):
 			_waiting_for_player = false
 			_player.stop()
-			open_shop()
-		_update_walk_animation(delta)
-		return
-	if is_instance_valid(_shop) and _shop.visible:
+			interact()
 		_update_walk_animation(delta)
 		return
 	_patrol(delta)
@@ -64,12 +65,12 @@ func request_interaction(player: FoxPlayer, world: WorldNavigation) -> bool:
 	_stop_patrol()
 	if _world.are_adjacent(_player, self):
 		_player.stop()
-		open_shop()
+		interact()
 		return true
 	var best_path := PackedVector2Array()
-	var tiger_cell := _world.world_to_cell(global_position)
+	var fox_cell := _world.world_to_cell(global_position)
 	for offset in ADJACENT_OFFSETS:
-		var target_cell: Vector2i = tiger_cell + Vector2i(offset)
+		var target_cell: Vector2i = fox_cell + Vector2i(offset)
 		if not _world.is_walkable(target_cell) or _world.is_cell_occupied(target_cell, _player):
 			continue
 		var candidate := _world.find_path(_player.global_position, _world.cell_to_world(target_cell), _player)
@@ -85,37 +86,24 @@ func request_interaction(player: FoxPlayer, world: WorldNavigation) -> bool:
 	return true
 
 
-func open_shop() -> void:
-	var hud := _world.get_node_or_null("HUD") as CanvasLayer if _world else null
-	if hud == null:
-		return
-	if not is_instance_valid(_shop):
-		_shop = TigerShop.new()
-		hud.add_child(_shop)
-		_shop.setup(self)
-	_shop.open()
-
-
-func close_shop() -> void:
-	if is_instance_valid(_shop):
-		_shop.close()
-	_pause_time_left = 1.0
+func interact() -> void:
+	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+	if story:
+		story.interact_with(character_id)
 
 
 func get_save_data() -> Array:
-	return [purchase_counts[0], purchase_counts[1], purchase_counts[2], purchase_counts[3], roundi(global_position.x), roundi(global_position.y)]
+	return [roundi(global_position.x), roundi(global_position.y)]
 
 
 func load_save_data(data: Array) -> bool:
-	purchase_counts = []
-	for index in range(4):
-		purchase_counts.append(maxi(0, int(data[index])) if index < data.size() else 0)
-	if data.size() >= 6 and _world:
-		var saved_position := Vector2(float(data[4]), float(data[5]))
-		if _world.is_walkable(_world.world_to_cell(saved_position)):
-			global_position = saved_position
+	if data.size() < 2 or _world == null:
+		return false
+	var saved_position := Vector2(float(data[0]), float(data[1]))
+	if not _world.is_walkable(_world.world_to_cell(saved_position)):
+		return false
+	global_position = saved_position
 	_stop_patrol()
-	close_shop()
 	return true
 
 
@@ -144,19 +132,19 @@ func _patrol(delta: float) -> void:
 	global_position += motion
 	_is_walking = true
 	if motion.x < -0.1:
-		tiger_sprite.flip_h = false
+		fox_sprite.flip_h = false
 	elif motion.x > 0.1:
-		tiger_sprite.flip_h = true
+		fox_sprite.flip_h = true
 
 
 func _update_walk_animation(delta: float) -> void:
 	if not _is_walking:
-		tiger_sprite.position.y = 0.0
-		tiger_sprite.rotation = 0.0
+		fox_sprite.position.y = 0.0
+		fox_sprite.rotation = 0.0
 		return
 	_walk_time += delta * 11.0
-	tiger_sprite.position.y = -absf(sin(_walk_time)) * 5.0
-	tiger_sprite.rotation = sin(_walk_time) * 0.09
+	fox_sprite.position.y = -absf(sin(_walk_time)) * 5.0
+	fox_sprite.rotation = sin(_walk_time) * 0.09
 
 
 func _choose_patrol_path() -> void:
@@ -185,3 +173,8 @@ func _create_tile_highlight() -> Line2D:
 		highlight.add_point(point)
 	highlight.visible = false
 	return highlight
+
+
+func _dialogue_is_open() -> bool:
+	var dialogue := get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
+	return dialogue != null and dialogue.is_open()

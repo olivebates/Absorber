@@ -1,24 +1,25 @@
 class_name EnemySpawnPoint
 extends Marker2D
 
-const ENEMY_SCENES: Array[PackedScene] = [
-	preload("res://Scenes/chicken_enemy.tscn"),
-	preload("res://Scenes/cow_enemy.tscn"),
-	preload("res://Scenes/bull_enemy.tscn"),
-	preload("res://Scenes/mole_enemy.tscn"),
-	preload("res://Scenes/mole2_enemy.tscn"),
-	preload("res://Scenes/goat_enemy.tscn"),
-	preload("res://Scenes/evil_goat_enemy.tscn"),
-	preload("res://Scenes/crab_enemy.tscn"),
-	preload("res://Scenes/snake_enemy.tscn"),
-	preload("res://Scenes/camel_enemy.tscn"),
-	preload("res://Scenes/crocodile_enemy.tscn"),
-	preload("res://Scenes/mouse_enemy.tscn"),
-	preload("res://Scenes/kangaroo_rat_enemy.tscn"),
-	preload("res://Scenes/mad_coyote_enemy.tscn"),
+const ENEMY_SCENES: Array[String] = [
+	"res://Scenes/chicken_enemy.tscn",
+	"res://Scenes/cow_enemy.tscn",
+	"res://Scenes/bull_enemy.tscn",
+	"res://Scenes/mole_enemy.tscn",
+	"res://Scenes/mole2_enemy.tscn",
+	"res://Scenes/goat_enemy.tscn",
+	"res://Scenes/evil_goat_enemy.tscn",
+	"res://Scenes/crab_enemy.tscn",
+	"res://Scenes/snake_enemy.tscn",
+	"res://Scenes/camel_enemy.tscn",
+	"res://Scenes/crocodile_enemy.tscn",
+	"res://Scenes/mouse_enemy.tscn",
+	"res://Scenes/kangaroo_rat_enemy.tscn",
+	"res://Scenes/mad_coyote_enemy.tscn",
 ]
 
 signal enemy_killed(enemy: ChickenEnemy)
+signal enemy_respawned(enemy: ChickenEnemy)
 
 const SPAWN_RADIUS_TILES := 2
 
@@ -26,8 +27,9 @@ const SPAWN_RADIUS_TILES := 2
 @export var max_enemies := 2
 @export_category("Rewards")
 @export_range(0, 999, 1) var stat_reward_amount := 1
-@export_enum("Damage", "Health", "Resource", "Regenerate") var reward_type := ChickenEnemy.REWARD_DAMAGE
+@export_enum("Damage", "Health", "Resource", "Regenerate", "Defense") var reward_type := ChickenEnemy.REWARD_DAMAGE
 @export_enum("Red", "Yellow", "Blue") var damage_reward_color := FoxPlayer.COLOR_RED
+@export_enum("Red", "Yellow", "Blue") var defense_reward_color := FoxPlayer.COLOR_RED
 @export var reward_resource_id: StringName = &"gold_ore"
 @export_category("Enemy Stats")
 @export_range(1, 999, 1) var enemy_health := 3
@@ -47,6 +49,7 @@ const SPAWN_RADIUS_TILES := 2
 var _respawn_time_left := 0.0
 var _spawned_enemies: Array[ChickenEnemy] = []
 var _was_empty := true
+var _was_full := false
 var _timer_label: Label
 var _initial_spawn_complete := false
 
@@ -59,9 +62,10 @@ func _physics_process(delta: float) -> void:
 		if is_instance_valid(enemy):
 			active_enemies.append(enemy)
 	_spawned_enemies = active_enemies
-	if _spawned_enemies.is_empty() and not _was_empty:
+	if _spawned_enemies.size() < max_enemies and _was_full:
 		_respawn_time_left = respawn_time
 	_was_empty = _spawned_enemies.is_empty()
+	_was_full = _spawned_enemies.size() >= max_enemies
 	if _spawned_enemies.size() >= max_enemies:
 		queue_redraw()
 		return
@@ -79,13 +83,16 @@ func _spawn_enemy() -> bool:
 	var spawn_cell := _get_available_spawn_cell(world)
 	if spawn_cell == Vector2i(-1, -1):
 		return false
-	return _create_enemy(world, world.cell_to_world(spawn_cell), spawn_cell) != null
+	var enemy := _create_enemy(world, world.cell_to_world(spawn_cell), spawn_cell)
+	if enemy and _initial_spawn_complete:
+		enemy_respawned.emit(enemy)
+	return enemy != null
 
 
 func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector2i, saved_data: Array = []) -> ChickenEnemy:
 	var enemy := _get_enemy_scene().instantiate() as ChickenEnemy
 	enemy.global_position = spawn_position
-	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor)
+	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor, defense_reward_color)
 	enemy.died.connect(_on_spawned_enemy_died)
 	get_parent().add_child(enemy)
 	if not saved_data.is_empty():
@@ -110,6 +117,7 @@ func clear_for_load() -> void:
 	_spawned_enemies.clear()
 	_initial_spawn_complete = true
 	_was_empty = true
+	_was_full = false
 
 
 func load_save_data(data: Array, offline_seconds: int) -> bool:
@@ -150,11 +158,13 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 		_respawn_time_left = respawn_time
 	_initial_spawn_complete = true
 	_was_empty = _spawned_enemies.is_empty()
+	_was_full = _spawned_enemies.size() >= max_enemies
 	_update_respawn_indicator()
 	return true
 
 
 func _ready() -> void:
+	add_to_group("enemy_spawns")
 	_timer_label = Label.new()
 	_timer_label.position = Vector2(-24, -9)
 	_timer_label.size = Vector2(48, 18)
@@ -175,6 +185,7 @@ func _spawn_starting_enemies() -> void:
 			break
 	_initial_spawn_complete = true
 	_was_empty = _spawned_enemies.is_empty()
+	_was_full = _spawned_enemies.size() >= max_enemies
 	_respawn_time_left = respawn_time
 	_update_respawn_indicator()
 
@@ -205,11 +216,15 @@ func _get_drop_table() -> Array[Dictionary]:
 func _get_enemy_scene() -> PackedScene:
 	if enemy_scene:
 		return enemy_scene
-	return ENEMY_SCENES[clampi(enemy_type, 0, ENEMY_SCENES.size() - 1)]
+	return load(ENEMY_SCENES[clampi(enemy_type, 0, ENEMY_SCENES.size() - 1)]) as PackedScene
 
 
 func _on_spawned_enemy_died(enemy: ChickenEnemy) -> void:
+	var was_full := _spawned_enemies.size() >= max_enemies
 	_spawned_enemies.erase(enemy)
+	if was_full and _spawned_enemies.size() < max_enemies:
+		_respawn_time_left = respawn_time
+	_was_full = false
 	enemy_killed.emit(enemy)
 	queue_redraw()
 

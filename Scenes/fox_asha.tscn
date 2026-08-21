@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://Scripts/fox_asha.gd" id="1_fox"]
+[ext_resource type="Texture2D" path="res://Sprites/FoxAsha.webp" id="2_sprite"]
+
+[node name="FoxAsha" type="Node2D"]
+z_index = 4
+script = ExtResource("1_fox")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_sprite")
+flip_h = true

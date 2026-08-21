@@ -56,18 +56,26 @@ func _refresh() -> void:
 			values_for_color.append(_player.get_damage_for_weapon_color(color_index, weapon_index))
 		damage_values.append(values_for_color)
 
-	var shown_weapon_indices: Array[int] = []
-	for weapon_index in range(weapon_count):
-		for color_index in COLOR_ORDER:
-			if int(damage_values[color_index][weapon_index]) > 1:
-				shown_weapon_indices.append(weapon_index)
-				break
-
 	var shown_color_indices: Array[int] = []
 	for color_index in COLOR_ORDER:
+		if color_index != FoxPlayer.COLOR_RED:
+			var has_base_color_upgrade := false
+			for weapon_index in range(weapon_count):
+				if int(_player.damage_by_color[color_index][weapon_index]) > 1:
+					has_base_color_upgrade = true
+					break
+			if not has_base_color_upgrade:
+				continue
 		for weapon_index in range(weapon_count):
 			if int(damage_values[color_index][weapon_index]) > 1:
 				shown_color_indices.append(color_index)
+				break
+
+	var shown_weapon_indices: Array[int] = []
+	for weapon_index in range(weapon_count):
+		for color_index in shown_color_indices:
+			if int(damage_values[color_index][weapon_index]) > 1:
+				shown_weapon_indices.append(weapon_index)
 				break
 
 	visible = not shown_weapon_indices.is_empty() and not shown_color_indices.is_empty()
@@ -171,8 +179,7 @@ func _add_weapon_header(weapon_index: int) -> void:
 	var content := CenterContainer.new()
 	damage_type_cell.add_child(content)
 	var icon := TextureRect.new()
-	var weapon := _player.get_slot_item("weapon", weapon_index)
-	icon.texture = ItemPickup.ITEM_TEXTURES.get(str(weapon.get("item_id", "")), DAMAGE_ICON)
+	icon.texture = DAMAGE_ICON
 	icon.custom_minimum_size = Vector2(20, 20)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

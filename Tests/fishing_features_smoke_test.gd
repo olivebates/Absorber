@@ -18,9 +18,10 @@ func _run() -> void:
 	assert(fish_definition.icon.resource_path == "res://Sprites/FishResource.webp", "Fish must use FishResource as its icon")
 	assert((fishing_spot.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/FishSillouhettes.webp", "The fishing spot must use FishSillouhettes")
 	assert(world.is_walkable(world.world_to_cell(fishing_spot.global_position)), "The fishing spot must be placed on authored floor")
+	assert(fishing_spot.build_cost == {"fish": 5, "gold_ore": 2} and fishing_spot.shack_build_cost == {"fish": 10}, "Fishing huts must use their resource cost and Fish storage must start at ten Fish")
 
 	for index in [6, 7]:
-		var enemy := EnemySpawnPoint.ENEMY_SCENES[index].instantiate() as ChickenEnemy
+		var enemy := (load(EnemySpawnPoint.ENEMY_SCENES[index]) as PackedScene).instantiate() as ChickenEnemy
 		var expected := "res://Sprites/EvilGoat.webp" if index == 6 else "res://Sprites/Crab.webp"
 		assert((enemy.get_node("ChickenSprite") as Sprite2D).texture.resource_path == expected, "Each new enemy must use its requested sprite")
 		enemy.free()

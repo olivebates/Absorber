@@ -2,9 +2,11 @@ class_name DebugStatMenu
 extends PanelContainer
 
 const COLOR_NAMES := ["Red Damage", "Yellow Damage", "Blue Damage"]
+const DEFENSE_NAMES := ["Red Defense", "Yellow Defense", "Blue Defense"]
 
 var _player: FoxPlayer
 var _damage_grid: DamageGrid
+var _vitals: Control
 var _values: Array[Label] = []
 
 
@@ -38,6 +40,7 @@ func _process(_delta: float) -> void:
 func _connect_player() -> void:
 	_player = get_tree().get_first_node_in_group("player") as FoxPlayer
 	_damage_grid = get_parent().get_node_or_null("DamageGrid") as DamageGrid
+	_vitals = get_parent().get_node_or_null("PlayerVitals") as Control
 	if _player:
 		_player.damage_matrix_changed.connect(_refresh_values)
 	_refresh_values()
@@ -58,6 +61,8 @@ func _build_menu() -> void:
 	_add_stat_row(rows, "Regeneration", 1)
 	for color_index in range(COLOR_NAMES.size()):
 		_add_stat_row(rows, COLOR_NAMES[color_index], color_index + 2)
+	for color_index in range(DEFENSE_NAMES.size()):
+		_add_stat_row(rows, DEFENSE_NAMES[color_index], color_index + 5)
 
 
 func _add_stat_row(parent: VBoxContainer, label_text: String, stat_index: int) -> void:
@@ -95,18 +100,21 @@ func _adjust_stat(stat_index: int, amount: int) -> void:
 			_player.add_max_health(amount)
 		1:
 			_player.add_passive_healing(amount)
-		_:
+		2, 3, 4:
 			_player.add_color_damage(stat_index - 2, amount)
+		_:
+			_player.add_color_defense(stat_index - 5, amount)
 	_refresh_values()
 
 
 func _refresh_values() -> void:
-	if _player == null or _values.size() < 5:
+	if _player == null or _values.size() < 8:
 		return
 	_values[0].text = str(_player.max_health)
 	_values[1].text = str(_player.passive_healing_amount)
 	for color_index in range(3):
 		_values[color_index + 2].text = str(_player.get_base_damage_for_color(color_index))
+		_values[color_index + 5].text = str(_player.get_base_defense_for_color(color_index))
 
 
 func _fit_below_damage_grid() -> void:
@@ -115,6 +123,8 @@ func _fit_below_damage_grid() -> void:
 	var top := 12.0
 	if is_instance_valid(_damage_grid) and _damage_grid.visible:
 		top = _damage_grid.position.y + _damage_grid.size.y + 6.0
+	if is_instance_valid(_vitals):
+		top = maxf(top, _vitals.position.y + _vitals.size.y + 6.0)
 	set_offset(SIDE_LEFT, 12.0)
 	set_offset(SIDE_TOP, top)
 	set_offset(SIDE_RIGHT, 12.0 + minimum_size.x)

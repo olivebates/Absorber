@@ -43,6 +43,10 @@ func _run() -> void:
 	assert((damage_grid._grid.get_child(3).get_child(0) as Label).text == "2", "Damage cells must sum the color and weapon damage")
 	var color_dot_cell := damage_grid._grid.get_child(2) as Control
 	assert(damage_grid.get_color_target_screen_position(FoxPlayer.COLOR_RED).distance_to(color_dot_cell.get_global_rect().get_center()) < 0.1, "Damage rewards must fly to the color dot")
+	fox.equipped_weapons[0] = ItemPickup.make_item("weathered_sword")
+	fox.damage_matrix_changed.emit()
+	await process_frame
+	assert(damage_grid._grid.get_child_count() == 4, "Weapon damage alone must not reveal the Yellow or Blue rows")
 	fox.damage_by_color[FoxPlayer.COLOR_YELLOW][1] = 2
 	fox.damage_matrix_changed.emit()
 	await process_frame
@@ -55,6 +59,7 @@ func _run() -> void:
 	assert((damage_grid._grid.get_child(3).get_child(0) as Polygon2D).color == Color("e53935"), "The first damage row must have the red dot")
 	assert((damage_grid._grid.get_child(6).get_child(0) as Polygon2D).color == Color("fbc02d"), "The second damage row must have the yellow dot")
 	assert((damage_grid._grid.get_child(9).get_child(0) as Polygon2D).color == Color("1976d2"), "The third damage row must have the blue dot")
+	fox.equipped_weapons[0] = {}
 	var equipment_toolbar := EquipmentToolbar.new()
 	root.add_child(equipment_toolbar)
 	await process_frame
@@ -66,29 +71,51 @@ func _run() -> void:
 	assert(armor_slot._empty_icon.visible and armor_slot._empty_icon.texture.resource_path == "res://Sprites/HelmetIcon.webp", "Empty armor slots must show HelmetIcon")
 	assert(weapon_slot._empty_icon.visible and weapon_slot._empty_icon.texture.resource_path == "res://Sprites/SwordIcon.webp", "Empty weapon slots must show SwordIcon")
 	assert(locked_armor_slot._empty_icon.z_index < locked_armor_slot._lock_icon.z_index, "Empty slot icons must render beneath locks")
+	var item_tooltip := ItemTooltip.new()
+	root.add_child(item_tooltip)
+	await process_frame
+	assert(item_tooltip.z_index > locked_armor_slot._lock_icon.z_index, "Equipment tooltips must render above slot locks")
+	item_tooltip.show_item(ItemPickup.make_item("weathered_sword"))
+	assert(item_tooltip._stat_icon.texture.resource_path == "res://Sprites/DamageIcon.webp", "Weapon popups must use DamageIcon")
+	var damage_popup := load("res://Scenes/damage_popup.tscn").instantiate() as DamagePopup
+	root.add_child(damage_popup)
+	damage_popup.show_damage(5, FoxPlayer.COLOR_RED, 2)
+	var popup_row := damage_popup.get_child(0) as HBoxContainer
+	assert((popup_row.get_child(2) as Label).text == "2", "Blocked armor text must not have a minus sign")
 
 	var reward_enemy := load("res://Scenes/chicken_enemy.tscn").instantiate() as ChickenEnemy
-	reward_enemy.setup(Vector2i.ZERO, 1)
+	reward_enemy.setup(Vector2i.ZERO, 1, ChickenEnemy.REWARD_DAMAGE, [], &"gold_ore", FoxPlayer.COLOR_RED, 100)
 	root.add_child(reward_enemy)
 	await process_frame
 	assert(is_equal_approx(reward_enemy.reward_icon.texture.get_size().x * reward_enemy.reward_icon.scale.x, 16.0), "Reward icons must be 16x16")
 	reward_enemy._pause_time_left = 999.0
-	reward_enemy.take_damage(1)
+	reward_enemy.take_damage(20)
 	reward_enemy._physics_process(2.99)
-	assert(reward_enemy.health == reward_enemy.max_health - 1, "Enemies must wait three seconds before regenerating")
+	assert(reward_enemy.health == reward_enemy.max_health - 20, "Enemies must wait three seconds before regenerating")
 	reward_enemy._physics_process(0.01)
-	reward_enemy._physics_process(0.1)
-	assert(reward_enemy.health == reward_enemy.max_health, "Enemies must regenerate rapidly after the delay")
+	reward_enemy._physics_process(0.0)
+	assert(reward_enemy.health == reward_enemy.max_health - 10, "Enemies must regenerate ten percent of maximum health per second")
+	reward_enemy._physics_process(1.0)
+	assert(reward_enemy.health == reward_enemy.max_health, "Enemy regeneration must apply once per second")
 
 	var expected_sprite_paths: Array[String] = ["res://Sprites/Mole.webp", "res://Sprites/Mole2.webp", "res://Sprites/Goat.webp"]
 	for index in range(expected_sprite_paths.size()):
-		var variant_enemy := EnemySpawnPoint.ENEMY_SCENES[index + 3].instantiate() as ChickenEnemy
+		var variant_enemy := (load(EnemySpawnPoint.ENEMY_SCENES[index + 3]) as PackedScene).instantiate() as ChickenEnemy
 		assert((variant_enemy.get_node("ChickenSprite") as Sprite2D).texture.resource_path == expected_sprite_paths[index], "New enemy types must use their matching sprites")
 		variant_enemy.free()
 
 	var spawn := EnemySpawnPoint.new()
 	root.add_child(spawn)
 	assert(spawn._format_respawn_time(65.0) == "1:05" and spawn._format_respawn_time(420.0) == "7:00", "Respawn timers must use minutes and seconds")
+	var remaining_enemy := ChickenEnemy.new()
+	spawn._spawned_enemies.append(remaining_enemy)
+	spawn._respawn_time_left = 30.0
+	spawn._update_respawn_indicator()
+	assert(not spawn._timer_label.visible, "Respawn timers must stay hidden while any monster remains")
+	spawn._spawned_enemies.clear()
+	spawn._update_respawn_indicator()
+	assert(spawn._timer_label.visible, "Respawn timers must appear once the spawn has no monsters")
+	remaining_enemy.free()
 	var gate := Gate.new()
 	gate.unlock_enemy_spawn = spawn
 	root.add_child(gate)
@@ -111,6 +138,10 @@ func _run() -> void:
 	var world := load("res://Scenes/world.tscn").instantiate() as WorldNavigation
 	root.add_child(world)
 	await process_frame
+	var sword_spawn := world.get_node("ChickenSpawn8") as EnemySpawnPoint
+	var armor_spawn := world.get_node("ChickenSpawn12") as EnemySpawnPoint
+	assert(sword_spawn._get_drop_table() == [{"chance": 1.0, "grade": 0, "item_id": "weathered_sword"}], "ChickenSpawn8 must always drop only a sword")
+	assert(armor_spawn._get_drop_table() == [{"chance": 1.0, "grade": 0, "item_id": "weathered_armor"}], "ChickenSpawn12 must always drop only armor")
 	for child in world.get_children():
 		if child is EnemySpawnPoint:
 			var enemy_spawn := child as EnemySpawnPoint
@@ -137,7 +168,7 @@ func _run() -> void:
 	regeneration_enemy.setup(Vector2i.ZERO, 2, ChickenEnemy.REWARD_REGENERATE)
 	root.add_child(regeneration_enemy)
 	await process_frame
-	assert(regeneration_enemy.reward_icon.texture.resource_path == "res://Sprites/GreenHeart.png", "Regeneration rewards must use the green heart sprite")
+	assert(regeneration_enemy.reward_icon.texture.resource_path == "res://Sprites/RecoveryHeart.webp", "Regeneration rewards must use the recovery heart sprite")
 	var passive_healing_before := fox.passive_healing_amount
 	regeneration_enemy._grant_kill_reward()
 	await create_timer(0.8).timeout

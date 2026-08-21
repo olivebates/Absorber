@@ -8,9 +8,9 @@
 [node name="GemOre" type="Node2D"]
 z_index = 4
 script = ExtResource("1_ore")
-build_cost = {"gold_ore": 2, "jewels": 5}
+build_cost = {"jewels": 5, "wood": 2}
 mined_resource_id = &"jewels"
-mine_production_speed = 0.00555555555556
+mine_production_speed = 0.00166666666667
 shack_build_cost = {"jewels": 10}
 shack_scene = ExtResource("3_shack")
 shack_icon = ExtResource("4_shack_icon")

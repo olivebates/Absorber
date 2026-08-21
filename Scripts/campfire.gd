@@ -20,6 +20,13 @@ func is_player_in_range(player: FoxPlayer) -> bool:
 	return absi(distance.x) <= radius and absi(distance.y) <= radius
 
 
+func get_respawn_position() -> Vector2:
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if world:
+		return world.cell_to_world(world.world_to_cell(global_position) + Vector2i.DOWN)
+	return global_position + Vector2(0.0, TILE_SIZE)
+
+
 func _draw() -> void:
 	var radius := ceili(healing_radius_tiles)
 	var half_extent := (float(radius) + 0.5) * TILE_SIZE

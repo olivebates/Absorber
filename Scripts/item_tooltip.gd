@@ -5,9 +5,11 @@ var _icon: TextureRect
 var _rank: Label
 var _stat_icon: TextureRect
 var _stat: Label
+var _target_position := Vector2.ZERO
 
 
 func _ready() -> void:
+	z_index = 100
 	_set_style(Color("777777"))
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var content := VBoxContainer.new()
@@ -37,6 +39,14 @@ func _ready() -> void:
 	_stat.add_theme_constant_override("outline_size", 2)
 	stat_row.add_child(_stat)
 	visible = false
+	set_process(true)
+
+
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	_update_target_position()
+	position = position.lerp(_target_position, 1.0 - exp(-18.0 * delta))
 
 
 func show_item(item: Dictionary) -> void:
@@ -45,14 +55,34 @@ func show_item(item: Dictionary) -> void:
 		return
 	var is_weapon := ItemPickup.is_weapon(item_id)
 	_icon.texture = ItemPickup.ITEM_TEXTURES[item_id]
+	_icon.visible = true
 	var grade := ItemPickup.get_item_grade(item)
 	_rank.text = "Grade %d · %s" % [grade, ItemPickup.get_grade_name(grade)]
+	_rank.visible = true
 	_rank.add_theme_color_override("font_color", ItemPickup.get_grade_color(grade))
-	_stat_icon.texture = preload("res://Sprites/Damage.webp") if is_weapon else preload("res://Sprites/ArmorIcon.webp")
+	_stat_icon.texture = preload("res://Sprites/DamageIcon.webp") if is_weapon else preload("res://Sprites/ArmorIcon.webp")
+	_stat_icon.visible = true
 	_stat.text = "+%d" % (ItemPickup.get_damage_bonus(item) if is_weapon else ItemPickup.get_block_amount(item))
+	_stat.visible = true
 	_set_style(ItemPickup.get_grade_color(grade))
 	visible = true
-	call_deferred("_place_inside_camera")
+	reset_size()
+	_place_inside_camera()
+
+
+func show_description(icon: Texture2D, title: String, description: String) -> void:
+	_icon.texture = icon
+	_icon.visible = icon != null
+	_rank.text = title
+	_rank.visible = not title.is_empty()
+	_rank.add_theme_color_override("font_color", Color.WHITE)
+	_stat_icon.visible = false
+	_stat.text = description
+	_stat.visible = not description.is_empty()
+	_set_style(Color("777777"))
+	visible = true
+	reset_size()
+	_place_inside_camera()
 
 
 func hide_item() -> void:
@@ -62,9 +92,19 @@ func hide_item() -> void:
 func _place_inside_camera() -> void:
 	if not visible:
 		return
+	_update_target_position()
+	position = _target_position
+
+
+func _update_target_position() -> void:
 	var viewport_size := get_viewport_rect().size
-	var desired := get_viewport().get_mouse_position() + Vector2(18, 18)
-	position = Vector2(
+	var mouse := get_viewport().get_mouse_position()
+	var desired := mouse + Vector2(18, 18)
+	if desired.x + size.x > viewport_size.x:
+		desired.x = mouse.x - size.x - 18.0
+	if desired.y + size.y > viewport_size.y:
+		desired.y = mouse.y - size.y - 18.0
+	_target_position = Vector2(
 		clampf(desired.x, 0.0, maxf(0.0, viewport_size.x - size.x)),
 		clampf(desired.y, 0.0, maxf(0.0, viewport_size.y - size.y))
 	)

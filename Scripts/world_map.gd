@@ -21,9 +21,9 @@ func _connect_world() -> void:
 func open() -> void:
 	if _world == null:
 		_connect_world()
-	var tiger := get_tree().get_first_node_in_group("shopkeepers") as WhiteTiger
-	if tiger:
-		tiger.close_shop()
+	var shopkeeper := get_tree().get_first_node_in_group("shopkeepers") as FoxAsha
+	if shopkeeper:
+		shopkeeper.close_shop()
 	_canvas.refresh_markers()
 	show()
 	move_to_front()
@@ -39,6 +39,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	var key_event := event as InputEventKey
 	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
 	if key == KEY_TAB:
+		if _world:
+			_world.dismiss_second_campfire_tab_prompt()
 		if visible:
 			close()
 		else:

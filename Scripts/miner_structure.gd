@@ -53,11 +53,21 @@ func _get_building_tooltip() -> BuildMineTooltip:
 	return world.get_node_or_null("HUD/BuildMineTooltip") as BuildMineTooltip if world else null
 
 
-func get_save_data() -> int:
-	return maxi(0, roundi(_production_time * 1000.0))
+func get_save_data() -> Array:
+	return [maxi(0, roundi(_production_time * 1000.0)), maxi(0, roundi(production_speed * 1000000000.0))]
 
 
-func load_save_data(production_milliseconds: int, offline_seconds: int) -> void:
+func load_save_data(data: Variant, offline_seconds: int) -> void:
+	var production_milliseconds := 0
+	if data is Array:
+		var saved := data as Array
+		production_milliseconds = maxi(0, int(saved[0])) if not saved.is_empty() else 0
+		if saved.size() > 1:
+			production_speed = maxf(0.0, float(saved[1]) / 1000000000.0)
+	else:
+		production_milliseconds = maxi(0, int(data))
+	if _resource_manager:
+		_resource_manager.register_producer(self, resource_id, production_speed)
 	if _resource_manager == null or production_speed <= 0.0:
 		return
 	var interval := 1.0 / production_speed

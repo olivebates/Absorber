@@ -103,7 +103,7 @@ func _make_resource_row(definition: GameResourceDefinition) -> HBoxContainer:
 	var production_speed := _resource_manager.get_production_speed(definition.resource_id)
 	if production_speed > 0.0 and _resource_manager.get_amount(definition.resource_id) < _resource_manager.get_maximum_amount(definition.resource_id):
 		var production := Label.new()
-		production.text = "+%s/s" % _format_speed(production_speed)
+		production.text = "+%s/m" % _format_speed(production_speed * 60.0)
 		production.add_theme_color_override("font_color", Color("65d76e"))
 		production.add_theme_color_override("font_outline_color", Color.BLACK)
 		production.add_theme_constant_override("outline_size", 2)
@@ -114,9 +114,10 @@ func _make_resource_row(definition: GameResourceDefinition) -> HBoxContainer:
 func _format_speed(speed: float) -> String:
 	if is_zero_approx(speed):
 		return "0"
-	if speed < 0.01:
-		return "%.3f" % speed
-	return "%.2f" % speed
+	var formatted := "%.3f" % speed if speed < 0.01 else "%.2f" % speed
+	while formatted.contains(".") and formatted.ends_with("0"):
+		formatted = formatted.trim_suffix("0")
+	return formatted.trim_suffix(".")
 
 
 func _set_style() -> void:

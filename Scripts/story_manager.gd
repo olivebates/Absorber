@@ -1,0 +1,442 @@
+class_name StoryManager
+extends Node
+
+const TRIGGER_DISTANCE_TILES := 3
+const BULL_TRIGGER_DISTANCE_TILES := 6
+const SAVE_FORMAT := "story_events_v3"
+const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
+const ASHA_PORTRAIT := preload("res://Sprites/FoxAsha.webp")
+const LIO_PORTRAIT := preload("res://Sprites/FoxLio.webp")
+const NIA_PORTRAIT := preload("res://Sprites/FoxNia.webp")
+const LUCA_PORTRAIT := preload("res://Sprites/FoxLuca.webp")
+
+var completed_dialogues := 0
+var first_gate_opened := false
+var _active_dialogue := 0
+var _world: WorldNavigation
+var _dialogue_box: DialogueBox
+var _asha: FoxAsha
+var _luca: FoxLuca
+var _lio: StoryFox
+var _nia: StoryFox
+var _first_gate: Gate
+var _bull_spawn: EnemySpawnPoint
+var _first_gate_cell := Vector2i.ZERO
+var _seen_events: Dictionary = {}
+var _queued_events: Array[StringName] = []
+var _active_event: StringName = &""
+var _reopen_shop_after_dialogue := false
+var _shop_to_reopen: FoxAsha
+var _initialized := false
+
+
+func _ready() -> void:
+	add_to_group("story_manager")
+	_world = get_parent() as WorldNavigation
+	_dialogue_box = _world.get_node("HUD/DialogueBox") as DialogueBox
+	_dialogue_box.dialogue_finished.connect(_on_dialogue_finished)
+	_dialogue_box.line_shown.connect(_on_dialogue_line_shown)
+	call_deferred("_finish_setup")
+
+
+func _finish_setup() -> void:
+	if _initialized:
+		return
+	var player := get_tree().get_first_node_in_group("player") as FoxPlayer
+	if player == null:
+		call_deferred("_finish_setup")
+		return
+	_world.player = player
+	_first_gate = _world.get_node_or_null("Gate") as Gate
+	if _first_gate:
+		first_gate_opened = _first_gate.unlocked
+		_first_gate_cell = _world.world_to_cell(_first_gate.global_position)
+		_bull_spawn = _first_gate.unlock_enemy_spawn
+		_first_gate.gate_opened.connect(_on_first_gate_opened)
+	_connect_enemy_story_signals()
+	_find_characters()
+	_initialized = true
+
+
+func _process(_delta: float) -> void:
+	if not _initialized or _world == null or not is_instance_valid(_world.player):
+		return
+	if not is_instance_valid(_asha) or not is_instance_valid(_luca) or not is_instance_valid(_lio) or not is_instance_valid(_nia):
+		_find_characters()
+	if _dialogue_box == null or _dialogue_box.is_open() or _active_dialogue != 0 or _active_event != &"":
+		return
+	if not _queued_events.is_empty():
+		_begin_event_dialogue(_queued_events.pop_front())
+		return
+	match completed_dialogues:
+		0:
+			if is_instance_valid(_nia) and _tile_distance_to(_nia) <= TRIGGER_DISTANCE_TILES:
+				_start_dialogue(1)
+				return
+		1:
+			pass
+		2:
+			if is_instance_valid(_lio) and _tile_distance_to(_lio) <= TRIGGER_DISTANCE_TILES:
+				_start_dialogue(3)
+				return
+	if _check_bull_proximity_event():
+		return
+	if _check_campfire_events():
+		return
+	if first_gate_opened and not _has_seen(&"bull_gate"):
+		_seen_events[&"bull_gate"] = true
+		_start_dialogue(4)
+		return
+	if first_gate_opened and _world.world_to_cell(_world.player.global_position) == _first_gate_cell:
+		_trigger_event_once(&"gate_tile")
+
+
+func interact_with(character_id: StringName) -> bool:
+	if _dialogue_box == null or _dialogue_box.is_open():
+		return true
+	if character_id == &"nia":
+		if completed_dialogues == 0:
+			return _start_dialogue(1)
+		return _play_default_dialogue([
+			_line("Nia", "That big angry bull is still blocking the way forward through the cave.", NIA_PORTRAIT),
+		])
+	if character_id == &"asha":
+		if _has_seen(&"asha_intro"):
+			return false
+		_seen_events[&"asha_intro"] = true
+		_reopen_shop_after_dialogue = true
+		_shop_to_reopen = _asha
+		if _start_dialogue(2):
+			return true
+		_seen_events.erase(&"asha_intro")
+		_reopen_shop_after_dialogue = false
+		return false
+	if character_id == &"luca":
+		if _has_seen(&"luca_intro"):
+			return false
+		_seen_events[&"luca_intro"] = true
+		_reopen_shop_after_dialogue = true
+		_shop_to_reopen = _luca
+		if _play_default_dialogue([
+			_line("Luca", "Whoa, another traveller?", LUCA_PORTRAIT),
+			_line("Luca", "Let me see what I can find for you.", LUCA_PORTRAIT),
+		]):
+			return true
+		_seen_events.erase(&"luca_intro")
+		_reopen_shop_after_dialogue = false
+		_shop_to_reopen = null
+		return false
+	if character_id == &"lio":
+		if completed_dialogues == 2:
+			return _start_dialogue(3)
+		return _play_default_dialogue([
+			_line("Lio", "The giant bull in the cave is blocking the entrance to the desert.", LIO_PORTRAIT),
+		])
+	return false
+
+
+func get_save_data() -> Array:
+	return [
+		completed_dialogues, 0, false, false, false, first_gate_opened,
+		_nia.get_save_data() if is_instance_valid(_nia) else [],
+		_lio.get_save_data() if is_instance_valid(_lio) else [],
+		SAVE_FORMAT, _seen_events.duplicate(true),
+	]
+
+
+func load_save_data(data: Array) -> void:
+	if is_instance_valid(_dialogue_box):
+		_dialogue_box.cancel()
+	if is_instance_valid(_world):
+		_world.interaction_locked = false
+		var camera := _world.player.get_node_or_null("Camera2D") as Camera2D if is_instance_valid(_world.player) else null
+		if camera:
+			camera.position = Vector2.ZERO
+	var saved_progress := maxi(0, int(data[0])) if data.size() > 0 else 0
+	first_gate_opened = bool(data[5]) if data.size() > 5 else first_gate_opened
+	if data.size() > 8 and str(data[8]) == SAVE_FORMAT:
+		completed_dialogues = clampi(saved_progress, 0, 4)
+		_seen_events.clear()
+		if data.size() > 9 and data[9] is Dictionary:
+			for event_id in data[9]:
+				if bool(data[9][event_id]):
+					_seen_events[StringName(event_id)] = true
+	else:
+		# Map saves from the former seven-beat story onto the four retained beats.
+		if saved_progress >= 7:
+			completed_dialogues = 4
+		elif saved_progress >= 5:
+			completed_dialogues = 3
+		elif saved_progress >= 2:
+			completed_dialogues = 2
+		else:
+			completed_dialogues = saved_progress
+		_seen_events.clear()
+		if completed_dialogues >= 2:
+			_seen_events[&"asha_intro"] = true
+		if completed_dialogues >= 4 or first_gate_opened:
+			_seen_events[&"bull_gate"] = true
+	_find_characters()
+	if data.size() > 6 and data[6] is Array and is_instance_valid(_nia):
+		_nia.load_save_data(data[6] as Array)
+	if data.size() > 7 and data[7] is Array and is_instance_valid(_lio):
+		_lio.load_save_data(data[7] as Array)
+	_active_dialogue = 0
+	_active_event = &""
+	_queued_events.clear()
+	_reopen_shop_after_dialogue = false
+	_shop_to_reopen = null
+
+
+func _find_characters() -> void:
+	_asha = _world.get_node_or_null("FoxAsha") as FoxAsha
+	_luca = _world.get_node_or_null("FoxLuca") as FoxLuca
+	for node in get_tree().get_nodes_in_group("story_characters"):
+		if node is StoryFox:
+			var fox := node as StoryFox
+			if fox.character_id == &"lio":
+				_lio = fox
+			elif fox.character_id == &"nia":
+				_nia = fox
+
+
+func _start_dialogue(dialogue_number: int) -> bool:
+	var lines := _get_dialogue(dialogue_number)
+	if lines.is_empty():
+		return false
+	_world.player.stop()
+	_active_dialogue = dialogue_number
+	if not _dialogue_box.play(lines):
+		_active_dialogue = 0
+		return false
+	# Record a story conversation when it begins so saving mid-dialogue cannot
+	# cause the same one-time conversation to trigger again after loading.
+	completed_dialogues = maxi(completed_dialogues, dialogue_number)
+	return true
+
+
+func _play_default_dialogue(lines: Array[Dictionary]) -> bool:
+	if lines.is_empty():
+		return false
+	_world.player.stop()
+	return _dialogue_box.play(lines)
+
+
+func on_structure_built(resource_id: StringName) -> void:
+	match resource_id:
+		&"fish":
+			_trigger_event_once(&"fish_hut")
+		&"gold_ore":
+			_trigger_event_once(&"gold_mine")
+		&"jewels":
+			_trigger_event_once(&"gem_mine")
+		&"wood":
+			_trigger_event_once(&"wood_lodge")
+
+
+func on_asha_purchase() -> void:
+	if _has_seen(&"asha_purchase"):
+		return
+	if is_instance_valid(_asha):
+		_asha.close_shop()
+	_reopen_shop_after_dialogue = true
+	_shop_to_reopen = _asha
+	_trigger_event_once(&"asha_purchase")
+
+
+func on_luca_purchase() -> void:
+	if _has_seen(&"luca_purchase"):
+		return
+	if is_instance_valid(_luca):
+		_luca.close_shop()
+	_reopen_shop_after_dialogue = true
+	_shop_to_reopen = _luca
+	_trigger_event_once(&"luca_purchase")
+
+
+func on_campfire_teleported() -> void:
+	_trigger_event_once(&"campfire_teleport")
+
+
+func _trigger_event_once(event_id: StringName) -> bool:
+	if _has_seen(event_id):
+		return false
+	_seen_events[event_id] = true
+	if _dialogue_box.is_open() or _active_dialogue != 0 or _active_event != &"":
+		_queued_events.append(event_id)
+		return true
+	return _begin_event_dialogue(event_id)
+
+
+func _begin_event_dialogue(event_id: StringName) -> bool:
+	var lines := _get_event_dialogue(event_id)
+	if lines.is_empty():
+		return false
+	_world.player.stop()
+	_active_event = event_id
+	if not _dialogue_box.play(lines):
+		_active_event = &""
+		return false
+	return true
+
+
+func _on_dialogue_finished() -> void:
+	var finished_event := _active_event
+	if _active_dialogue > 0:
+		completed_dialogues = maxi(completed_dialogues, _active_dialogue)
+		_active_dialogue = 0
+	_active_event = &""
+	if finished_event == &"gate_tile":
+		_pan_camera_back()
+	if not _queued_events.is_empty():
+		_begin_event_dialogue(_queued_events.pop_front())
+		return
+	if _reopen_shop_after_dialogue:
+		_reopen_shop_after_dialogue = false
+		var shopkeeper := _shop_to_reopen
+		_shop_to_reopen = null
+		if is_instance_valid(shopkeeper):
+			shopkeeper.call_deferred("open_shop")
+
+
+func _on_dialogue_line_shown(index: int) -> void:
+	if _active_event != &"gate_tile" or index != 1:
+		return
+	var boss_spawn := _world.get_node_or_null("ChickenSpawn35") as Node2D
+	var camera := _world.player.get_node_or_null("Camera2D") as Camera2D
+	if boss_spawn == null or camera == null:
+		return
+	_dialogue_box.set_input_locked(true)
+	var target_offset := boss_spawn.global_position - _world.player.global_position
+	var tween := camera.create_tween()
+	tween.tween_property(camera, "position", target_offset, 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tween.finished.connect(_dialogue_box.set_input_locked.bind(false))
+
+
+func _pan_camera_back() -> void:
+	var camera := _world.player.get_node_or_null("Camera2D") as Camera2D
+	if camera == null:
+		return
+	_world.interaction_locked = true
+	var tween := camera.create_tween()
+	tween.tween_property(camera, "position", Vector2.ZERO, 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tween.finished.connect(func() -> void: _world.interaction_locked = false)
+
+
+func _on_first_gate_opened() -> void:
+	first_gate_opened = true
+
+
+func _connect_enemy_story_signals() -> void:
+	var armor_goat := _world.get_node_or_null("ChickenSpawn12") as EnemySpawnPoint
+	if armor_goat and not armor_goat.enemy_killed.is_connected(_on_evil_goat_killed):
+		armor_goat.enemy_killed.connect(_on_evil_goat_killed)
+	for node in get_tree().get_nodes_in_group("enemy_spawns"):
+		if not node is EnemySpawnPoint:
+			continue
+		var spawn := node as EnemySpawnPoint
+		if spawn.enemy_type == 6 and not spawn.enemy_killed.is_connected(_on_evil_goat_killed):
+			spawn.enemy_killed.connect(_on_evil_goat_killed)
+
+
+func _on_evil_goat_killed(_enemy: ChickenEnemy) -> void:
+	_trigger_event_once(&"evil_goat_killed")
+
+
+func _check_bull_proximity_event() -> bool:
+	if _has_seen(&"bull_proximity") or not is_instance_valid(_bull_spawn):
+		return false
+	return _trigger_event_once(&"bull_proximity") if _tile_distance_to(_bull_spawn) <= BULL_TRIGGER_DISTANCE_TILES else false
+
+
+func _check_campfire_events() -> bool:
+	for node in get_tree().get_nodes_in_group("campfires"):
+		if not node is Campfire or not is_instance_valid(node):
+			continue
+		var campfire := node as Campfire
+		if campfire.name == &"Campfire2" and campfire.is_player_in_range(_world.player) and not _has_seen(&"second_campfire"):
+			return _trigger_event_once(&"second_campfire")
+		var offset := _world.world_to_cell(_world.player.global_position) - _world.world_to_cell(campfire.global_position)
+		if absi(offset.x) + absi(offset.y) == 1 and not _has_seen(&"campfire_adjacent"):
+			return _trigger_event_once(&"campfire_adjacent")
+	return false
+
+
+func _has_seen(event_id: StringName) -> bool:
+	return bool(_seen_events.get(event_id, false))
+
+
+func _tile_distance_to(character: Node2D) -> float:
+	if character == null or not is_instance_valid(character):
+		return 999999
+	var offset := _world.world_to_cell(_world.player.global_position) - _world.world_to_cell(character.global_position)
+	return Vector2(offset).length()
+
+
+func _line(speaker: String, text: String, portrait: Texture2D) -> Dictionary:
+	return {"speaker": speaker, "text": text, "portrait": portrait}
+
+
+func _get_dialogue(dialogue_number: int) -> Array[Dictionary]:
+	match dialogue_number:
+		1:
+			return [
+				_line("Nia", "Be careful. A big angry bull in the cave is blocking the way forward.", NIA_PORTRAIT),
+				_line("Mira", "Then I'll get it out of the way.", PLAYER_PORTRAIT),
+				_line("Nia", "Talk to Asha first. She can help you prepare.", NIA_PORTRAIT),
+			]
+		2:
+			return [
+				_line("Asha", "Oh, there you are! Welcome back :)", ASHA_PORTRAIT),
+				_line("Asha", "Have a look at what I've got", ASHA_PORTRAIT),
+			]
+		3:
+			return [
+				_line("Lio", "A giant bull in the cave is blocking the entrance to the desert.", LIO_PORTRAIT),
+				_line("Mira", "So I have to defeat it to pass?", PLAYER_PORTRAIT),
+				_line("Lio", "Exactly. Beat the bull and the road will be clear.", LIO_PORTRAIT),
+			]
+		4:
+			return [
+				_line("Mira", "Wow, I can't believe I actually did that!", PLAYER_PORTRAIT),
+			]
+	return []
+
+
+func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
+	match event_id:
+		&"bull_proximity":
+			return [_line("Mira", "Whoa, I'm feeling some seriously synister energy from that cave.", PLAYER_PORTRAIT)]
+		&"fish_hut":
+			return [_line("Mira", "That'll do.", PLAYER_PORTRAIT)]
+		&"gold_mine":
+			return [_line("Mira", "I'm going to get so much gold.", PLAYER_PORTRAIT)]
+		&"gem_mine":
+			return [_line("Mira", "That'll do nicely.", PLAYER_PORTRAIT)]
+		&"wood_lodge":
+			return [_line("Mira", "A nice lodge to cut my wood from!", PLAYER_PORTRAIT)]
+		&"campfire_adjacent":
+			return [_line("Mira", "What a nice temperature.", PLAYER_PORTRAIT)]
+		&"asha_purchase":
+			return [
+				_line("Mira", "Thank you!", PLAYER_PORTRAIT),
+				_line("Asha", "My pleasure.", ASHA_PORTRAIT),
+			]
+		&"gate_tile":
+			return [
+				_line("Mira", "Man, it sure is hot up ahead", PLAYER_PORTRAIT),
+				_line("Mira", "I can sense a monster over there.", PLAYER_PORTRAIT),
+				_line("Mira", "He feels powerful.", PLAYER_PORTRAIT),
+			]
+		&"second_campfire":
+			return [
+				_line("Mira", "These campfires seem to be connected.", PLAYER_PORTRAIT),
+				_line("Mira", "I can get around quickly by pressing TAB and selecting a campfire.", PLAYER_PORTRAIT),
+			]
+		&"luca_purchase":
+			return [_line("Luca", "Appreicate it.", LUCA_PORTRAIT)]
+		&"campfire_teleport":
+			return [_line("Mira", "Convenient.", PLAYER_PORTRAIT)]
+		&"evil_goat_killed":
+			return [_line("Mira", "Oh look, it dropped a shield!", PLAYER_PORTRAIT)]
+	return []

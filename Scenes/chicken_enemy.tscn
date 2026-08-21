@@ -99,3 +99,16 @@ color = Color(0, 0, 0, 1)
 position = Vector2(-20, -26)
 polygon = PackedVector2Array(-3.5, 0, -2.5, -2.5, 0, -3.5, 2.5, -2.5, 3.5, 0, 2.5, 2.5, 0, 3.5, -2.5, 2.5)
 color = Color(0.898, 0.224, 0.208, 1)
+
+[node name="DamageLabel" type="Label" parent="."]
+offset_left = -13.0
+offset_top = -35.0
+offset_right = 15.0
+offset_bottom = -17.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 11
+text = "1"
+vertical_alignment = 1

@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://Scripts/story_fox.gd" id="1_story_fox"]
+[ext_resource type="Texture2D" path="res://Sprites/FoxNia.webp" id="2_sprite"]
+
+[node name="FoxNia" type="Node2D"]
+z_index = 4
+script = ExtResource("1_story_fox")
+character_id = &"nia"
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_sprite")

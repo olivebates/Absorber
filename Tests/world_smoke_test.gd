@@ -44,7 +44,7 @@ func _run() -> void:
 	spawn.reward_resource_id = &"gold_ore"
 	var expected_sprite_paths: Array[String] = ["res://Sprites/Mole.webp", "res://Sprites/Mole2.webp", "res://Sprites/Goat.webp"]
 	for index in range(3):
-		var variant_enemy := EnemySpawnPoint.ENEMY_SCENES[index + 3].instantiate() as ChickenEnemy
+		var variant_enemy := (load(EnemySpawnPoint.ENEMY_SCENES[index + 3]) as PackedScene).instantiate() as ChickenEnemy
 		var variant_sprite := variant_enemy.get_node("ChickenSprite") as Sprite2D
 		var expected_sprite_path: String = expected_sprite_paths[index]
 		assert(variant_sprite.texture.resource_path == expected_sprite_path, "Each new enemy type must use its matching sprite")
@@ -101,7 +101,7 @@ func _run() -> void:
 	var bull_spawn := world.get_node("ChickenSpawn3") as EnemySpawnPoint
 	bull_spawn._spawn_enemy()
 	var bull := bull_spawn._spawned_enemies.back() as ChickenEnemy
-	var bull_variant := EnemySpawnPoint.ENEMY_SCENES[2].instantiate() as ChickenEnemy
+	var bull_variant := (load(EnemySpawnPoint.ENEMY_SCENES[2]) as PackedScene).instantiate() as ChickenEnemy
 	assert((bull_variant.get_node("ChickenSprite") as Sprite2D).texture.resource_path == "res://Sprites/Bull.webp", "Bull must be selectable from an enemy spawn point")
 	bull_variant.free()
 	bull.damage_reward = 2
@@ -123,14 +123,14 @@ func _run() -> void:
 	ore._try_build_mine()
 	await process_frame
 	assert(ore.get_node_or_null("MinerStructure") is MinerStructure, "A mine should be built on gold ore when its cost is affordable")
-	assert(is_equal_approx(resource_manager.get_production_speed(&"gold_ore"), 1.0 / 60.0), "Each mine must produce one gold ore every 60 seconds")
+	assert(is_equal_approx(resource_manager.get_production_speed(&"gold_ore"), 1.0 / 300.0), "Each mine must produce one gold ore every five minutes")
 	gold_row = resource_panel._rows.get_child(0) as HBoxContainer
 	assert((gold_row.get_child(1) as Label).text == "0/10", "Resource HUD must refresh the capped amount")
-	assert(gold_row.get_child_count() == 3 and (gold_row.get_child(2) as Label).text == "+0.02/s", "Resource HUD must show active gain speed separately")
+	assert(gold_row.get_child_count() == 3 and (gold_row.get_child(2) as Label).text == "+0.2/m", "Resource HUD must show active gain speed without unused decimals")
 	assert((gold_row.get_child(2) as Label).get_theme_color("font_color") == Color("65d76e"), "Active resource gain must be green")
 	var mine := ore.get_node("MinerStructure") as MinerStructure
 	ore.global_position = fox.global_position
-	mine._process(60.0)
+	mine._process(300.0)
 	assert(resource_manager.get_amount(&"gold_ore") == 1, "Mine production should add gold ore to the capped resource amount")
 	assert(mine.get_child_count() > 1, "On-screen mines must create green +1 production feedback")
 	resource_manager.add_resource(&"gold_ore", 100.0)
@@ -146,11 +146,9 @@ func _run() -> void:
 	damage_enemy.take_damage(damage_enemy.health)
 	await create_timer(1.0).timeout
 	assert(fox.get_base_damage_for_color(FoxPlayer.COLOR_YELLOW) == 3, "Damage reward color must be selected independently by the spawner")
-	assert(fox.collect_item("weathered_sword"), "Picked-up sword should occupy inventory")
-	assert(fox.collect_item("weathered_armor"), "Picked-up armor should occupy inventory")
-	assert(fox.get_slot_item("weapon", 0).is_empty() and fox.get_slot_item("armor", 0).is_empty(), "Picking up equipment must not auto-equip it")
-	assert(fox.move_or_merge("inventory", 0, "weapon", 0), "Inventory sword should move into a weapon slot")
-	assert(fox.move_or_merge("inventory", 1, "armor", 0), "Inventory armor should move into an armor slot")
+	assert(fox.collect_item("weathered_sword"), "Picked-up sword should be collected")
+	assert(fox.collect_item("weathered_armor"), "Picked-up armor should be collected")
+	assert(not fox.get_slot_item("weapon", 0).is_empty() and not fox.get_slot_item("armor", 0).is_empty(), "Equipment must auto-equip into valid empty slots")
 	assert(fox.get_damage_for_color(FoxPlayer.COLOR_RED) == fox.get_base_damage_for_color(FoxPlayer.COLOR_RED) + ItemPickup.get_damage_bonus(fox.get_slot_item("weapon", 0)), "Weapon damage should be added to the base color damage")
 	assert(fox.collect_item("weathered_sword"), "A second sword should use an empty inventory slot")
 	assert(fox.move_or_merge("inventory", 0, "weapon", 0), "Matching items should merge")
@@ -160,7 +158,7 @@ func _run() -> void:
 	fox.take_damage(2)
 	assert(fox.health == armored_health - 1, "Weathered armor should block one damage")
 	var grid := world.get_node("HUD/DamageGrid") as DamageGrid
-	assert(grid._grid.columns == 2 and grid._grid.get_child_count() == 8, "Damage HUD should show the equipped weapon and every color with a summed value above one")
+	assert(grid._grid.columns == 2 and grid._grid.get_child_count() == 6, "Damage HUD must show upgraded Red and Yellow base damage while hiding base-one Blue")
 	assert(is_equal_approx(grid.get_anchor(SIDE_LEFT), 0.0), "Damage HUD must be anchored to the top left")
 	assert(grid._grid.get_child(2).get_child(0) is Polygon2D, "Damage color dots must remain in the first grid column")
 	fox.add_color_damage(FoxPlayer.COLOR_RED, 1)
@@ -176,10 +174,14 @@ func _run() -> void:
 	await create_timer(0.35).timeout
 	assert(fox.get_slot_item("inventory", 0).get("grade", -1) == 1, "Auto merge should upgrade the surviving item")
 	assert(not inventory_panel._auto_merge_button.visible, "Auto Merge must hide after all valid merges are consumed")
+	var respawn_campfire := world.get_node("Campfire") as Campfire
+	fox.global_position = respawn_campfire.global_position
+	world._update_exploration()
 	var starting_position := fox._spawn_position
+	assert(starting_position == respawn_campfire.get_respawn_position(), "A visited campfire must set the respawn point to the tile directly below it")
 	fox.global_position += Vector2(64, 0)
 	fox.take_damage(fox.health + fox.get_total_block())
-	assert(fox.health == fox.max_health and fox.global_position == starting_position, "Death should restore the fox at the original spawn with full health")
+	assert(fox.health == 1 and fox.global_position == starting_position, "Death should restore the fox at its last campfire with one health")
 	fox.health = fox.max_health - 1
 	fox._heal_time_left = 0.01
 	fox._physics_process(0.02)

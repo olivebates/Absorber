@@ -180,6 +180,11 @@ func get_save_data() -> Array:
 		if has_ever_owned(definition.resource_id):
 			discovery_mask |= 1 << index
 	result[0] = discovery_mask
+	result.append("production_v1")
+	var production_speeds: Array[int] = []
+	for definition in resources:
+		production_speeds.append(maxi(0, roundi(definition.production_speed * 1000000000.0)) if definition else 0)
+	result.append(production_speeds)
 	return result
 
 
@@ -187,15 +192,22 @@ func load_save_data(data: Array) -> bool:
 	if data.is_empty():
 		return false
 	var discovery_mask := int(data[0])
+	var production_marker_index := resources.size() + 1
+	var saved_production_speeds: Array = []
+	if data.size() > production_marker_index + 1 and str(data[production_marker_index]) == "production_v1" and data[production_marker_index + 1] is Array:
+		saved_production_speeds = data[production_marker_index + 1] as Array
 	for index in range(resources.size()):
 		var definition := resources[index]
 		if definition == null:
 			continue
 		var amount_milliseconds := int(data[index + 1]) if index + 1 < data.size() else 0
+		if index < saved_production_speeds.size():
+			definition.production_speed = maxf(0.0, float(saved_production_speeds[index]) / 1000000000.0)
 		var maximum_amount := get_maximum_amount(definition.resource_id)
 		_amounts[definition.resource_id] = clampf(float(amount_milliseconds) / 1000.0, 0.0, float(maximum_amount))
 		_ever_owned[definition.resource_id] = (discovery_mask & (1 << index)) != 0
 		if has_ever_owned(definition.resource_id):
 			resource_discovered.emit(definition.resource_id)
 		resource_changed.emit(definition.resource_id, get_amount(definition.resource_id), maximum_amount)
+		production_changed.emit(definition.resource_id, get_production_speed(definition.resource_id))
 	return true

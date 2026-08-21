@@ -10,7 +10,7 @@ const ADJACENT_OFFSETS := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.
 
 @export var build_cost: Dictionary = {"gold_ore": 5, "jewels": 2}
 @export var mined_resource_id: StringName = &"gold_ore"
-@export var mine_production_speed := 1.0 / 60.0
+@export var mine_production_speed := 1.0 / 300.0
 @export var shack_build_cost: Dictionary = SHACK_COST
 @export var shack_scene: PackedScene = GOLD_SHACK_SCENE
 @export var shack_icon: Texture2D = GOLD_SHACK_ICON
@@ -24,6 +24,8 @@ var _button_is_in_hud := false
 var _build_tooltip: BuildMineTooltip
 var _shack_buttons: Array[Button] = []
 var _tile_highlight: Line2D
+var _build_hover_label: Label
+var _mine_selected := false
 
 @onready var build_button: Button = $BuildMineButton
 
@@ -33,7 +35,7 @@ func _ready() -> void:
 	_tile_highlight = _create_tile_highlight()
 	add_child(_tile_highlight)
 	_resource_manager = get_tree().get_first_node_in_group("resource_manager") as ResourceManager
-	build_button.pressed.connect(_try_build_mine)
+	build_button.pressed.connect(_on_build_button_pressed)
 	build_button.mouse_entered.connect(_show_build_tooltip)
 	build_button.mouse_exited.connect(_hide_build_tooltip.bind(build_button))
 	build_button.visible = false
@@ -46,6 +48,9 @@ func _ready() -> void:
 
 func show_build_button() -> void:
 	if is_instance_valid(_mine):
+		_mine_selected = true
+		if _build_hover_label:
+			_build_hover_label.hide()
 		_show_shack_buttons()
 	else:
 		_clear_shack_buttons()
@@ -57,6 +62,9 @@ func show_build_button() -> void:
 
 func hide_build_button() -> void:
 	build_button.visible = false
+	_mine_selected = false
+	if _build_hover_label:
+		_build_hover_label.hide()
 	_clear_shack_buttons()
 	_hide_build_tooltip()
 
@@ -64,13 +72,23 @@ func hide_build_button() -> void:
 func _try_build_mine() -> void:
 	if _mine != null or _resource_manager == null:
 		return
-	if not _resource_manager.spend_resources(build_cost):
+	if not _resource_manager.spend_resources(get_current_build_cost()):
 		_update_build_availability()
 		return
 	_create_mine()
 	build_button.visible = false
 	_clear_shack_buttons()
 	_hide_build_tooltip()
+	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+	if story:
+		story.on_structure_built(mined_resource_id)
+
+
+func _on_build_button_pressed() -> void:
+	if is_instance_valid(_mine):
+		_show_shack_buttons()
+	else:
+		_try_build_mine()
 
 
 func get_save_data() -> Array:
@@ -88,7 +106,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 		return true
 	if not is_instance_valid(_mine):
 		_create_mine()
-	_mine.load_save_data(int(data[1]) if data.size() > 1 else 0, offline_seconds)
+	_mine.load_save_data(data[1] if data.size() > 1 else 0, offline_seconds)
 	build_button.visible = false
 	_hide_build_tooltip()
 	return true
@@ -96,17 +114,54 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 
 func _cost_text() -> String:
 	var entries: Array[String] = []
-	for resource_id in build_cost:
+	var current_cost := get_current_build_cost()
+	for resource_id in current_cost:
 		var definition := _resource_manager.get_definition(StringName(resource_id)) if _resource_manager else null
-		entries.append("%d %s" % [int(build_cost[resource_id]), definition.display_name if definition else str(resource_id)])
+		entries.append("%d %s" % [int(current_cost[resource_id]), definition.display_name if definition else str(resource_id)])
 	return ", ".join(entries)
+
+
+func get_current_build_cost() -> Dictionary:
+	var built_count := 0
+	for node in get_tree().get_nodes_in_group("gold_ores"):
+		if node is GoldOre and node.mined_resource_id == mined_resource_id and is_instance_valid(node._mine):
+			built_count += 1
+	return _scale_cost(build_cost, built_count)
+
+
+func get_current_shack_cost() -> Dictionary:
+	var built_count := 0
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if node is GoldShack and is_instance_valid(node) and node.resource_id == mined_resource_id:
+			built_count += 1
+	return _scale_cost(shack_build_cost, built_count)
+
+
+func _scale_cost(base_cost: Dictionary, built_count: int) -> Dictionary:
+	var result := base_cost.duplicate()
+	for resource_id in result:
+		var price := maxi(0, int(result[resource_id]))
+		for _built in range(maxi(0, built_count)):
+			price = ceili(float(price) * 1.25)
+		result[resource_id] = price
+	return result
 
 
 func _process(_delta: float) -> void:
 	_update_hover_highlight(get_global_mouse_position())
+	_update_mine_build_hover_label(get_global_mouse_position())
 	if build_button.visible:
 		_update_build_button_position()
+	if _build_hover_label and _build_hover_label.visible:
+		_update_build_hover_label_position()
 	_update_shack_button_positions()
+
+
+func _update_mine_build_hover_label(world_mouse_position: Vector2) -> void:
+	if _build_hover_label == null:
+		return
+	var hovered := Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(world_mouse_position))
+	_build_hover_label.visible = is_instance_valid(_mine) and not _mine_selected and hovered and _has_permanent_shack_cell()
 
 
 func _on_resource_changed(_resource_id: StringName, _amount: int, _maximum_amount: int) -> void:
@@ -116,11 +171,11 @@ func _on_resource_changed(_resource_id: StringName, _amount: int, _maximum_amoun
 		if is_instance_valid(button):
 			var cell := Vector2i(button.get_meta("build_cell", Vector2i.ZERO))
 			var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
-			button.disabled = _resource_manager == null or not _resource_manager.can_afford(shack_build_cost) or world == null or not world.can_build_at_cell(cell)
+			button.disabled = _resource_manager == null or not _resource_manager.can_afford(get_current_shack_cost()) or world == null or not world.can_build_at_cell(cell)
 
 
 func _update_build_availability() -> void:
-	build_button.disabled = _resource_manager == null or not _resource_manager.can_afford(build_cost)
+	build_button.disabled = _resource_manager == null or not _resource_manager.can_afford(get_current_build_cost())
 
 
 func _move_build_button_to_hud() -> void:
@@ -134,6 +189,19 @@ func _move_build_button_to_hud() -> void:
 		return
 	build_button.reparent(hud, false)
 	_button_is_in_hud = true
+	_build_hover_label = Label.new()
+	_build_hover_label.name = "MineBuildHoverLabel"
+	_build_hover_label.text = "Build"
+	_build_hover_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_build_hover_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_build_hover_label.size = Vector2(72, 28)
+	_build_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_build_hover_label.add_theme_color_override("font_color", Color.WHITE)
+	_build_hover_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_build_hover_label.add_theme_constant_override("outline_size", 3)
+	_build_hover_label.z_index = 25
+	_build_hover_label.hide()
+	hud.add_child(_build_hover_label)
 	_build_tooltip = hud.get_node_or_null("BuildMineTooltip") as BuildMineTooltip
 	_update_build_button_position()
 
@@ -143,6 +211,13 @@ func _update_build_button_position() -> void:
 		return
 	var screen_position := get_global_transform_with_canvas().origin
 	build_button.position = screen_position - build_button.size * 0.5
+
+
+func _update_build_hover_label_position() -> void:
+	if _build_hover_label == null:
+		return
+	var screen_position := get_global_transform_with_canvas().origin
+	_build_hover_label.position = screen_position - _build_hover_label.size * 0.5
 
 
 func _set_button_style() -> void:
@@ -160,7 +235,7 @@ func _set_button_style() -> void:
 
 func _show_build_tooltip() -> void:
 	if _mine == null and build_button.visible and _build_tooltip:
-		_build_tooltip.show_cost(build_cost, _resource_manager, build_button, mine_icon)
+		_build_tooltip.show_cost(get_current_build_cost(), _resource_manager, build_button, mine_icon)
 
 
 func _hide_build_tooltip(requester: Variant = null) -> void:
@@ -193,7 +268,7 @@ func _show_shack_buttons() -> void:
 		button.text = capacity_build_label
 		button.custom_minimum_size = Vector2(96, 30)
 		button.set_meta("build_cell", candidate)
-		button.disabled = _resource_manager == null or not _resource_manager.can_afford(shack_build_cost) or not world.can_build_at_cell(candidate)
+		button.disabled = _resource_manager == null or not _resource_manager.can_afford(get_current_shack_cost()) or not world.can_build_at_cell(candidate)
 		_set_action_button_style(button)
 		button.pressed.connect(_try_build_shack.bind(candidate))
 		button.mouse_entered.connect(_show_shack_tooltip.bind(button))
@@ -208,7 +283,7 @@ func _try_build_shack(cell: Vector2i) -> void:
 	if world == null or _resource_manager == null or not world.can_build_at_cell(cell):
 		_show_shack_buttons()
 		return
-	if not _resource_manager.spend_resources(shack_build_cost):
+	if not _resource_manager.spend_resources(get_current_shack_cost()):
 		return
 	var shack := shack_scene.instantiate() as GoldShack
 	shack.global_position = world.cell_to_world(cell)
@@ -219,7 +294,7 @@ func _try_build_shack(cell: Vector2i) -> void:
 
 func _show_shack_tooltip(button: Button) -> void:
 	if _build_tooltip and is_instance_valid(button):
-		_build_tooltip.show_cost(shack_build_cost, _resource_manager, button, shack_icon)
+		_build_tooltip.show_cost(get_current_shack_cost(), _resource_manager, button, shack_icon)
 
 
 func _clear_shack_buttons() -> void:
