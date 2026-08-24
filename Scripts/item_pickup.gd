@@ -10,6 +10,7 @@ const ITEM_NAMES := {
 	"potion_silver": "Silver Potion",
 	"potion_royal": "Royal Potion",
 	"potion_holy": "Holy Potion",
+	"spare_cart_parts": "Spare Part",
 }
 
 const ITEM_TEXTURES := {
@@ -21,6 +22,7 @@ const ITEM_TEXTURES := {
 	"potion_silver": preload("res://Sprites/PotionSilver.webp"),
 	"potion_royal": preload("res://Sprites/PotionRoyal.webp"),
 	"potion_holy": preload("res://Sprites/PotionHoly.webp"),
+	"spare_cart_parts": preload("res://Sprites/SpareParts.webp"),
 }
 
 const GRADES := [
@@ -43,6 +45,7 @@ const ITEM_DATA := {
 	"potion_silver": {"healing": 520, "slot": "consumable"},
 	"potion_royal": {"healing": 1350, "slot": "consumable"},
 	"potion_holy": {"healing": 2147483647, "full_heal": true, "slot": "consumable"},
+	"spare_cart_parts": {"slot": "quest", "protected": true, "description": "Give them to Deru in The Snakemouth Expanse."},
 }
 
 var item_id := "weathered_sword"
@@ -144,6 +147,14 @@ static func is_equipment(item_id: String) -> bool:
 
 static func is_consumable(item_id: String) -> bool:
 	return str(ITEM_DATA.get(item_id, {}).get("slot", "")) == "consumable"
+
+
+static func is_protected(item_id: String) -> bool:
+	return bool(ITEM_DATA.get(item_id, {}).get("protected", false))
+
+
+static func get_description(item_id: String) -> String:
+	return str(ITEM_DATA.get(item_id, {}).get("description", ""))
 
 
 static func get_healing_amount(item: Dictionary) -> int:

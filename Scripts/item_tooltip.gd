@@ -56,6 +56,19 @@ func show_item(item: Dictionary) -> void:
 	var is_weapon := ItemPickup.is_weapon(item_id)
 	_icon.texture = ItemPickup.ITEM_TEXTURES[item_id]
 	_icon.visible = true
+	var description := ItemPickup.get_description(item_id)
+	if not description.is_empty():
+		_rank.text = str(ItemPickup.ITEM_NAMES.get(item_id, item_id.capitalize()))
+		_rank.visible = true
+		_rank.add_theme_color_override("font_color", Color.WHITE)
+		_stat_icon.visible = false
+		_stat.text = description
+		_stat.visible = true
+		_set_style(Color("b71c1c") if ItemPickup.is_protected(item_id) else Color("777777"))
+		visible = true
+		reset_size()
+		_place_inside_camera()
+		return
 	if ItemPickup.is_consumable(item_id):
 		_rank.text = str(ItemPickup.ITEM_NAMES.get(item_id, item_id.capitalize()))
 		_rank.visible = true

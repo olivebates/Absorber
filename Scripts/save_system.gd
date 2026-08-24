@@ -295,6 +295,7 @@ func _capture_state(timestamp: int) -> Array:
 		_world.get_exploration_save_data(),
 		_get_story_manager().get_save_data() if _get_story_manager() else [],
 		_get_luca().get_save_data() if _get_luca() else [],
+		_get_deru().get_save_data() if _get_deru() else [],
 	]
 
 
@@ -350,6 +351,9 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 	var luca: FoxAsha = _get_luca()
 	if luca:
 		luca.load_save_data(state[12] as Array if state.size() > 12 and state[12] is Array else [])
+	var deru: FoxAsha = _get_deru()
+	if deru:
+		deru.load_save_data(state[13] as Array if state.size() > 13 and state[13] is Array else [])
 	var spawn_data := state[4] as Array
 	var saved_spawns_by_name: Dictionary = {}
 	var uses_named_spawns := false
@@ -443,6 +447,10 @@ func _get_shopkeeper() -> FoxAsha:
 
 func _get_luca() -> FoxAsha:
 	return _world.get_node_or_null("FoxLuca") as FoxAsha
+
+
+func _get_deru() -> FoxAsha:
+	return _world.get_node_or_null("FoxDeru") as FoxAsha
 
 
 func _get_story_manager() -> StoryManager:

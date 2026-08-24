@@ -165,8 +165,8 @@ func play_merge_success() -> void:
 
 func _set_style(background: Color, merge_highlight: bool) -> void:
 	var style := StyleBoxFlat.new()
-	style.bg_color = background
-	style.border_color = Color.YELLOW if merge_highlight else Color.BLACK
+	style.bg_color = Color("5b171b") if storage == "trash" else background
+	style.border_color = Color("ff5252") if storage == "trash" else Color.YELLOW if merge_highlight else Color.BLACK
 	style.set_border_width_all(3 if merge_highlight else 2)
 	style.set_corner_radius_all(4)
 	add_theme_stylebox_override("panel", style)

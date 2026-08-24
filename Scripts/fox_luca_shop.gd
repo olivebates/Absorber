@@ -24,7 +24,7 @@ func _get_shop_title() -> String:
 	return "Luca's Store"
 
 
-func _notify_story_purchase() -> void:
+func _notify_story_purchase(_upgrade_index := -1) -> void:
 	if is_instance_valid(_shopkeeper):
 		_shopkeeper.play_purchase_reaction()
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager

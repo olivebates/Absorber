@@ -8,12 +8,13 @@ var _drag_source_storage := ""
 var _drag_source_index := -1
 var _auto_merge_button: Button
 var _auto_merge_in_progress := false
+var _trash_slot: ItemSlot
 
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	offset_left = -214.0
-	offset_top = -240.0
+	offset_top = -288.0
 	offset_right = -14.0
 	offset_bottom = -126.0
 	_set_style()
@@ -28,6 +29,22 @@ func _ready() -> void:
 	_items.alignment = BoxContainer.ALIGNMENT_CENTER
 	_items.add_theme_constant_override("separation", 5)
 	content.add_child(_items)
+	var trash_row := HBoxContainer.new()
+	trash_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	content.add_child(trash_row)
+	_trash_slot = ItemSlot.new()
+	_trash_slot.name = "TrashSlot"
+	trash_row.add_child(_trash_slot)
+	_trash_slot.mouse_entered.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip and not _trash_slot.item.is_empty():
+			tooltip.show_item(_trash_slot.item)
+	)
+	_trash_slot.mouse_exited.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip:
+			tooltip.hide_item()
+	)
 	_auto_merge_button = Button.new()
 	_auto_merge_button.text = "Auto Merge"
 	_auto_merge_button.tooltip_text = "Merge all matching items in the inventory"
@@ -88,7 +105,10 @@ func _refresh() -> void:
 		slot.configure(self, "inventory", index, item, merge_target)
 		_connect_tooltip(slot)
 		_items.add_child(slot)
-	_auto_merge_button.visible = _player.merge_count >= 3 and _player.has_auto_mergeable_inventory_pair()
+	var trash_item := _player.get_slot_item("trash", 0)
+	_trash_slot.configure(self, "trash", 0, trash_item)
+	_trash_slot.tooltip_text = "Trash (drag an item here; the previous item is discarded)"
+	_auto_merge_button.visible = _player.has_auto_mergeable_inventory_pair()
 	_auto_merge_button.disabled = _auto_merge_in_progress
 
 
@@ -125,6 +145,8 @@ func drop_in_slot(source: ItemSlot, target: ItemSlot) -> void:
 
 
 func click_slot(slot: ItemSlot) -> void:
+	if slot.storage == "trash":
+		return
 	if ItemPickup.is_consumable(str(slot.item.get("item_id", ""))):
 		_player.consume_inventory_item(slot.slot_index)
 	elif ItemPickup.is_weapon(str(slot.item.get("item_id", ""))):

@@ -9,6 +9,8 @@ const ASHA_PORTRAIT := preload("res://Sprites/FoxAsha.webp")
 const LIO_PORTRAIT := preload("res://Sprites/FoxLio.webp")
 const NIA_PORTRAIT := preload("res://Sprites/FoxNia.webp")
 const LUCA_PORTRAIT := preload("res://Sprites/FoxLuca.webp")
+const DERU_PORTRAIT := preload("res://Sprites/FoxDeruSad.webp")
+const DERU_HAPPY_PORTRAIT := preload("res://Sprites/FoxDeruHappy.webp")
 
 var completed_dialogues := 0
 var first_gate_opened := false
@@ -19,6 +21,7 @@ var _asha: FoxAsha
 var _luca: FoxLuca
 var _lio: FoxLio
 var _nia: StoryFox
+var _deru: FoxAsha
 var _first_gate: Gate
 var _bull_spawn: EnemySpawnPoint
 var _first_gate_cell := Vector2i.ZERO
@@ -102,6 +105,27 @@ func interact_with(character_id: StringName) -> bool:
 			_line("Nia", "That big angry bull is still blocking the way forward through the cave.", NIA_PORTRAIT),
 		])
 	if character_id == &"asha":
+		if is_deru_quest_started() and not _has_seen(&"asha_deru_parts_intro") and not are_spare_parts_purchased():
+			var had_seen_asha_intro := _has_seen(&"asha_intro")
+			_seen_events[&"asha_deru_parts_intro"] = true
+			_seen_events[&"asha_intro"] = true
+			_reopen_shop_after_dialogue = true
+			_shop_to_reopen = _asha
+			if _play_default_dialogue([
+				_line("Mira", "Hey Asha, I need a spare part for Deru's cart.", PLAYER_PORTRAIT),
+				_line("Mira", "His cart is stranded out in the Expanse.", PLAYER_PORTRAIT),
+				_line("Asha", "Oh, that sounds expensive, usually I'd sell those for 50 fish.", ASHA_PORTRAIT),
+				_line("Asha", "Since it's Deru, I'll mark it down to 30 fish, just to break even.", ASHA_PORTRAIT),
+				_line("Asha", "I'll put it on stock for you!", ASHA_PORTRAIT),
+				_line("Mira", "Thank you, Asha :)", PLAYER_PORTRAIT),
+			]):
+				return true
+			_seen_events.erase(&"asha_deru_parts_intro")
+			if not had_seen_asha_intro:
+				_seen_events.erase(&"asha_intro")
+			_reopen_shop_after_dialogue = false
+			_shop_to_reopen = null
+			return false
 		if _has_seen(&"asha_intro"):
 			return false
 		_seen_events[&"asha_intro"] = true
@@ -139,7 +163,64 @@ func interact_with(character_id: StringName) -> bool:
 		_reopen_shop_after_dialogue = false
 		_shop_to_reopen = null
 		return false
+	if character_id == &"deru":
+		if not _has_seen(&"deru_intro"):
+			_seen_events[&"deru_intro"] = true
+			return _play_default_dialogue([
+				_line("Deru", "Oh! Hey. Sorry, my cart gave out on me.", DERU_PORTRAIT),
+				_line("Mira", "That’s rough. Are you hurt?", PLAYER_PORTRAIT),
+				_line("Deru", "I’m alright, but my cart isn't.", DERU_PORTRAIT),
+				_line("Mira", "Well, what do you need to fix it?", PLAYER_PORTRAIT),
+				_line("Deru", "Asha might have some spare parts back in Tiny Woods... but you don’t need to go out of your way.", DERU_PORTRAIT),
+				_line("Deru", "It's an expensive brand so she won't give them away for free.", DERU_PORTRAIT),
+				_line("Mira", "It’s no trouble, really. I’ll go talk with her and come back.", PLAYER_PORTRAIT),
+				_line("Deru", "Really? That means so much to me! I’d be in your debt.", DERU_PORTRAIT),
+			])
+		if not _has_seen(&"deru_parts_delivered"):
+			if _world.player.has_inventory_item("spare_cart_parts"):
+				_world.player.remove_quest_item("spare_cart_parts")
+				_seen_events[&"deru_parts_delivered"] = true
+				_apply_deru_repaired_state()
+				return _play_default_dialogue([
+					_line("Deru", "Oh my gosh, thank you so much!", DERU_HAPPY_PORTRAIT),
+					_line("Deru", "I was heading to the Mushroom Forrest, but these big angry beasts have taken over the connecting tunnles.", DERU_HAPPY_PORTRAIT),
+					_line("Deru", "Once they get cleared up, I'll head straight to the Mushroom Forrest.", DERU_HAPPY_PORTRAIT),
+					_line("Mira", "I'll try to clear them as fast as I can!", PLAYER_PORTRAIT),
+				])
+			return _play_default_dialogue([
+				_line("Deru", "I think Asha in Tiny Woods have some spare parts for my cart.", DERU_PORTRAIT),
+				_line("Deru", "It's an expensive brand though, sorry!", DERU_PORTRAIT),
+			])
+		if not _has_seen(&"deru_shop_intro"):
+			_seen_events[&"deru_shop_intro"] = true
+			_reopen_shop_after_dialogue = true
+			_shop_to_reopen = _deru
+			return _play_default_dialogue([
+				_line("Deru", "Once the connecting caves clear out, I'm headed straight to Mushroom Forrest.", DERU_HAPPY_PORTRAIT),
+				_line("Deru", "Hopefully I'll see you there?", DERU_HAPPY_PORTRAIT),
+			])
+		return false
 	return false
+
+
+func is_deru_quest_started() -> bool:
+	return _has_seen(&"deru_intro")
+
+
+func are_spare_parts_purchased() -> bool:
+	return _has_seen(&"spare_parts_purchased")
+
+
+func is_deru_quest_completed() -> bool:
+	return _has_seen(&"deru_parts_delivered")
+
+
+func is_asha_recruited() -> bool:
+	return _has_seen(&"asha_recruited")
+
+
+func has_seen_event(event_id: StringName) -> bool:
+	return _has_seen(event_id)
 
 
 func get_save_data() -> Array:
@@ -156,6 +237,7 @@ func load_save_data(data: Array) -> void:
 		_dialogue_box.cancel()
 	if is_instance_valid(_world):
 		_world.interaction_locked = false
+		_world.gameplay_paused = false
 		var camera := _world.player.get_node_or_null("Camera2D") as Camera2D if is_instance_valid(_world.player) else null
 		if camera:
 			camera.position = Vector2.ZERO
@@ -198,6 +280,7 @@ func load_save_data(data: Array) -> void:
 
 func _find_characters() -> void:
 	_asha = _world.get_node_or_null("FoxAsha") as FoxAsha
+	_deru = _world.get_node_or_null("FoxDeru") as FoxAsha
 	_luca = _world.get_node_or_null("FoxLuca") as FoxLuca
 	_lio = _world.get_node_or_null("FoxLio") as FoxLio
 	for node in get_tree().get_nodes_in_group("story_characters"):
@@ -205,6 +288,14 @@ func _find_characters() -> void:
 			var fox := node as StoryFox
 			if fox.character_id == &"nia":
 				_nia = fox
+	if is_instance_valid(_asha):
+		_asha.set_recruited(is_asha_recruited(), false)
+	_apply_deru_repaired_state()
+
+
+func _apply_deru_repaired_state() -> void:
+	if is_instance_valid(_deru) and _deru.has_method("set_repaired"):
+		_deru.call("set_repaired", is_deru_quest_completed())
 
 
 func _start_dialogue(dialogue_number: int) -> bool:
@@ -244,7 +335,29 @@ func on_structure_built(resource_id: StringName, deposit: GoldOre = null) -> voi
 			_trigger_event_once(&"wood_lodge")
 
 
-func on_asha_purchase() -> void:
+func on_asha_purchase(item_id := "") -> void:
+	if item_id == "spare_cart_parts":
+		if _has_seen(&"spare_parts_purchased"):
+			return
+		_seen_events[&"spare_parts_purchased"] = true
+		_seen_events[&"asha_recruited"] = true
+		if is_instance_valid(_asha):
+			_asha.close_shop()
+		_active_event = &"asha_recruitment"
+		_dialogue_box.play([
+			_line("Asha", "So... that part is for Deru, right?", ASHA_PORTRAIT),
+			_line("Mira", "Yeah. He is stranded out in the Expanse with his broken cart.", PLAYER_PORTRAIT),
+			_line("Asha", "I thought so. You’re always running off to help someone.", ASHA_PORTRAIT),
+			_line("Mira", "Someone has to.", PLAYER_PORTRAIT),
+			_line("Asha", "Then hey, umm...", ASHA_PORTRAIT),
+			_line("Asha", "Maybe... you shouldn’t have to do it alone?", ASHA_PORTRAIT),
+			_line("Mira", "Are you asking to come with me?", PLAYER_PORTRAIT),
+			_line("Asha", "If you’ll have me. Of course I completely understand if you-", ASHA_PORTRAIT),
+			_line("Mira", "I’d like that.", PLAYER_PORTRAIT),
+			_line("Asha", "Yeah? O-Okay then! I promise I'll be of use :)", ASHA_PORTRAIT),
+			_line("Mira", "I bet you will :)", PLAYER_PORTRAIT),
+		])
+		return
 	if _has_seen(&"asha_purchase"):
 		return
 	if is_instance_valid(_asha):
@@ -252,6 +365,14 @@ func on_asha_purchase() -> void:
 	_reopen_shop_after_dialogue = true
 	_shop_to_reopen = _asha
 	_trigger_event_once(&"asha_purchase")
+
+
+func request_asha_first_smooch() -> bool:
+	if not is_asha_recruited() or _has_seen(&"asha_first_smooch") or _dialogue_box.is_open():
+		return false
+	_seen_events[&"asha_first_smooch"] = true
+	_active_event = &"asha_first_smooch"
+	return _dialogue_box.play([_line("Asha", "*Smooch*", ASHA_PORTRAIT)])
 
 
 func on_luca_purchase() -> void:
@@ -334,6 +455,12 @@ func _on_dialogue_finished() -> void:
 		_enable_biome_music()
 	if finished_event == &"gate_tile":
 		_pan_camera_back()
+	if finished_event == &"asha_recruitment":
+		if is_instance_valid(_asha):
+			_asha.set_recruited(true, true)
+	if finished_event == &"asha_first_smooch":
+		_finish_first_smooch()
+		return
 	if not _queued_events.is_empty():
 		_begin_event_dialogue(_queued_events.pop_front())
 		return
@@ -343,6 +470,39 @@ func _on_dialogue_finished() -> void:
 		_shop_to_reopen = null
 		if is_instance_valid(shopkeeper):
 			shopkeeper.call_deferred("open_shop")
+
+
+func _finish_first_smooch() -> void:
+	if not is_instance_valid(_world):
+		return
+	var interaction_was_locked := _world.interaction_locked
+	_world.gameplay_paused = true
+	_world.interaction_locked = true
+	if not is_instance_valid(_world.player):
+		_world.gameplay_paused = false
+		_world.interaction_locked = interaction_was_locked
+		return
+	if is_instance_valid(_asha):
+		_asha.play_smooch_animation()
+	var health_before := _world.player.health
+	_world.player.heal(_world.player.max_health)
+	_world.player.flash_healed()
+	_world.player.show_healing_popup(_world.player.health - health_before)
+	await get_tree().create_timer(1.0).timeout
+	if not is_instance_valid(_world.player):
+		_world.gameplay_paused = false
+		_world.interaction_locked = interaction_was_locked
+		return
+	if is_instance_valid(_asha):
+		_asha.reset_smooch_cooldown()
+	_active_event = &"asha_first_smooch_followup"
+	_world.gameplay_paused = false
+	_world.interaction_locked = interaction_was_locked
+	_dialogue_box.play([
+		_line("Mira", "H-hey! What was that for?", PLAYER_PORTRAIT),
+		_line("Mira", "Oh, I feel a lot better actually!", PLAYER_PORTRAIT),
+		_line("Asha", ";)", ASHA_PORTRAIT),
+	])
 
 
 func _enable_biome_music() -> void:

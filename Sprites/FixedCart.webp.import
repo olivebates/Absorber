@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://diqax6b4blr1g"
-path="res://.godot/imported/FoxLuca.png-213dd565ec57944f62bd37f73c255cd0.ctex"
+uid="uid://y4ugdp6jcdgx"
+path="res://.godot/imported/FixedCart.webp-e45152f30b64d81faaa3d349c421922a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/FoxLuca.png"
-dest_files=["res://.godot/imported/FoxLuca.png-213dd565ec57944f62bd37f73c255cd0.ctex"]
+source_file="res://Sprites/FixedCart.webp"
+dest_files=["res://.godot/imported/FixedCart.webp-e45152f30b64d81faaa3d349c421922a.ctex"]
 
 [params]
 

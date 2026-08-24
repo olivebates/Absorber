@@ -17,6 +17,7 @@ var second_campfire_tab_prompt_dismissed := false
 var map_show_enemies := false
 var map_show_buildings := true
 var interaction_locked := false
+var gameplay_paused := false
 var _tab_prompt: Label
 var _actor_cache_frame := -1
 var _cached_actor_counts: Dictionary = {}
@@ -257,7 +258,8 @@ func get_occupied_cells(except_actor: Node2D = null) -> Dictionary:
 	actors.append_array(get_tree().get_nodes_in_group("npcs"))
 	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
 	for actor in actors:
-		if actor != except_actor and actor is Node2D and is_instance_valid(actor):
+		if actor != except_actor and actor is Node2D and is_instance_valid(actor) \
+			and not _actors_can_overlap(except_actor, actor):
 			for actor_cell in _get_actor_cells(actor):
 				occupied[actor_cell] = true
 	return occupied
@@ -276,7 +278,37 @@ func can_enter_position(actor: Node2D, world_position: Vector2) -> bool:
 		# A structure may be built beneath an actor. Let it cross its current tile
 		# so it can reach the unoccupied destination chosen by pathfinding.
 		return is_walkable(cell)
-	return is_walkable(cell) and not _is_cached_actor_cell_occupied(cell, actor) and not is_gold_ore_cell(cell)
+	return is_walkable(cell) and not _is_actor_cell_occupied(cell, actor) and not is_gold_ore_cell(cell)
+
+
+func _is_actor_cell_occupied(cell: Vector2i, moving_actor: Node2D) -> bool:
+	if not _is_cached_actor_cell_occupied(cell, moving_actor):
+		return false
+	# The cache intentionally stores general occupancy. Only pay for the more
+	# precise scan when a mover is trying to enter an occupied cell, so special
+	# pairs such as the player and recruited Asha can pass through one another.
+	var actors := get_tree().get_nodes_in_group("enemies")
+	actors.append_array(get_tree().get_nodes_in_group("player"))
+	actors.append_array(get_tree().get_nodes_in_group("gates"))
+	actors.append_array(get_tree().get_nodes_in_group("buildings"))
+	actors.append_array(get_tree().get_nodes_in_group("npcs"))
+	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
+	for other in actors:
+		if other == moving_actor or not other is Node2D or not is_instance_valid(other) \
+			or _actors_can_overlap(moving_actor, other):
+			continue
+		if cell in _get_actor_cells(other):
+			return true
+	return false
+
+
+func _actors_can_overlap(first: Node2D, second: Node2D) -> bool:
+	if not is_instance_valid(first) or not is_instance_valid(second):
+		return false
+	return first.has_method("can_overlap_navigation_actor") \
+		and bool(first.call("can_overlap_navigation_actor", second)) \
+		or second.has_method("can_overlap_navigation_actor") \
+		and bool(second.call("can_overlap_navigation_actor", first))
 
 
 func is_gold_ore_cell(cell: Vector2i) -> bool:

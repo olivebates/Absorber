@@ -41,6 +41,10 @@ func _finish_setup() -> void:
 func _process(delta: float) -> void:
 	_highlight.visible = Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
 	_is_walking = false
+	if is_instance_valid(_world) and _world.gameplay_paused:
+		_stop_patrol()
+		_update_walk_animation(0.0)
+		return
 	if _dialogue_is_open():
 		_stop_patrol()
 		_update_walk_animation(delta)

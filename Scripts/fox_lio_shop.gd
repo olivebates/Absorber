@@ -15,7 +15,7 @@ func _get_resource_offers() -> Array[Dictionary]:
 	return [{"resource_id": &"gold_ore", "cost_resource_id": &"fish", "price": 2}]
 
 
-func _notify_story_purchase() -> void:
+func _notify_story_purchase(_upgrade_index := -1) -> void:
 	if is_instance_valid(_shopkeeper):
 		_shopkeeper.play_purchase_reaction()
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager

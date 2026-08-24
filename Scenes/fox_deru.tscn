@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://Scripts/fox_deru.gd" id="1_fox"]
+[ext_resource type="Texture2D" path="res://Sprites/FoxDeruSad.webp" id="2_sprite"]
+
+[node name="FoxDeru" type="Node2D"]
+z_index = 4
+script = ExtResource("1_fox")
+stationary = true
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_sprite")

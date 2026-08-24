@@ -191,6 +191,16 @@ func _physics_process(delta: float) -> void:
 		_world = get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 	if _player == null:
 		_player = get_tree().get_first_node_in_group("player") as FoxPlayer
+	if is_instance_valid(_world) and _world.gameplay_paused:
+		velocity = Vector2.ZERO
+		_update_walk_animation(0.0)
+		_update_combat_ring(false)
+		return
+	if _dialogue_is_open():
+		velocity = Vector2.ZERO
+		_update_walk_animation(0.0)
+		_update_combat_ring(false)
+		return
 	_attack_time_left = maxf(0.0, _attack_time_left - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
@@ -215,6 +225,11 @@ func _physics_process(delta: float) -> void:
 	_face_player_in_combat(in_combat)
 	_update_health_regeneration(delta, in_combat)
 	_was_in_combat = in_combat
+
+
+func _dialogue_is_open() -> bool:
+	var dialogue := get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
+	return dialogue != null and dialogue.is_open()
 
 
 func _update_behavior_state(in_combat: bool) -> void:

@@ -10,6 +10,7 @@ const UPGRADES := [
 	{"resource_id": &"gold_ore", "base_price": 5, "purchase_slot": 0, "amount": 1, "stat_icon": DAMAGE_ICON, "stat": &"damage", "color": FoxPlayer.COLOR_RED, "name": "Red Damage", "description": "Increase red damage by 1."},
 	{"resource_id": &"wood", "base_price": 3, "purchase_slot": 2, "amount": 20, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 20."},
 	{"resource_id": &"jewels", "base_price": 5, "purchase_slot": 3, "amount": 1, "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase passive health regeneration by 0.3."},
+	{"resource_id": &"gold_ore", "cost_resource_id": &"fish", "base_price": 30, "fixed_price": true, "visible_by_default": true, "purchase_slot": 1, "amount": 1, "stat_icon": preload("res://Sprites/SpareParts.webp"), "stat": &"item", "item_id": "spare_cart_parts", "name": "Spare Cart Parts", "description": "Give them to Deru in The Snakemouth Expanse."},
 	{"resource_id": &"jewels", "base_price": 2, "fixed_price": true, "purchase_slot": 1, "amount": 1, "stat_icon": preload("res://Sprites/PotionBasic.webp"), "stat": &"item", "item_id": "potion_basic", "name": "Basic Potion", "description": "Consume to heal 40 HP."},
 ]
 
@@ -83,7 +84,7 @@ func buy_upgrade(upgrade_index: int) -> bool:
 	if _shopkeeper == null or _player == null or _resource_manager == null or upgrade_index < 0 or upgrade_index >= upgrades.size():
 		return false
 	var upgrade: Dictionary = upgrades[upgrade_index]
-	var resource_id := StringName(upgrade["resource_id"])
+	var resource_id := StringName(upgrade.get("cost_resource_id", upgrade["resource_id"]))
 	var price := get_upgrade_price(upgrade_index)
 	var before_value: Variant = _get_upgrade_current_value(upgrade_index)
 	if StringName(upgrade["stat"]) == &"item" and not _player.can_collect_item(str(upgrade["item_id"])):
@@ -147,12 +148,15 @@ func buy_resource(resource_id: StringName) -> bool:
 	return true
 
 
-func _notify_story_purchase() -> void:
+func _notify_story_purchase(upgrade_index := -1) -> void:
 	if is_instance_valid(_shopkeeper):
 		_shopkeeper.play_purchase_reaction()
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
 	if story:
-		story.on_asha_purchase()
+		var item_id := ""
+		if upgrade_index >= 0:
+			item_id = str(_get_upgrades()[upgrade_index].get("item_id", ""))
+		story.on_asha_purchase(item_id)
 
 
 func _get_upgrades() -> Array:
@@ -282,7 +286,7 @@ func _play_purchase_success(button: Button, benefit_texture: Texture2D, currency
 	var price_target := price_icon.get_global_rect().get_center() if price_icon else button.get_global_rect().end - Vector2(18, 20)
 	_spawn_flying_icon(currency_texture, start, price_target, 0.22)
 	_spawn_flying_icon(benefit_texture, start, _get_benefit_target(target_resource_id, upgrade_index), 0.38)
-	get_tree().create_timer(0.30).timeout.connect(_notify_story_purchase)
+	get_tree().create_timer(0.30).timeout.connect(_notify_story_purchase.bind(upgrade_index))
 
 
 func _play_purchase_failure(button: Button, price_label: Label, message: String) -> void:
@@ -619,15 +623,23 @@ func _refresh() -> void:
 				purchase_price.add_theme_color_override("font_color", Color.WHITE if can_afford else Color("ef5350"))
 	var upgrades := _get_upgrades()
 	for index in range(upgrades.size()):
-		var resource_id := StringName(upgrades[index]["resource_id"])
+		var resource_id := StringName(upgrades[index].get("cost_resource_id", upgrades[index]["resource_id"]))
 		var definition := _resource_manager.get_definition(resource_id)
-		_rows[index].visible = bool(upgrades[index].get("visible_by_default", false)) or index == 0 or _resource_manager.has_ever_owned(resource_id)
+		_rows[index].visible = _is_upgrade_available(index, upgrades[index]) and (bool(upgrades[index].get("visible_by_default", false)) or index == 0 or _resource_manager.has_ever_owned(resource_id))
 		_price_icons[index].texture = definition.icon if definition else null
 		var price := get_upgrade_price(index)
 		_price_labels[index].text = str(price)
 		var can_afford := _resource_manager.can_afford({resource_id: price})
 		_price_labels[index].add_theme_color_override("font_color", Color.WHITE if can_afford else Color("ef5350"))
 		_rows[index].disabled = false
+
+
+func _is_upgrade_available(_index: int, upgrade: Dictionary) -> bool:
+	if str(upgrade.get("item_id", "")) != "spare_cart_parts":
+		return true
+	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+	return story != null and story.is_deru_quest_started() and not story.are_spare_parts_purchased() \
+		and (_player == null or not _player.has_inventory_item("spare_cart_parts"))
 
 
 func _connect_shop_tooltip(button: Button, title: String, description: String) -> void:
@@ -644,6 +656,13 @@ func _show_shop_tooltip(button: Button, title: String, description: String) -> v
 	if button.has_meta("resource_id"):
 		description = ""
 	elif button.has_meta("upgrade_index"):
+		var upgrade_index := int(button.get_meta("upgrade_index"))
+		var upgrades := _get_upgrades()
+		if upgrade_index >= 0 and upgrade_index < upgrades.size():
+			var item_id := str(upgrades[upgrade_index].get("item_id", ""))
+			if not item_id.is_empty() and ItemPickup.ITEM_DATA.has(item_id):
+				tooltip.show_item({"item_id": item_id})
+				return
 		title = ""
 	var icon := button.find_child("OfferIcon", true, false) as TextureRect
 	if icon == null:

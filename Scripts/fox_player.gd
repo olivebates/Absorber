@@ -36,6 +36,7 @@ var defense: int:
 var equipped_armor: Array[Dictionary] = [{}, {}, {}, {}]
 var equipped_weapons: Array[Dictionary] = [{}, {}, {}, {}]
 var inventory_slots: Array[Dictionary] = [{}, {}, {}, {}]
+var trash_slots: Array[Dictionary] = [{}]
 var weapon_ever_equipped := [false, false, false, false]
 var armor_ever_equipped := false
 var merge_count := 0
@@ -144,6 +145,39 @@ func heal(amount: int) -> void:
 	health_bar.value = health
 	_update_health_label()
 	vitals_changed.emit()
+
+
+func flash_healed() -> void:
+	if not is_instance_valid(fox_sprite):
+		return
+	fox_sprite.modulate = Color("75ff8a")
+	var tween := fox_sprite.create_tween()
+	for _pulse in range(3):
+		tween.tween_property(fox_sprite, "modulate", Color.WHITE, 0.10)
+		tween.tween_property(fox_sprite, "modulate", Color("75ff8a"), 0.10)
+	tween.tween_property(fox_sprite, "modulate", Color.WHITE, 0.12)
+
+
+func show_healing_popup(amount: int) -> void:
+	if amount <= 0:
+		return
+	var popup := Label.new()
+	popup.name = "AshaHealPopup"
+	popup.text = "+%d" % amount
+	popup.position = Vector2(-28, -60)
+	popup.size = Vector2(56, 28)
+	popup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	popup.add_theme_font_size_override("font_size", 20)
+	popup.add_theme_color_override("font_color", Color("54e36b"))
+	popup.add_theme_color_override("font_outline_color", Color("123519"))
+	popup.add_theme_constant_override("outline_size", 4)
+	popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	popup.z_index = 50
+	add_child(popup)
+	var tween := popup.create_tween().set_parallel(true)
+	tween.tween_property(popup, "position:y", popup.position.y - 38.0, 0.85).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(popup, "modulate:a", 0.0, 0.85).set_delay(0.35)
+	tween.chain().tween_callback(popup.queue_free)
 
 
 func add_max_health(amount: int) -> void:
@@ -286,6 +320,22 @@ func get_slot_item(storage: String, index: int) -> Dictionary:
 	return slots[index].duplicate()
 
 
+func has_inventory_item(item_id: String) -> bool:
+	for item in inventory_slots:
+		if str(item.get("item_id", "")) == item_id:
+			return true
+	return false
+
+
+func remove_quest_item(item_id: String) -> bool:
+	for index in range(inventory_slots.size()):
+		if str(inventory_slots[index].get("item_id", "")) == item_id:
+			inventory_slots[index] = {}
+			inventory_changed.emit()
+			return true
+	return false
+
+
 func move_or_merge(source_storage: String, source_index: int, target_storage: String, target_index: int) -> bool:
 	if source_storage == target_storage and source_index == target_index:
 		return false
@@ -297,6 +347,17 @@ func move_or_merge(source_storage: String, source_index: int, target_storage: St
 	if source_item.is_empty() or not _storage_accepts(target_storage, source_item):
 		return false
 	var target_item := target_slots[target_index]
+	if ItemPickup.is_protected(str(source_item.get("item_id", ""))) and target_storage != "inventory":
+		return false
+	if not target_item.is_empty() and ItemPickup.is_protected(str(target_item.get("item_id", ""))) and source_storage != "inventory":
+		return false
+	if target_storage == "trash":
+		target_slots[target_index] = source_item
+		source_slots[source_index] = {}
+		inventory_changed.emit()
+		equipment_changed.emit()
+		damage_matrix_changed.emit()
+		return true
 	var merged_item: Dictionary = {}
 	if can_merge(source_item, target_item):
 		target_item["grade"] = ItemPickup.get_item_grade(target_item) + 1
@@ -530,6 +591,7 @@ func get_save_data() -> Array:
 		defense_by_color.duplicate(), armor_ever_equipped,
 		roundi(_spawn_position.x), roundi(_spawn_position.y),
 		merge_count, duplicate_equipment_tutorial_seen, auto_fight_unlocked, auto_fight_enabled,
+		_pack_items(trash_slots),
 	]
 
 
@@ -568,6 +630,8 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	duplicate_equipment_tutorial_seen = bool(data[20]) if data.size() > 20 else false
 	auto_fight_unlocked = bool(data[21]) if data.size() > 21 else false
 	auto_fight_enabled = bool(data[22]) if data.size() > 22 else false
+	var saved_trash: Array = data[23] as Array if data.size() > 23 and data[23] is Array else []
+	trash_slots = _unpack_items(saved_trash, 1)
 	var ever_equipped_mask := int(data[10])
 	weapon_ever_equipped = []
 	for index in range(4):
@@ -628,12 +692,15 @@ func _get_slots(storage: String) -> Array[Dictionary]:
 			return equipped_weapons
 		"armor":
 			return equipped_armor
+		"trash":
+			return trash_slots
 	return []
 
 
 func _storage_accepts(storage: String, item: Dictionary) -> bool:
 	var item_id := str(item.get("item_id", ""))
 	return storage == "inventory" \
+		or storage == "trash" and not ItemPickup.is_protected(item_id) \
 		or storage == "weapon" and ItemPickup.is_weapon(item_id) \
 		or storage == "armor" and ItemPickup.is_armor(item_id)
 
@@ -642,8 +709,14 @@ func _physics_process(delta: float) -> void:
 	if _is_dying:
 		velocity = Vector2.ZERO
 		return
-	for index in range(_weapon_cooldowns.size()):
-		_weapon_cooldowns[index] = maxf(0.0, _weapon_cooldowns[index] - delta)
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if world and world.gameplay_paused:
+		velocity = Vector2.ZERO
+		_update_walk_animation(0.0)
+		return
+	if not _dialogue_is_open():
+		for index in range(_weapon_cooldowns.size()):
+			_weapon_cooldowns[index] = maxf(0.0, _weapon_cooldowns[index] - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
 	_heal_time_left -= delta * _get_healing_speed_multiplier()
@@ -658,6 +731,11 @@ func _physics_process(delta: float) -> void:
 	_update_walk_animation(delta)
 	_update_combat_ring()
 	_face_combat_enemy()
+
+
+func _dialogue_is_open() -> bool:
+	var dialogue := get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
+	return dialogue != null and dialogue.is_open()
 
 
 func _move_along_path(delta: float) -> void:
@@ -689,6 +767,8 @@ func _move_along_path(delta: float) -> void:
 
 
 func _attack_nearby_enemy() -> void:
+	if _dialogue_is_open():
+		return
 	if _weapon_cooldowns[current_weapon_index] > 0.0:
 		return
 	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation

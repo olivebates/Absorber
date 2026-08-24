@@ -42,6 +42,8 @@
 [ext_resource type="PackedScene" path="res://Scenes/obstacle_fox_skull.tscn" id="40_atqvy"]
 [ext_resource type="PackedScene" path="res://Scenes/obstacle_jaw.tscn" id="41_w5giw"]
 [ext_resource type="PackedScene" path="res://Scenes/obstacle_skull.tscn" id="42_jwdyn"]
+[ext_resource type="PackedScene" path="res://Scenes/fox_deru.tscn" id="43_deru"]
+[ext_resource type="PackedScene" path="res://Scenes/obstacle_broken_cart.tscn" id="44_cart"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_5ukr8"]
 texture = ExtResource("2_8j60k")
@@ -807,6 +809,12 @@ position = Vector2(416, 1248)
 
 [node name="FoxAsha" parent="." unique_id=1538333953 instance=ExtResource("26_fox_asha")]
 position = Vector2(2272, 672)
+
+[node name="FoxDeru" parent="." unique_id=1243619500 instance=ExtResource("43_deru")]
+position = Vector2(2400, 2784)
+
+[node name="ObstacleBrokenCart" parent="." unique_id=397632413 instance=ExtResource("44_cart")]
+position = Vector2(2464, 2784)
 
 [node name="FoxLuca" parent="." unique_id=984191575 instance=ExtResource("34_fox_luca")]
 position = Vector2(4000, 2080)
