@@ -11,6 +11,7 @@ const YELLOW_FLOOR := Color("a69a3f")
 const BROWN_FLOOR := Color("795638")
 const OBSTACLE_COLOR := Color("303238")
 const WATER_COLOR := Color("2d7fc4")
+const PATH_COLOR := Color("42a5f5")
 
 var _world: WorldNavigation
 var _campfires: Array[Campfire] = []
@@ -84,6 +85,7 @@ func _draw() -> void:
 		if shopkeeper is Node2D and is_instance_valid(shopkeeper):
 			_draw_discovered_node_marker(shopkeeper)
 	if is_instance_valid(_world.player):
+		_draw_player_path()
 		var player_position := _cell_to_map(_world.world_to_cell(_world.player.global_position))
 		draw_circle(player_position, 5.0, Color.BLACK)
 		draw_circle(player_position, 3.0, Color.WHITE)
@@ -115,6 +117,23 @@ func _draw_wall_cell(cell: Vector2i, cell_size: float) -> void:
 	var color := WATER_COLOR if source == 3 and atlas.y == 1 and atlas.x >= 3 else OBSTACLE_COLOR
 	var center := _cell_to_map(cell)
 	draw_rect(Rect2(center - Vector2.ONE * cell_size * 0.5, Vector2.ONE * maxf(1.0, cell_size)), color, true)
+
+
+func _draw_player_path() -> void:
+	var path := _world.player.get_remaining_path_points()
+	for index in range(1, path.size()):
+		_draw_path_segment(path[index - 1], path[index])
+
+
+func _draw_path_segment(from_world: Vector2, to_world: Vector2) -> void:
+	var from_map := _cell_to_map(_world.world_to_cell(from_world))
+	var to_map := _cell_to_map(_world.world_to_cell(to_world))
+	var steps := maxi(1, ceili(from_map.distance_to(to_map) / 7.0))
+	for step in range(steps + 1):
+		var weight := float(step) / float(steps)
+		var world_point := from_world.lerp(to_world, weight)
+		if _world.is_cell_explored(_world.world_to_cell(world_point)):
+			draw_circle(from_map.lerp(to_map, weight), 1.75, PATH_COLOR)
 
 
 func _build_layer_toggles() -> void:

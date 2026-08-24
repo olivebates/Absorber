@@ -104,6 +104,16 @@ func is_moving() -> bool:
 	return _path_index < _path.size()
 
 
+func get_remaining_path_points() -> PackedVector2Array:
+	var points := PackedVector2Array()
+	if not is_moving():
+		return points
+	points.append(global_position)
+	for index in range(_path_index, _path.size()):
+		points.append(_path[index])
+	return points
+
+
 func take_damage(amount: int, color_index := COLOR_RED) -> void:
 	if health <= 0 or _is_dying:
 		return

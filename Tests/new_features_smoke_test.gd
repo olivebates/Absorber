@@ -187,5 +187,39 @@ func _run() -> void:
 	var minimap := world.get_node("HUD/Minimap") as Minimap
 	var map_rect := Rect2(Vector2(5, 5), minimap.size - Vector2(10, 10))
 	assert(minimap._world_to_minimap(world.player.global_position, map_rect).distance_to(map_rect.get_center()) < 0.1, "The player must remain centered on the minimap")
+	assert(Minimap.VISIBLE_RADIUS_TILES == 20.0, "The minimap must cover a twenty-tile radius")
+	assert(Minimap.NPC_COLOR == Color("43a047"), "NPCs must use green minimap dots")
+	assert(Minimap.CLICK_SEARCH_LIMIT == 30 and minimap.mouse_filter == Control.MOUSE_FILTER_STOP, "The minimap must accept movement clicks with a thirty-step fallback search")
+	var tile_scale := minimap._get_tile_scale(map_rect)
+	assert(is_equal_approx(tile_scale.x * 41.0, map_rect.size.x) and is_equal_approx(tile_scale.y * 41.0, map_rect.size.y), "The minimap terrain must fill its full rectangular map area")
+	var nearby_cell := world.world_to_cell(world.player.global_position) + Vector2i(20, 0)
+	var distant_cell := world.world_to_cell(world.player.global_position) + Vector2i(21, 0)
+	assert(minimap._is_within_visible_range(world.cell_to_world(nearby_cell), world.world_to_cell(world.player.global_position)), "Enemies at twenty tiles must remain visible on the minimap")
+	assert(not minimap._is_within_visible_range(world.cell_to_world(distant_cell), world.world_to_cell(world.player.global_position)), "Enemies beyond twenty tiles must be hidden from the minimap")
+	var player_cell := world.world_to_cell(world.player.global_position)
+	assert(minimap._minimap_to_cell(map_rect.get_center(), map_rect) == player_cell, "The minimap center click must resolve to the player's tile")
+	var wall_cell := Vector2i(-999999, -999999)
+	for candidate in world.wall_layer.get_used_cells():
+		if world.is_cell_explored(candidate):
+			wall_cell = candidate
+			break
+	assert(wall_cell != Vector2i(-999999, -999999), "The minimap test requires an explored wall cell")
+	assert(not minimap._find_click_path(wall_cell).is_empty(), "A minimap wall click must route to a nearby reachable tile")
+	var fog_cell := Vector2i(-999999, -999999)
+	for candidate in world.floor_layer.get_used_cells():
+		var offset: Vector2i = candidate - player_cell
+		if not world.is_cell_explored(candidate) and absi(offset.x) + absi(offset.y) <= int(Minimap.VISIBLE_RADIUS_TILES):
+			fog_cell = candidate
+			break
+	assert(fog_cell != Vector2i(-999999, -999999), "The minimap test requires an unexplored cell inside its visible range")
+	var fog_path := minimap._find_click_path(fog_cell)
+	assert(not fog_path.is_empty(), "A fog minimap click must find an explored reachable destination within thirty tiles")
+	var fog_destination := world.world_to_cell(fog_path[-1])
+	var fog_fallback_offset := fog_destination - fog_cell
+	assert(world.is_cell_explored(fog_destination) and absi(fog_fallback_offset.x) + absi(fog_fallback_offset.y) <= Minimap.CLICK_SEARCH_LIMIT, "A fog minimap click must never route Mira into unexplored terrain")
+	var route := PackedVector2Array([world.player.global_position, world.player.global_position + Vector2(64, 0), world.player.global_position + Vector2(128, 0)])
+	world.player.follow_path(route)
+	assert(world.player.get_remaining_path_points().size() >= 2, "The player must expose its active route to both map renderers")
+	assert(Minimap.PATH_COLOR == Color("42a5f5") and WorldMapCanvas.PATH_COLOR == Minimap.PATH_COLOR, "The minimap and world map must use the same blue path-dot color")
 	print("PASS: requested feature changes work")
 	quit()
