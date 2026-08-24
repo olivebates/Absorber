@@ -23,6 +23,9 @@ const FADE_SECONDS := 3.0
 const MUSIC_CHECK_INTERVAL := 0.15
 const GRASS_AREA_NAME := "~ Tiny Woods ~"
 const DESERT_AREA_NAME := "~ The Snakeland Expanse ~"
+const MUSIC_BUS := &"Music"
+const SFX_BUS := &"SFX"
+const AUDIO_SETTINGS_PATH := "user://audio_settings.json"
 
 enum Biome { NONE, GRASS, DESERT }
 
@@ -41,6 +44,8 @@ var _fade_tweens: Dictionary = {}
 var _music_enabled := false
 var _grass_heard := false
 var _desert_heard := false
+var music_volume := 1.0
+var sfx_volume := 1.0
 
 
 func setup(world: WorldNavigation) -> void:
@@ -49,12 +54,15 @@ func setup(world: WorldNavigation) -> void:
 
 func _ready() -> void:
 	add_to_group("game_audio")
+	_ensure_audio_buses()
+	_load_volume_settings()
 	_desert_tracks.assign(DESERT_TRACKS)
 	_grass_player = _make_music_player("GrassMusic")
 	_desert_player = _make_music_player("DesertMusic")
 	_walking_player = AudioStreamPlayer.new()
 	_walking_player.name = "WalkingSfx"
 	_walking_player.stream = WALKING_SFX
+	_walking_player.bus = SFX_BUS
 	_walking_player.volume_db = linear_to_db(0.05)
 	add_child(_walking_player)
 	_grass_player.finished.connect(_on_grass_finished)
@@ -114,6 +122,7 @@ func _make_music_player(player_name: String) -> AudioStreamPlayer:
 	var player := AudioStreamPlayer.new()
 	player.name = player_name
 	player.volume_db = SILENT_DB
+	player.bus = MUSIC_BUS
 	add_child(player)
 	return player
 
@@ -232,8 +241,55 @@ func _show_area_name(area_name: String) -> void:
 func _play_sfx(stream: AudioStream, randomize_pitch := true, volume_scale := 1.0) -> void:
 	var player := AudioStreamPlayer.new()
 	player.stream = stream
+	player.bus = SFX_BUS
 	player.pitch_scale = randf_range(0.8, 1.2) if randomize_pitch else 1.0
 	player.volume_db = linear_to_db(clampf(volume_scale, 0.0001, 1.0))
 	add_child(player)
 	player.finished.connect(player.queue_free)
 	player.play()
+
+
+func set_music_volume(value: float) -> void:
+	music_volume = clampf(value, 0.0, 1.0)
+	_set_bus_linear_volume(MUSIC_BUS, music_volume)
+	_save_volume_settings()
+
+
+func set_sfx_volume(value: float) -> void:
+	sfx_volume = clampf(value, 0.0, 1.0)
+	_set_bus_linear_volume(SFX_BUS, sfx_volume)
+	_save_volume_settings()
+
+
+func _ensure_audio_buses() -> void:
+	for bus_name in [MUSIC_BUS, SFX_BUS]:
+		if AudioServer.get_bus_index(bus_name) < 0:
+			AudioServer.add_bus()
+			AudioServer.set_bus_name(AudioServer.bus_count - 1, bus_name)
+
+
+func _set_bus_linear_volume(bus_name: StringName, value: float) -> void:
+	var index := AudioServer.get_bus_index(bus_name)
+	if index >= 0:
+		AudioServer.set_bus_volume_db(index, linear_to_db(maxf(value, 0.0001)))
+		AudioServer.set_bus_mute(index, value <= 0.0)
+
+
+func _load_volume_settings() -> void:
+	if FileAccess.file_exists(AUDIO_SETTINGS_PATH):
+		var file := FileAccess.open(AUDIO_SETTINGS_PATH, FileAccess.READ)
+		if file:
+			var parsed: Variant = JSON.parse_string(file.get_as_text())
+			file.close()
+			if parsed is Dictionary:
+				music_volume = clampf(float(parsed.get("music", 1.0)), 0.0, 1.0)
+				sfx_volume = clampf(float(parsed.get("sfx", 1.0)), 0.0, 1.0)
+	_set_bus_linear_volume(MUSIC_BUS, music_volume)
+	_set_bus_linear_volume(SFX_BUS, sfx_volume)
+
+
+func _save_volume_settings() -> void:
+	var file := FileAccess.open(AUDIO_SETTINGS_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify({"music": music_volume, "sfx": sfx_volume}))
+		file.close()

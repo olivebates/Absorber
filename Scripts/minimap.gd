@@ -12,9 +12,9 @@ var _redraw_time_left := 0.0
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	offset_left = -194.0
-	offset_top = 12.0
+	offset_top = 60.0
 	offset_right = -12.0
-	offset_bottom = 148.0
+	offset_bottom = 196.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	call_deferred("_connect_world")
 

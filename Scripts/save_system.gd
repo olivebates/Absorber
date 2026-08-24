@@ -3,9 +3,18 @@ extends Node
 
 signal game_saved(slot: int)
 signal game_loaded(slot: int)
+signal auto_saved
+signal backups_changed
 
 const SAVE_VERSION := 1
 const MAX_UNCOMPRESSED_BYTES := 1048576
+const AUTO_SAVE_PATH := "user://auto_save"
+const BACKUP_STATE_PATH := "user://backup_state.json"
+const AUTO_SAVE_INTERVAL := 5.0
+const STARTUP_BACKUP_COOLDOWN_SECONDS := 10 * 60
+const SESSION_BACKUP_INTERVAL := 2.0 * 60.0 * 60.0
+const MAX_SESSION_BACKUPS := 5
+const MAX_BACKUPS := 20
 const ITEM_PICKUP_SCENE := preload("res://Scenes/item_pickup.tscn")
 const GOLD_SHACK_SCENE := preload("res://Scenes/gold_shack.tscn")
 const GEM_SHACK_SCENE := preload("res://Scenes/gem_shack.tscn")
@@ -19,11 +28,181 @@ const COMPRESSION_MODES := [
 ]
 
 var _world: WorldNavigation
+var _auto_save_time_left := AUTO_SAVE_INTERVAL
+var _session_backup_time_left := SESSION_BACKUP_INTERVAL
+var _session_backup_count := 0
+var _automatic_saves_enabled := false
 
 
 func _ready() -> void:
 	_world = get_parent() as WorldNavigation
 	add_to_group("save_system")
+	call_deferred("_start_automatic_saves")
+
+
+func _process(delta: float) -> void:
+	if not _automatic_saves_enabled:
+		return
+	_auto_save_time_left -= delta
+	if _auto_save_time_left <= 0.0:
+		_auto_save_time_left = AUTO_SAVE_INTERVAL
+		save_auto()
+	if _session_backup_count >= MAX_SESSION_BACKUPS:
+		return
+	_session_backup_time_left -= delta
+	if _session_backup_time_left <= 0.0:
+		_session_backup_time_left += SESSION_BACKUP_INTERVAL
+		if create_backup():
+			_session_backup_count += 1
+
+
+func _start_automatic_saves() -> void:
+	# Script-driven smoke tests instantiate the world without making it the active
+	# scene. Keeping persistence off there avoids tests touching a player's saves.
+	if get_tree().current_scene != _world:
+		return
+	_create_startup_backup_if_due()
+	if FileAccess.file_exists(AUTO_SAVE_PATH):
+		load_file(AUTO_SAVE_PATH)
+	_automatic_saves_enabled = true
+
+
+func save_auto() -> bool:
+	var saved := save_string_to_file(AUTO_SAVE_PATH, create_save_string())
+	if saved:
+		auto_saved.emit()
+	return saved
+
+
+func load_auto() -> bool:
+	return load_file(AUTO_SAVE_PATH)
+
+
+func save_string_to_file(path: String, encoded: String) -> bool:
+	var save_file := FileAccess.open(path, FileAccess.WRITE)
+	if save_file == null:
+		push_error("Could not open %s for writing." % path)
+		return false
+	save_file.store_string(encoded.strip_edges())
+	save_file.close()
+	return true
+
+
+func load_file(path: String) -> bool:
+	if not FileAccess.file_exists(path):
+		return false
+	var save_file := FileAccess.open(path, FileAccess.READ)
+	if save_file == null:
+		return false
+	var encoded := save_file.get_as_text().strip_edges()
+	save_file.close()
+	return load_save_string(encoded)
+
+
+func import_save_string(encoded: String) -> bool:
+	if not load_save_string(encoded.strip_edges()):
+		return false
+	return save_auto()
+
+
+func delete_auto_save() -> bool:
+	if not FileAccess.file_exists(AUTO_SAVE_PATH):
+		return true
+	return DirAccess.remove_absolute(ProjectSettings.globalize_path(AUTO_SAVE_PATH)) == OK
+
+
+func create_backup() -> bool:
+	if not FileAccess.file_exists(AUTO_SAVE_PATH):
+		return false
+	var source := FileAccess.open(AUTO_SAVE_PATH, FileAccess.READ)
+	if source == null:
+		return false
+	var encoded := source.get_as_text()
+	source.close()
+	var path := _unique_backup_path()
+	if not save_string_to_file(path, encoded):
+		return false
+	_trim_backups()
+	backups_changed.emit()
+	return true
+
+
+func get_backup_paths(show_all := false) -> PackedStringArray:
+	var paths := _all_backup_paths()
+	paths.reverse()
+	if not show_all and paths.size() > 5:
+		paths.resize(5)
+	return paths
+
+
+func load_backup(path: String) -> bool:
+	if not path.begins_with("user://backup_"):
+		return false
+	if not load_file(path):
+		return false
+	return save_auto()
+
+
+func get_backup_display_name(path: String) -> String:
+	return path.get_file().trim_prefix("backup_").replace("_", "  ")
+
+
+func _create_startup_backup_if_due() -> void:
+	if not FileAccess.file_exists(AUTO_SAVE_PATH):
+		return
+	var now := int(Time.get_unix_time_from_system())
+	var state := _read_backup_state()
+	var last_startup := int(state.get("last_startup_backup_unix", 0))
+	if now - last_startup < STARTUP_BACKUP_COOLDOWN_SECONDS:
+		return
+	if create_backup():
+		state["last_startup_backup_unix"] = now
+		_write_backup_state(state)
+
+
+func _unique_backup_path() -> String:
+	var time := Time.get_datetime_dict_from_system()
+	var stem := "backup_%04d-%02d-%02d_%02d-%02d-%02d" % [time.year, time.month, time.day, time.hour, time.minute, time.second]
+	var path := "user://%s" % stem
+	var suffix := 2
+	while FileAccess.file_exists(path):
+		path = "user://%s_%d" % [stem, suffix]
+		suffix += 1
+	return path
+
+
+func _all_backup_paths() -> PackedStringArray:
+	var result := PackedStringArray()
+	var directory := DirAccess.open("user://")
+	if directory == null:
+		return result
+	for file_name in directory.get_files():
+		if file_name.begins_with("backup_") and file_name != BACKUP_STATE_PATH.get_file():
+			result.append("user://%s" % file_name)
+	result.sort()
+	return result
+
+
+func _trim_backups() -> void:
+	var paths := _all_backup_paths()
+	while paths.size() > MAX_BACKUPS:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(paths[0]))
+		paths.remove_at(0)
+
+
+func _read_backup_state() -> Dictionary:
+	if not FileAccess.file_exists(BACKUP_STATE_PATH):
+		return {}
+	var file := FileAccess.open(BACKUP_STATE_PATH, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	return parsed as Dictionary if parsed is Dictionary else {}
+
+
+func _write_backup_state(state: Dictionary) -> void:
+	save_string_to_file(BACKUP_STATE_PATH, JSON.stringify(state))
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -54,12 +233,8 @@ func get_save_path(slot: int) -> String:
 func save_game(slot: int) -> bool:
 	if slot < 0 or slot > 9:
 		return false
-	var save_file := FileAccess.open(get_save_path(slot), FileAccess.WRITE)
-	if save_file == null:
-		push_error("Could not open save slot %d for writing." % slot)
+	if not save_string_to_file(get_save_path(slot), create_save_string()):
 		return false
-	save_file.store_string(create_save_string())
-	save_file.close()
 	game_saved.emit(slot)
 	print("Saved slot %d" % slot)
 	return true
@@ -68,13 +243,7 @@ func save_game(slot: int) -> bool:
 func load_game(slot: int) -> bool:
 	if slot < 0 or slot > 9 or not FileAccess.file_exists(get_save_path(slot)):
 		return false
-	var save_file := FileAccess.open(get_save_path(slot), FileAccess.READ)
-	if save_file == null:
-		push_error("Could not open save slot %d for reading." % slot)
-		return false
-	var encoded := save_file.get_as_text().strip_edges()
-	save_file.close()
-	if not load_save_string(encoded):
+	if not load_file(get_save_path(slot)):
 		push_error("Save slot %d is invalid or incompatible." % slot)
 		return false
 	game_loaded.emit(slot)
