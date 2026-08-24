@@ -35,10 +35,10 @@ func _connect_unlock_spawn() -> void:
 
 
 func _on_unlock_enemy_killed(_enemy: ChickenEnemy) -> void:
-	set_unlocked(true)
+	set_unlocked(true, true)
 
 
-func set_unlocked(value: bool) -> void:
+func set_unlocked(value: bool, play_sound := false) -> void:
 	var was_unlocked := unlocked
 	unlocked = value
 	visible = not unlocked
@@ -50,4 +50,8 @@ func set_unlocked(value: bool) -> void:
 	if collision:
 		collision.set_deferred("disabled", unlocked)
 	if unlocked and not was_unlocked:
+		if play_sound:
+			var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+			if audio:
+				audio.play_open_gate()
 		gate_opened.emit()

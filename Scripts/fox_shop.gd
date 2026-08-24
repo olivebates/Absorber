@@ -10,6 +10,7 @@ const UPGRADES := [
 	{"resource_id": &"gold_ore", "base_price": 5, "purchase_slot": 0, "amount": 1, "stat_icon": DAMAGE_ICON, "stat": &"damage", "color": FoxPlayer.COLOR_RED, "name": "Red Damage", "description": "Increase red damage by 1."},
 	{"resource_id": &"wood", "base_price": 3, "purchase_slot": 2, "amount": 20, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 20."},
 	{"resource_id": &"jewels", "base_price": 5, "purchase_slot": 3, "amount": 1, "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase passive health regeneration by 0.3."},
+	{"resource_id": &"jewels", "base_price": 2, "fixed_price": true, "purchase_slot": 1, "amount": 1, "stat_icon": preload("res://Sprites/PotionBasic.webp"), "stat": &"item", "item_id": "potion_basic", "name": "Basic Potion", "description": "Consume to heal 40 HP."},
 ]
 
 var _shopkeeper: FoxAsha
@@ -85,6 +86,9 @@ func buy_upgrade(upgrade_index: int) -> bool:
 	var resource_id := StringName(upgrade["resource_id"])
 	var price := get_upgrade_price(upgrade_index)
 	var before_value: Variant = _get_upgrade_current_value(upgrade_index)
+	if StringName(upgrade["stat"]) == &"item" and not _player.can_collect_item(str(upgrade["item_id"])):
+		_play_purchase_failure(_rows[upgrade_index], _price_labels[upgrade_index], "Inventory is full")
+		return false
 	if not _resource_manager.spend_resources({resource_id: price}):
 		_refresh()
 		_play_purchase_failure(_rows[upgrade_index], _price_labels[upgrade_index], _missing_resource_text(resource_id, price))
@@ -170,7 +174,7 @@ func _get_resource_offer(resource_id: StringName) -> Dictionary:
 
 
 func _get_shop_title() -> String:
-	return "Store"
+	return "Asha's Store"
 
 
 func _apply_upgrade(upgrade: Dictionary) -> void:
@@ -184,6 +188,8 @@ func _apply_upgrade(upgrade: Dictionary) -> void:
 			_player.add_passive_healing(amount)
 		&"health":
 			_player.add_max_health(amount)
+		&"item":
+			_player.collect_item(str(upgrade["item_id"]))
 
 
 func _get_upgrade_current_value(upgrade_index: int) -> Variant:
@@ -197,12 +203,21 @@ func _get_upgrade_current_value(upgrade_index: int) -> Variant:
 			return _player.get_passive_healing_per_second()
 		&"health":
 			return _player.max_health
+		&"item":
+			var count := 0
+			var item_id := str(upgrade["item_id"])
+			for item in _player.inventory_slots:
+				if str(item.get("item_id", "")) == item_id:
+					count += 1
+			return count
 	return 0
 
 
 func _format_upgrade_value(upgrade: Dictionary, value: Variant) -> String:
-	if StringName(upgrade["stat"]) == &"regeneration":
+	if StringName(upgrade["stat"]) == &"regeneration" and not upgrade.has("display_amount"):
 		return FoxPlayer.format_regeneration_value(float(value))
+	if StringName(upgrade["stat"]) == &"item":
+		return str(int(value))
 	return str(int(value))
 
 
@@ -389,6 +404,10 @@ func _get_benefit_target(resource_id: StringName, upgrade_index: int) -> Vector2
 		var armor_grid = hud.get_node_or_null("ArmorGrid")
 		if armor_grid:
 			return armor_grid.get_color_target_screen_position(color_index)
+	if stat == &"item":
+		var inventory := hud.get_node_or_null("Inventory") as Control
+		if inventory:
+			return inventory.get_global_rect().get_center()
 	var vitals := hud.get_node_or_null("PlayerVitals") as Control
 	if vitals:
 		var cell_name := "RegenerationCell" if stat == &"regeneration" else "HealthCell"
@@ -483,7 +502,8 @@ func _make_upgrade_button(upgrade_index: int) -> Button:
 		damage_dot.add_theme_stylebox_override("panel", dot_style)
 		row.add_child(damage_dot)
 	var amount := Label.new()
-	amount.text = "+%s" % FoxPlayer.format_regeneration_value(FoxPlayer.get_healing_increase_per_second(int(upgrade["amount"]))) \
+	amount.text = str(upgrade["display_amount"]) if upgrade.has("display_amount") else \
+		"+%s" % FoxPlayer.format_regeneration_value(FoxPlayer.get_healing_increase_per_second(int(upgrade["amount"]))) \
 		if StringName(upgrade["stat"]) == &"regeneration" else "+%d" % int(upgrade["amount"])
 	amount.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	amount.mouse_filter = Control.MOUSE_FILTER_IGNORE

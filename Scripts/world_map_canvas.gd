@@ -17,7 +17,7 @@ var _world: WorldNavigation
 var _campfires: Array[Campfire] = []
 var _campfire_buttons: Array[Button] = []
 var _show_enemies := false
-var _show_buildings := false
+var _show_buildings := true
 var _enemies_toggle: CheckButton
 var _buildings_toggle: CheckButton
 
@@ -153,7 +153,8 @@ func _build_layer_toggles() -> void:
 	_buildings_toggle = CheckButton.new()
 	_buildings_toggle.name = "ShowBuildingsToggle"
 	_buildings_toggle.text = "Show Buildings"
-	_buildings_toggle.button_pressed = false
+	_buildings_toggle.button_pressed = true
+	_buildings_toggle.visible = false
 	_buildings_toggle.toggled.connect(_on_show_buildings_toggled)
 	toggles.add_child(_buildings_toggle)
 
@@ -166,9 +167,11 @@ func _on_show_enemies_toggled(enabled: bool) -> void:
 
 
 func _on_show_buildings_toggled(enabled: bool) -> void:
-	_show_buildings = enabled
+	_show_buildings = true
 	if _world:
-		_world.map_show_buildings = enabled
+		_world.map_show_buildings = true
+	if is_instance_valid(_buildings_toggle):
+		_buildings_toggle.set_pressed_no_signal(true)
 	queue_redraw()
 
 
@@ -176,7 +179,8 @@ func apply_saved_preferences() -> void:
 	if _world == null:
 		return
 	_show_enemies = _world.map_show_enemies
-	_show_buildings = _world.map_show_buildings
+	_show_buildings = true
+	_world.map_show_buildings = true
 	if is_instance_valid(_enemies_toggle):
 		_enemies_toggle.set_pressed_no_signal(_show_enemies)
 	if is_instance_valid(_buildings_toggle):

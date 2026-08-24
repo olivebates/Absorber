@@ -15,7 +15,7 @@ var explored_cells: Dictionary = {}
 var visited_campfires: Dictionary = {}
 var second_campfire_tab_prompt_dismissed := false
 var map_show_enemies := false
-var map_show_buildings := false
+var map_show_buildings := true
 var interaction_locked := false
 var _tab_prompt: Label
 var _actor_cache_frame := -1
@@ -93,7 +93,7 @@ func load_exploration_save_data(data: Array) -> void:
 				visited_campfires[Vector2i(int(raw_cell[0]), int(raw_cell[1]))] = true
 	second_campfire_tab_prompt_dismissed = bool(data[2]) if data.size() > 2 else false
 	map_show_enemies = bool(data[3]) if data.size() > 3 else false
-	map_show_buildings = bool(data[4]) if data.size() > 4 else false
+	map_show_buildings = true
 	if is_instance_valid(_tab_prompt):
 		_tab_prompt.visible = false
 	_update_exploration()
@@ -258,8 +258,15 @@ func get_occupied_cells(except_actor: Node2D = null) -> Dictionary:
 	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
 	for actor in actors:
 		if actor != except_actor and actor is Node2D and is_instance_valid(actor):
-			occupied[world_to_cell(actor.global_position)] = true
+			for actor_cell in _get_actor_cells(actor):
+				occupied[actor_cell] = true
 	return occupied
+
+
+func _get_actor_cells(actor: Node2D) -> Array[Vector2i]:
+	if actor.has_method("get_blocked_cells"):
+		return actor.call("get_blocked_cells", self) as Array[Vector2i]
+	return [world_to_cell(actor.global_position)]
 
 
 func can_enter_position(actor: Node2D, world_position: Vector2) -> bool:
@@ -353,10 +360,10 @@ func _refresh_actor_cache() -> void:
 		if not actor is Node2D or not is_instance_valid(actor):
 			continue
 		var actor_id := actor.get_instance_id()
-		var cell := world_to_cell(actor.global_position)
-		var count := int(_cached_actor_counts.get(cell, 0)) + 1
-		_cached_actor_counts[cell] = count
-		_cached_actor_single_ids[cell] = actor_id if count == 1 else -1
+		for cell in _get_actor_cells(actor):
+			var count := int(_cached_actor_counts.get(cell, 0)) + 1
+			_cached_actor_counts[cell] = count
+			_cached_actor_single_ids[cell] = actor_id if count == 1 else -1
 		if actor is ChickenEnemy:
 			var target_cell := (actor as ChickenEnemy).get_movement_target_cell(self)
 			var previous_id := int(_cached_enemy_target_min_ids.get(target_cell, actor_id))

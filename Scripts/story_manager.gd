@@ -47,6 +47,8 @@ func _finish_setup() -> void:
 		call_deferred("_finish_setup")
 		return
 	_world.player = player
+	if not player.duplicate_equipment_found.is_connected(_on_duplicate_equipment_found):
+		player.duplicate_equipment_found.connect(_on_duplicate_equipment_found)
 	_first_gate = _world.get_node_or_null("Gate") as Gate
 	if _first_gate:
 		first_gate_opened = _first_gate.unlocked
@@ -292,6 +294,14 @@ func on_campfire_teleported() -> void:
 	_trigger_event_once(&"campfire_teleport")
 
 
+func on_auto_fight_first_toggled() -> void:
+	_trigger_event_once(&"auto_fight_tutorial")
+
+
+func _on_duplicate_equipment_found() -> void:
+	_trigger_event_once(&"duplicate_equipment")
+
+
 func _trigger_event_once(event_id: StringName) -> bool:
 	if _has_seen(event_id):
 		return false
@@ -436,7 +446,7 @@ func _get_dialogue(dialogue_number: int) -> Array[Dictionary]:
 				_line("Mira", "Every time I chase one of those creatures away, I feel a little stronger.", PLAYER_PORTRAIT),
 				_line("Asha", "Sounds like all that experience is finally paying off ;)", ASHA_PORTRAIT),
 				_line("Mira", "Haha, I guess it is!", PLAYER_PORTRAIT),
-				_line("Asha", "Well, if you need anything, I’ll be right here :)", ASHA_PORTRAIT),
+				_line("Asha", "Well if you need anything, I'm here for you Mira :)", ASHA_PORTRAIT),
 			]
 		3:
 			return [
@@ -498,4 +508,14 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			return [_line("Mira", "Convenient.", PLAYER_PORTRAIT)]
 		&"evil_goat_killed":
 			return [_line("Mira", "Oh look, it dropped a shield!", PLAYER_PORTRAIT)]
+		&"duplicate_equipment":
+			return [
+				_line("Mira", "Oh look, another one!", PLAYER_PORTRAIT),
+				_line("Mira", "I can merge this with my current one.", PLAYER_PORTRAIT),
+			]
+		&"auto_fight_tutorial":
+			return [
+				_line("Mira", "I'll only be able to auto fight enemies I've fought once before.", PLAYER_PORTRAIT),
+				_line("Mira", "The new enemies scare me O///O", PLAYER_PORTRAIT),
+			]
 	return []

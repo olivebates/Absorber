@@ -72,7 +72,7 @@ func _update_merge_highlights() -> void:
 	for child in _items.get_children():
 		if child is ItemSlot:
 			var slot := child as ItemSlot
-			var merge_target := not ("inventory" == _drag_source_storage and slot.slot_index == _drag_source_index) and _player.can_merge(_dragged_item, slot.item)
+			var merge_target := _player.is_tutorial_merge_slot("inventory", slot.slot_index) or (not ("inventory" == _drag_source_storage and slot.slot_index == _drag_source_index) and _player.can_merge(_dragged_item, slot.item))
 			slot.configure(self, "inventory", slot.slot_index, slot.item, merge_target)
 
 
@@ -84,11 +84,11 @@ func _refresh() -> void:
 	for index in range(4):
 		var item := _player.get_slot_item("inventory", index)
 		var slot := ItemSlot.new()
-		var merge_target := not ("inventory" == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item)
+		var merge_target := _player.is_tutorial_merge_slot("inventory", index) or (not ("inventory" == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item))
 		slot.configure(self, "inventory", index, item, merge_target)
 		_connect_tooltip(slot)
 		_items.add_child(slot)
-	_auto_merge_button.visible = _player.has_auto_mergeable_inventory_pair()
+	_auto_merge_button.visible = _player.merge_count >= 3 and _player.has_auto_mergeable_inventory_pair()
 	_auto_merge_button.disabled = _auto_merge_in_progress
 
 
@@ -125,7 +125,9 @@ func drop_in_slot(source: ItemSlot, target: ItemSlot) -> void:
 
 
 func click_slot(slot: ItemSlot) -> void:
-	if ItemPickup.is_weapon(str(slot.item.get("item_id", ""))):
+	if ItemPickup.is_consumable(str(slot.item.get("item_id", ""))):
+		_player.consume_inventory_item(slot.slot_index)
+	elif ItemPickup.is_weapon(str(slot.item.get("item_id", ""))):
 		_player.move_or_merge(slot.storage, slot.slot_index, "weapon", 0)
 	elif ItemPickup.is_armor(str(slot.item.get("item_id", ""))):
 		_player.move_or_merge(slot.storage, slot.slot_index, "armor", 0)

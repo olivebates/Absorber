@@ -13,6 +13,8 @@ signal equipment_changed
 signal enemy_health_absorbed(amount: int)
 signal merge_targets_changed(dragged_item: Dictionary, source_storage: String, source_index: int)
 signal merge_completed(merged_item: Dictionary, target_storage: String, target_index: int)
+signal duplicate_equipment_found
+signal auto_fight_changed
 
 @export var move_speed := 280.0
 @export var max_health := 10
@@ -36,6 +38,10 @@ var equipped_weapons: Array[Dictionary] = [{}, {}, {}, {}]
 var inventory_slots: Array[Dictionary] = [{}, {}, {}, {}]
 var weapon_ever_equipped := [false, false, false, false]
 var armor_ever_equipped := false
+var merge_count := 0
+var duplicate_equipment_tutorial_seen := false
+var auto_fight_unlocked := false
+var auto_fight_enabled := false
 var _weapon_cooldowns := [0.0, 0.0, 0.0, 0.0]
 var _heal_time_left := 3.0
 var _path := PackedVector2Array()
@@ -54,6 +60,8 @@ var _combat_ring: Line2D
 var _healing_particles: HealingParticles
 var _is_dying := false
 var _death_overlay: ColorRect
+var _auto_fight_range_fill: Polygon2D
+var _auto_fight_range_border: Line2D
 
 @onready var fox_sprite: Sprite2D = $FoxSprite
 @onready var health_bar: ProgressBar = $HealthBar
@@ -73,6 +81,7 @@ func _ready() -> void:
 	_healing_particles.position = Vector2(0, 10)
 	_healing_particles.z_index = 2
 	add_child(_healing_particles)
+	_create_auto_fight_range()
 
 
 func follow_path(points: PackedVector2Array) -> void:
@@ -123,7 +132,7 @@ func take_damage(amount: int, color_index := COLOR_RED) -> void:
 	health_bar.value = health
 	_update_health_label()
 	vitals_changed.emit()
-	_show_damage_popup(applied_damage, color_index, blocked_damage)
+	_show_damage_popup(amount, color_index, blocked_damage)
 	if health == 0:
 		_begin_death_sequence()
 
@@ -201,11 +210,26 @@ func collect_item(item_id: String, grade := 0) -> bool:
 			attack_damage = get_damage_for_color(COLOR_RED)
 			equipment_changed.emit()
 			damage_matrix_changed.emit()
+			_check_duplicate_equipment_tutorial()
 			return true
 	for index in range(inventory_slots.size()):
 		if inventory_slots[index].is_empty():
 			inventory_slots[index] = ItemPickup.make_item(item_id, grade)
 			inventory_changed.emit()
+			_check_duplicate_equipment_tutorial()
+			return true
+	return false
+
+
+func can_collect_item(item_id: String) -> bool:
+	if not ItemPickup.ITEM_DATA.has(item_id):
+		return false
+	if ItemPickup.is_weapon(item_id) and equipped_weapons[0].is_empty():
+		return true
+	if ItemPickup.is_armor(item_id) and equipped_armor[0].is_empty():
+		return true
+	for item in inventory_slots:
+		if item.is_empty():
 			return true
 	return false
 
@@ -297,6 +321,7 @@ func move_or_merge(source_storage: String, source_index: int, target_storage: St
 	equipment_changed.emit()
 	damage_matrix_changed.emit()
 	if not merged_item.is_empty():
+		merge_count += 1
 		merge_completed.emit(merged_item, target_storage, target_index)
 	return true
 
@@ -331,9 +356,104 @@ func merge_inventory_pair(source_index: int, target_index: int) -> bool:
 
 func can_merge(first: Dictionary, second: Dictionary) -> bool:
 	return not first.is_empty() and not second.is_empty() \
+		and ItemPickup.is_equipment(str(first.get("item_id", ""))) \
 		and str(first.get("item_id", "")) == str(second.get("item_id", "")) \
 		and ItemPickup.get_item_grade(first) == ItemPickup.get_item_grade(second) \
 		and ItemPickup.get_item_grade(first) < ItemPickup.GRADES.size() - 1
+
+
+func consume_inventory_item(index: int) -> bool:
+	if index < 0 or index >= inventory_slots.size() or inventory_slots[index].is_empty():
+		return false
+	var item := inventory_slots[index]
+	var healing := ItemPickup.get_healing_amount(item)
+	if healing <= 0 or health >= max_health:
+		return false
+	inventory_slots[index] = {}
+	heal(max_health if ItemPickup.is_full_heal(item) else healing)
+	inventory_changed.emit()
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_eating()
+	return true
+
+
+func unlock_auto_fight() -> void:
+	if auto_fight_unlocked:
+		return
+	auto_fight_unlocked = true
+	auto_fight_changed.emit()
+
+
+func set_auto_fight_enabled(enabled: bool) -> void:
+	auto_fight_enabled = enabled and auto_fight_unlocked
+	auto_fight_changed.emit()
+
+
+func set_auto_fight_range_visible(value: bool) -> void:
+	if is_instance_valid(_auto_fight_range_fill):
+		_auto_fight_range_fill.visible = value
+	if is_instance_valid(_auto_fight_range_border):
+		_auto_fight_range_border.visible = value
+
+
+func _create_auto_fight_range() -> void:
+	var half_extent := 2.5 * 64.0
+	var points := PackedVector2Array([
+		Vector2(-half_extent, -half_extent), Vector2(half_extent, -half_extent),
+		Vector2(half_extent, half_extent), Vector2(-half_extent, half_extent),
+	])
+	_auto_fight_range_fill = Polygon2D.new()
+	_auto_fight_range_fill.polygon = points
+	_auto_fight_range_fill.color = Color(1.0, 0.78, 0.12, 0.09)
+	_auto_fight_range_fill.z_index = -2
+	_auto_fight_range_fill.visible = false
+	add_child(_auto_fight_range_fill)
+	_auto_fight_range_border = Line2D.new()
+	_auto_fight_range_border.points = PackedVector2Array([points[0], points[1], points[2], points[3], points[0]])
+	_auto_fight_range_border.default_color = Color(1.0, 0.78, 0.12, 0.38)
+	_auto_fight_range_border.width = 2.0
+	_auto_fight_range_border.z_index = -1
+	_auto_fight_range_border.visible = false
+	add_child(_auto_fight_range_border)
+
+
+func get_duplicate_inventory_indices() -> Array[int]:
+	var indices: Array[int] = []
+	for location in get_tutorial_merge_locations():
+		if str(location["storage"]) == "inventory":
+			indices.append(int(location["index"]))
+	return indices
+
+
+func get_tutorial_merge_locations() -> Array[Dictionary]:
+	var locations: Array[Dictionary] = []
+	for storage in ["weapon", "armor", "inventory"]:
+		var slots := _get_slots(storage)
+		for index in range(slots.size()):
+			if ItemPickup.is_equipment(str(slots[index].get("item_id", ""))):
+				locations.append({"storage": storage, "index": index, "item": slots[index]})
+	for first_index in range(locations.size()):
+		for second_index in range(first_index + 1, locations.size()):
+			if can_merge(locations[first_index]["item"], locations[second_index]["item"]):
+				return [locations[first_index], locations[second_index]]
+	return []
+
+
+func is_tutorial_merge_slot(storage: String, index: int) -> bool:
+	if not duplicate_equipment_tutorial_seen:
+		return false
+	for location in get_tutorial_merge_locations():
+		if str(location["storage"]) == storage and int(location["index"]) == index:
+			return true
+	return false
+
+
+func _check_duplicate_equipment_tutorial() -> void:
+	if duplicate_equipment_tutorial_seen or get_tutorial_merge_locations().is_empty():
+		return
+	duplicate_equipment_tutorial_seen = true
+	duplicate_equipment_found.emit()
 
 
 func set_dragged_item(item: Dictionary, source_storage: String, source_index: int) -> void:
@@ -409,6 +529,7 @@ func get_save_data() -> Array:
 		maxi(0, defense),
 		defense_by_color.duplicate(), armor_ever_equipped,
 		roundi(_spawn_position.x), roundi(_spawn_position.y),
+		merge_count, duplicate_equipment_tutorial_seen, auto_fight_unlocked, auto_fight_enabled,
 	]
 
 
@@ -443,6 +564,10 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	armor_ever_equipped = bool(data[16]) if data.size() > 16 else has_equipped_armor()
 	if data.size() > 18:
 		_spawn_position = Vector2(float(data[17]), float(data[18]))
+	merge_count = maxi(0, int(data[19])) if data.size() > 19 else 0
+	duplicate_equipment_tutorial_seen = bool(data[20]) if data.size() > 20 else false
+	auto_fight_unlocked = bool(data[21]) if data.size() > 21 else false
+	auto_fight_enabled = bool(data[22]) if data.size() > 22 else false
 	var ever_equipped_mask := int(data[10])
 	weapon_ever_equipped = []
 	for index in range(4):
@@ -475,6 +600,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	inventory_changed.emit()
 	equipment_changed.emit()
 	damage_matrix_changed.emit()
+	auto_fight_changed.emit()
 	return true
 
 
@@ -565,18 +691,36 @@ func _move_along_path(delta: float) -> void:
 func _attack_nearby_enemy() -> void:
 	if _weapon_cooldowns[current_weapon_index] > 0.0:
 		return
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if world == null:
+		return
+	var target: ChickenEnemy
+	var automatic := false
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 		if enemy is ChickenEnemy and world and world.are_adjacent(self, enemy):
-			var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
-			if audio:
-				audio.play_damage()
-			_face_toward(enemy)
-			_play_attack_animation(enemy)
-			_show_slash(enemy, ItemPickup.get_grade_color(ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])))
-			enemy.take_damage(get_damage_for_color(enemy.enemy_color))
-			_weapon_cooldowns[current_weapon_index] = attack_cooldown
-			return
+			target = enemy
+			break
+	if target == null and auto_fight_enabled and not is_moving() and _attack_target == null:
+		var closest_distance := INF
+		var player_cell := world.world_to_cell(global_position)
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			if not enemy is ChickenEnemy or not is_instance_valid(enemy) or enemy.health <= 0 or not enemy.can_be_auto_fought():
+				continue
+			var offset := world.world_to_cell(enemy.global_position) - player_cell
+			var distance := Vector2(offset).length_squared()
+			if absi(offset.x) <= 2 and absi(offset.y) <= 2 and distance < closest_distance:
+				target = enemy
+				closest_distance = distance
+		automatic = target != null
+	if target:
+		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+		if audio:
+			audio.play_damage()
+		_face_toward(target)
+		_play_attack_animation(target)
+		_show_slash(target, ItemPickup.get_grade_color(ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])))
+		target.take_damage(get_damage_for_color(target.enemy_color), automatic)
+		_weapon_cooldowns[current_weapon_index] = attack_cooldown
 
 
 func _collect_pickups_on_current_tile() -> void:
@@ -639,18 +783,29 @@ static func get_healing_increase_per_second(amount: int) -> float:
 
 
 static func format_health_per_second(value: float) -> String:
-	return "%.1f/s" % value
+	return "%s/s" % _format_decimal(value)
 
 
 static func format_regeneration_value(value: float) -> String:
-	return "%.1f" % value
+	return _format_decimal(value)
 
 
-func _is_near_campfire() -> bool:
+static func _format_decimal(value: float) -> String:
+	var formatted := "%.1f" % value
+	while formatted.contains(".") and formatted.ends_with("0"):
+		formatted = formatted.trim_suffix("0")
+	return formatted.trim_suffix(".")
+
+
+func is_near_campfire() -> bool:
 	for campfire in get_tree().get_nodes_in_group("campfires"):
 		if campfire is Campfire and is_instance_valid(campfire) and campfire.is_player_in_range(self):
 			return true
 	return false
+
+
+func _is_near_campfire() -> bool:
+	return is_near_campfire()
 
 
 func _update_campfire_healing_visual() -> void:

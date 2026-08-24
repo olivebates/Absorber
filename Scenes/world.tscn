@@ -36,7 +36,10 @@
 [ext_resource type="Script" uid="uid://0emq2rtp63eh" path="res://Scripts/player_vitals.gd" id="33_player_vitals"]
 [ext_resource type="PackedScene" path="res://Scenes/fox_luca.tscn" id="34_fox_luca"]
 [ext_resource type="PackedScene" path="res://Scenes/tiki_torch_wall.tscn" id="35_coyub"]
-[ext_resource type="Script" path="res://Scripts/settings_menu.gd" id="36_settings"]
+[ext_resource type="Script" uid="uid://bpp035cmhh630" path="res://Scripts/settings_menu.gd" id="36_settings"]
+[ext_resource type="Script" uid="uid://hvx0w7jyd70f" path="res://Scripts/auto_fight_control.gd" id="37_auto_fight"]
+[ext_resource type="PackedScene" path="res://Scenes/obstacle_fox_skull_stack.tscn" id="39_lkcvt"]
+[ext_resource type="PackedScene" path="res://Scenes/obstacle_fox_skull.tscn" id="40_atqvy"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_5ukr8"]
 texture = ExtResource("2_8j60k")
@@ -703,6 +706,9 @@ script = ExtResource("7_inventory")
 [node name="ResourcePanel" type="PanelContainer" parent="HUD" unique_id=1284695937]
 script = ExtResource("13_resource_panel")
 
+[node name="AutoFight" type="PanelContainer" parent="HUD" unique_id=1373565267]
+script = ExtResource("37_auto_fight")
+
 [node name="Minimap" type="Control" parent="HUD" unique_id=413440973]
 layout_mode = 3
 anchors_preset = 1
@@ -716,7 +722,7 @@ grow_horizontal = 0
 grow_vertical = 0
 script = ExtResource("14_minimap")
 
-[node name="SettingsMenu" type="Control" parent="HUD"]
+[node name="SettingsMenu" type="Control" parent="HUD" unique_id=2124534503]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -815,8 +821,27 @@ position = Vector2(4064, 2784)
 [node name="TikiTorchWall7" parent="." unique_id=1015466921 instance=ExtResource("35_coyub")]
 position = Vector2(4256, 2848)
 
-[node name="TikiTorchWall8" parent="." unique_id=822981134 instance=ExtResource("35_coyub")]
-position = Vector2(4384, 2592)
+[node name="TikiTorchWall8" parent="." unique_id=959456947 instance=ExtResource("35_coyub")]
+position = Vector2(4640, 3040)
 
 [node name="FoxLio" parent="." unique_id=1772701644 instance=ExtResource("28_fox_lio")]
 position = Vector2(-96, 992)
+
+[node name="ObstacleFoxSkullStack" parent="." unique_id=339271842 instance=ExtResource("39_lkcvt")]
+position = Vector2(4384, 2592)
+
+[node name="ObstacleFoxSkullStack2" parent="." unique_id=1499267565 instance=ExtResource("39_lkcvt")]
+position = Vector2(5088, 2720)
+
+[node name="ObstacleFoxSkull" parent="." unique_id=1569552553 instance=ExtResource("40_atqvy")]
+position = Vector2(4512, 2976)
+scale = Vector2(-1, 1)
+
+[node name="ObstacleFoxSkull2" parent="." unique_id=713323402 instance=ExtResource("40_atqvy")]
+position = Vector2(4448, 2592)
+
+[node name="ObstacleFoxSkullStack3" parent="." unique_id=1953590902 instance=ExtResource("39_lkcvt")]
+position = Vector2(2592, 1312)
+
+[node name="ObstacleFoxSkull3" parent="." unique_id=266944756 instance=ExtResource("40_atqvy")]
+position = Vector2(2528, 1440)

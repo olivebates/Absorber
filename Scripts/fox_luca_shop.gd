@@ -2,10 +2,10 @@ class_name FoxLucaShop
 extends FoxShop
 
 const LUCA_UPGRADES := [
-	{"resource_id": &"wood", "base_price": 7, "fixed_price": true, "amount": 1, "stat_icon": DAMAGE_ICON, "stat": &"damage", "color": FoxPlayer.COLOR_RED, "name": "Red Damage", "description": "Increase red damage by 1."},
-	{"resource_id": &"gold_ore", "base_price": 3, "fixed_price": true, "amount": 1, "stat_icon": preload("res://Sprites/ShieldIcon.webp"), "stat": &"defense", "color": FoxPlayer.COLOR_RED, "name": "Red Defense", "description": "Increase red defense by 1."},
-	{"resource_id": &"fish", "base_price": 10, "fixed_price": true, "amount": 40, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 40."},
-	{"resource_id": &"jewels", "base_price": 8, "fixed_price": true, "amount": 1, "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase passive health regeneration by 0.3."},
+	{"resource_id": &"jewels", "base_price": 10, "fixed_price": true, "purchase_slot": 0, "amount": 2, "stat_icon": preload("res://Sprites/ShieldIcon.webp"), "stat": &"defense", "color": FoxPlayer.COLOR_RED, "name": "Defense", "description": "Increase defense by 2."},
+	{"resource_id": &"fish", "base_price": 10, "fixed_price": true, "purchase_slot": 1, "amount": 3, "display_amount": "+3", "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase regeneration by 3."},
+	{"resource_id": &"wood", "base_price": 10, "fixed_price": true, "purchase_slot": 2, "amount": 60, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 60."},
+	{"resource_id": &"fish", "base_price": 7, "fixed_price": true, "purchase_slot": 3, "amount": 1, "stat_icon": preload("res://Sprites/PotionRope.webp"), "stat": &"item", "item_id": "potion_rope", "name": "Upgraded Potion", "description": "Consume to heal 100 HP."},
 ]
 
 

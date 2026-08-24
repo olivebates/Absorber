@@ -44,6 +44,7 @@ func _refresh() -> void:
 func _refresh_regeneration() -> void:
 	if is_instance_valid(_player) and is_instance_valid(_regen_label):
 		_regen_label.text = FoxPlayer.format_health_per_second(_player.get_effective_passive_healing_per_second())
+		_regen_label.add_theme_color_override("font_color", Color("65d76e") if _player.is_near_campfire() else Color.WHITE)
 
 
 func get_stat_target_screen_position(stat: StringName) -> Vector2:

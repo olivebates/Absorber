@@ -56,6 +56,19 @@ func show_item(item: Dictionary) -> void:
 	var is_weapon := ItemPickup.is_weapon(item_id)
 	_icon.texture = ItemPickup.ITEM_TEXTURES[item_id]
 	_icon.visible = true
+	if ItemPickup.is_consumable(item_id):
+		_rank.text = str(ItemPickup.ITEM_NAMES.get(item_id, item_id.capitalize()))
+		_rank.visible = true
+		_rank.add_theme_color_override("font_color", Color.WHITE)
+		_stat_icon.texture = preload("res://Sprites/Heart.webp")
+		_stat_icon.visible = true
+		_stat.text = "Full Heal" if ItemPickup.is_full_heal(item) else "+%d HP" % ItemPickup.get_healing_amount(item)
+		_stat.visible = true
+		_set_style(Color("777777"))
+		visible = true
+		reset_size()
+		_place_inside_camera()
+		return
 	var grade := ItemPickup.get_item_grade(item)
 	_rank.text = "Grade %d · %s" % [grade, ItemPickup.get_grade_name(grade)]
 	_rank.visible = true

@@ -4,11 +4,23 @@ extends Area2D
 const ITEM_NAMES := {
 	"weathered_armor": "Weathered Armor",
 	"weathered_sword": "Weathered Sword",
+	"potion_basic": "Basic Potion",
+	"potion_rope": "Upgraded Potion",
+	"potion_bronze": "Bronze Potion",
+	"potion_silver": "Silver Potion",
+	"potion_royal": "Royal Potion",
+	"potion_holy": "Holy Potion",
 }
 
 const ITEM_TEXTURES := {
 	"weathered_armor": preload("res://Sprites/1Armor.webp"),
 	"weathered_sword": preload("res://Sprites/1Sword.webp"),
+	"potion_basic": preload("res://Sprites/PotionBasic.webp"),
+	"potion_rope": preload("res://Sprites/PotionRope.webp"),
+	"potion_bronze": preload("res://Sprites/PotionBronze.webp"),
+	"potion_silver": preload("res://Sprites/PotionSilver.webp"),
+	"potion_royal": preload("res://Sprites/PotionRoyal.webp"),
+	"potion_holy": preload("res://Sprites/PotionHoly.webp"),
 }
 
 const GRADES := [
@@ -25,6 +37,12 @@ const GRADES := [
 const ITEM_DATA := {
 	"weathered_armor": {"block": 2, "slot": "armor"},
 	"weathered_sword": {"damage": 3, "slot": "weapon"},
+	"potion_basic": {"healing": 40, "slot": "consumable"},
+	"potion_rope": {"healing": 100, "slot": "consumable"},
+	"potion_bronze": {"healing": 240, "slot": "consumable"},
+	"potion_silver": {"healing": 520, "slot": "consumable"},
+	"potion_royal": {"healing": 1350, "slot": "consumable"},
+	"potion_holy": {"healing": 2147483647, "full_heal": true, "slot": "consumable"},
 }
 
 var item_id := "weathered_sword"
@@ -118,6 +136,22 @@ static func is_weapon(item_id: String) -> bool:
 
 static func is_armor(item_id: String) -> bool:
 	return str(ITEM_DATA.get(item_id, {}).get("slot", "")) == "armor"
+
+
+static func is_equipment(item_id: String) -> bool:
+	return is_weapon(item_id) or is_armor(item_id)
+
+
+static func is_consumable(item_id: String) -> bool:
+	return str(ITEM_DATA.get(item_id, {}).get("slot", "")) == "consumable"
+
+
+static func get_healing_amount(item: Dictionary) -> int:
+	return maxi(0, int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("healing", 0)))
+
+
+static func is_full_heal(item: Dictionary) -> bool:
+	return bool(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("full_heal", false))
 
 
 static func make_item(new_item_id: String, new_grade := 0) -> Dictionary:

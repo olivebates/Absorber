@@ -1,0 +1,14 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://Scripts/obstacle_wall.gd" id="1_wall"]
+[ext_resource type="Texture2D" path="res://Sprites/ObstacleFoxSkull.webp" id="2_sprite"]
+[sub_resource type="RectangleShape2D" id="1_shape"]
+size = Vector2(64, 64)
+[node name="ObstacleFoxSkull" type="StaticBody2D" groups=["solid_walls"]]
+z_index = 4
+script = ExtResource("1_wall")
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_sprite")
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("1_shape")

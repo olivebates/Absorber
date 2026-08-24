@@ -45,6 +45,8 @@ var _health_regen_delay_left := HEALTH_REGEN_DELAY
 var _health_regen_tick_left := 0.0
 var _world: WorldNavigation
 var _player: FoxPlayer
+var spawn_point: EnemySpawnPoint
+var _suppress_reward_collection_sound := false
 
 @onready var chicken_sprite: Sprite2D = $ChickenSprite
 @onready var health_bar: ProgressBar = $HealthBar
@@ -89,9 +91,10 @@ func _ready() -> void:
 	add_child(_combat_ring)
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, automatic := false) -> void:
 	if health <= 0:
 		return
+	_suppress_reward_collection_sound = _suppress_reward_collection_sound or automatic
 	var applied_damage := maxi(1, amount - armor)
 	var blocked_damage := maxi(0, amount - applied_damage)
 	health = max(0, health - applied_damage)
@@ -99,12 +102,16 @@ func take_damage(amount: int) -> void:
 	_health_regen_tick_left = 0.0
 	health_bar.value = health
 	_update_health_label()
-	_show_damage_popup(applied_damage, enemy_color, blocked_damage)
+	_show_damage_popup(amount, enemy_color, blocked_damage)
 	if health == 0:
 		died.emit(self)
 		_grant_kill_reward()
 		_drop_items()
 		queue_free()
+
+
+func can_be_auto_fought() -> bool:
+	return is_instance_valid(spawn_point) and spawn_point.emptied_once
 
 
 func get_save_data() -> Array:
@@ -333,8 +340,11 @@ func _update_reward_visual() -> void:
 	reward_label.offset_right = 30.0
 	reward_icon.position = Vector2(-15, -57)
 	if reward_type == REWARD_HEALTH:
-		reward_color = Color("65d76e")
+		reward_color = Color("800000")
 		reward_icon.texture = preload("res://Sprites/Heart.webp")
+		reward_dot.visible = true
+		reward_dot_outline.visible = true
+		reward_dot.color = reward_color
 	elif reward_type == REWARD_REGENERATE:
 		reward_color = Color("65d76e")
 		reward_icon.texture = preload("res://Sprites/RecoveryHeart.webp")
@@ -436,7 +446,7 @@ func _grant_kill_reward() -> void:
 		REWARD_HEALTH:
 			var vitals := _get_hud_control("PlayerVitals")
 			var health_target: Vector2 = vitals.call("get_stat_target_screen_position", &"health") if vitals else Vector2(42, 120)
-			_launch_reward_orb(health_target, Color("65d76e"), fox.absorb_enemy_health.bind(damage_reward))
+			_launch_reward_orb(health_target, Color("800000"), fox.absorb_enemy_health.bind(damage_reward))
 		REWARD_REGENERATE:
 			var vitals := _get_hud_control("PlayerVitals")
 			var regeneration_target: Vector2 = vitals.call("get_stat_target_screen_position", &"regeneration") if vitals else Vector2(100, 120)
@@ -467,7 +477,7 @@ func _launch_reward_orb(target_screen_position: Vector2, color: Color, on_arrive
 	var target_world_position := get_viewport().get_canvas_transform().affine_inverse() * target_screen_position
 	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 	var on_collected := Callable()
-	if audio:
+	if audio and not _suppress_reward_collection_sound:
 		on_collected = audio.play_upgrade
 	RewardOrb.fly(get_parent(), global_position, target_world_position, color, on_arrive, on_collected)
 

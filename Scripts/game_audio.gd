@@ -16,13 +16,15 @@ const DEATH_SFX: AudioStream = preload("res://Music/sfxDeath.ogg")
 const RESPAWN_SFX: AudioStream = preload("res://Music/sfxRespawn.mp3")
 const BUILDING_SFX: AudioStream = preload("res://Music/sfxBuilding.ogg")
 const WALKING_SFX: AudioStream = preload("res://Music/sfxWalking.ogg")
+const EATING_SFX: AudioStream = preload("res://Music/sfxEating.ogg")
+const OPEN_GATE_SFX: AudioStream = preload("res://Music/sfxOpenGate.mp3")
 
 const SILENT_DB := -80.0
 const MUSIC_DB := -8.0
 const FADE_SECONDS := 3.0
 const MUSIC_CHECK_INTERVAL := 0.15
 const GRASS_AREA_NAME := "~ Tiny Woods ~"
-const DESERT_AREA_NAME := "~ The Snakeland Expanse ~"
+const DESERT_AREA_NAME := "~ The Snakemouth Expanse ~"
 const MUSIC_BUS := &"Music"
 const SFX_BUS := &"SFX"
 const AUDIO_SETTINGS_PATH := "user://audio_settings.json"
@@ -85,7 +87,7 @@ func _process(delta: float) -> void:
 
 
 func play_purchase() -> void:
-	_play_sfx(PURCHASE_SFX, false)
+	_play_sfx(PURCHASE_SFX, false, 0.6)
 
 
 func play_upgrade() -> void:
@@ -106,6 +108,14 @@ func play_respawn() -> void:
 
 func play_building() -> void:
 	_play_sfx(BUILDING_SFX, false)
+
+
+func play_eating() -> void:
+	_play_sfx(EATING_SFX, false)
+
+
+func play_open_gate() -> void:
+	_play_sfx(OPEN_GATE_SFX, false, 0.65)
 
 
 func play_walking_step() -> void:

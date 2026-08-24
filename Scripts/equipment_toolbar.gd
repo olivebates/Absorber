@@ -47,6 +47,7 @@ func _connect_player() -> void:
 	_player = get_tree().get_first_node_in_group("player") as FoxPlayer
 	if _player:
 		_player.equipment_changed.connect(_refresh)
+		_player.inventory_changed.connect(_refresh)
 		_player.merge_targets_changed.connect(_set_merge_targets)
 		_player.merge_completed.connect(_on_merge_completed)
 		_refresh()
@@ -66,7 +67,7 @@ func _update_merge_highlights() -> void:
 		for child in row.get_children():
 			if child is ItemSlot:
 				var slot := child as ItemSlot
-				var merge_target := not (storage == _drag_source_storage and slot.slot_index == _drag_source_index) and _player.can_merge(_dragged_item, slot.item)
+				var merge_target := _player.is_tutorial_merge_slot(storage, slot.slot_index) or (not (storage == _drag_source_storage and slot.slot_index == _drag_source_index) and _player.can_merge(_dragged_item, slot.item))
 				var valid_equipment_target := _is_valid_equipment_target(storage, slot.slot_index, _dragged_item)
 				slot.configure(self, storage, slot.slot_index, slot.item, merge_target or valid_equipment_target, _is_locked(storage, slot.slot_index), _shows_unarmed_damage(storage, slot.slot_index))
 
@@ -84,7 +85,7 @@ func _rebuild_row(row: HBoxContainer, storage: String) -> void:
 	for index in range(4):
 		var item := _player.get_slot_item(storage, index)
 		var slot := ItemSlot.new()
-		var merge_target := not (storage == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item)
+		var merge_target := _player.is_tutorial_merge_slot(storage, index) or (not (storage == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item))
 		var valid_equipment_target := _is_valid_equipment_target(storage, index, _dragged_item)
 		slot.configure(self, storage, index, item, merge_target or valid_equipment_target, _is_locked(storage, index), _shows_unarmed_damage(storage, index))
 		_connect_tooltip(slot)
