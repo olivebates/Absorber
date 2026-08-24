@@ -20,6 +20,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	_refresh_regeneration()
 	_fit_below_grids()
 
 
@@ -36,8 +37,13 @@ func _refresh() -> void:
 	if _player == null:
 		return
 	_health_label.text = "%d/%d" % [_player.health, _player.max_health]
-	_regen_label.text = str(_player.passive_healing_amount)
+	_refresh_regeneration()
 	call_deferred("_fit_below_grids")
+
+
+func _refresh_regeneration() -> void:
+	if is_instance_valid(_player) and is_instance_valid(_regen_label):
+		_regen_label.text = FoxPlayer.format_health_per_second(_player.get_effective_passive_healing_per_second())
 
 
 func get_stat_target_screen_position(stat: StringName) -> Vector2:

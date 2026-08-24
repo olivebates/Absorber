@@ -16,7 +16,7 @@ func _run() -> void:
 	assert(not armor_grid.visible, "The armor grid must remain hidden until a shield has been equipped")
 	assert((vitals.find_child("HealthIcon", true, false) as TextureRect).texture.resource_path == "res://Sprites/Heart.webp", "Vitals must use the Heart icon")
 	assert((vitals.find_child("HealthValue", true, false) as Label).text == "%d/%d" % [player.health, player.max_health], "Vitals must show current and maximum health")
-	assert((vitals.find_child("RegenerationIcon", true, false) as TextureRect).texture.resource_path == "res://Sprites/RecoveryHeart.webp" and (vitals.find_child("RegenerationValue", true, false) as Label).text == str(player.passive_healing_amount), "Vitals must show the regeneration icon and amount")
+	assert((vitals.find_child("RegenerationIcon", true, false) as TextureRect).texture.resource_path == "res://Sprites/RecoveryHeart.webp" and (vitals.find_child("RegenerationValue", true, false) as Label).text == FoxPlayer.format_health_per_second(player.get_effective_passive_healing_per_second()), "Vitals must show effective regeneration in health per second")
 
 	assert(player.collect_item("weathered_armor") and not player.get_slot_item("armor", 0).is_empty(), "A collected shield must auto-equip into an empty slot")
 	assert(armor_grid.visible and armor_grid._grid.get_child_count() == 4, "Equipping the first shield must reveal the initial two-by-two armor grid")

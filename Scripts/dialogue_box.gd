@@ -8,7 +8,7 @@ const TYPE_INTERVAL := 0.018
 const COMMA_PAUSE := 0.055
 const SENTENCE_PAUSE := 0.11
 const OPEN_DURATION := 0.16
-const INPUT_DELAY := 1.4
+const INPUT_DELAY := 0.8
 const BOTTOM_TOP := -174.0
 const BOTTOM_BOTTOM := -24.0
 
@@ -167,8 +167,8 @@ func _show_current_line() -> void:
 	_text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_continue_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_continue_label.text = "▼"
-	_continue_label.visible = false
-	_continue_label.modulate.a = 1.0
+	_continue_label.visible = true
+	_continue_label.modulate.a = 0.0
 	_continue_label.scale = Vector2.ONE
 	_continue_time = 0.0
 	_portrait_bob_time = 0.0
@@ -313,6 +313,7 @@ func _animate_speaker() -> void:
 
 func _show_continue_indicator() -> void:
 	_continue_label.visible = true
+	_continue_label.modulate.a = 1.0
 	_continue_time = 0.0
 	_continue_label.pivot_offset = _continue_label.size * 0.5
 

@@ -52,6 +52,8 @@ var _spawn_position := Vector2.ZERO
 var _pending_item_collections := 0
 var _combat_ring: Line2D
 var _healing_particles: HealingParticles
+var _is_dying := false
+var _death_overlay: ColorRect
 
 @onready var fox_sprite: Sprite2D = $FoxSprite
 @onready var health_bar: ProgressBar = $HealthBar
@@ -103,7 +105,7 @@ func is_moving() -> bool:
 
 
 func take_damage(amount: int, color_index := COLOR_RED) -> void:
-	if health <= 0:
+	if health <= 0 or _is_dying:
 		return
 	var applied_damage := maxi(1, amount - get_defense_for_color(color_index))
 	var blocked_damage := maxi(0, amount - applied_damage)
@@ -111,9 +113,9 @@ func take_damage(amount: int, color_index := COLOR_RED) -> void:
 	health_bar.value = health
 	_update_health_label()
 	vitals_changed.emit()
-	_show_damage_popup(amount, color_index, blocked_damage)
+	_show_damage_popup(applied_damage, color_index, blocked_damage)
 	if health == 0:
-		_respawn()
+		_begin_death_sequence()
 
 
 func heal(amount: int) -> void:
@@ -501,6 +503,9 @@ func _storage_accepts(storage: String, item: Dictionary) -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	if _is_dying:
+		velocity = Vector2.ZERO
+		return
 	for index in range(_weapon_cooldowns.size()):
 		_weapon_cooldowns[index] = maxf(0.0, _weapon_cooldowns[index] - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
@@ -553,6 +558,9 @@ func _attack_nearby_enemy() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 		if enemy is ChickenEnemy and world and world.are_adjacent(self, enemy):
+			var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+			if audio:
+				audio.play_damage()
 			_face_toward(enemy)
 			_play_attack_animation(enemy)
 			_show_slash(enemy, ItemPickup.get_grade_color(ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])))
@@ -606,6 +614,26 @@ func _get_healing_speed_multiplier() -> float:
 
 func _get_passive_heal_interval() -> float:
 	return 3.0 / float(maxi(1, passive_healing_amount))
+
+
+func get_passive_healing_per_second() -> float:
+	return float(maxi(1, passive_healing_amount)) / 3.0
+
+
+func get_effective_passive_healing_per_second() -> float:
+	return get_passive_healing_per_second() * _get_healing_speed_multiplier()
+
+
+static func get_healing_increase_per_second(amount: int) -> float:
+	return float(amount) / 3.0
+
+
+static func format_health_per_second(value: float) -> String:
+	return "%.1f/s" % value
+
+
+static func format_regeneration_value(value: float) -> String:
+	return "%.1f" % value
 
 
 func _is_near_campfire() -> bool:
@@ -709,15 +737,64 @@ func _snap_to_tile_center() -> void:
 		global_position = world.cell_to_world(world.world_to_cell(global_position))
 
 
-func _respawn() -> void:
+func _begin_death_sequence() -> void:
+	if _is_dying:
+		return
+	_is_dying = true
 	stop()
 	clear_attack_target()
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var interaction_was_locked := world.interaction_locked if world else false
+	if world:
+		world.interaction_locked = true
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_death()
+	if _attack_tween and _attack_tween.is_valid():
+		_attack_tween.kill()
+	if _hit_tween and _hit_tween.is_valid():
+		_hit_tween.kill()
+	fox_sprite.position = Vector2.ZERO
+	fox_sprite.scale = Vector2.ONE
+	fox_sprite.modulate = Color.WHITE
+	var death_tween := create_tween()
+	death_tween.tween_property(fox_sprite, "rotation", fox_sprite.rotation + PI / 2.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	await death_tween.finished
+	_show_death_overlay()
+	await get_tree().create_timer(0.5).timeout
 	global_position = _spawn_position
 	health = 1
 	health_bar.value = health
 	_update_health_label()
 	_heal_time_left = 3.0
+	fox_sprite.rotation = 0.0
+	_hide_death_overlay()
+	if audio:
+		audio.play_respawn()
+	_is_dying = false
+	if world:
+		world.interaction_locked = interaction_was_locked
 	vitals_changed.emit()
+
+
+func _show_death_overlay() -> void:
+	if not is_instance_valid(_death_overlay):
+		var canvas := CanvasLayer.new()
+		canvas.name = "DeathFadeLayer"
+		canvas.layer = 1000
+		add_child(canvas)
+		_death_overlay = ColorRect.new()
+		_death_overlay.name = "DeathOverlay"
+		_death_overlay.color = Color.BLACK
+		_death_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+		canvas.add_child(_death_overlay)
+		_death_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_death_overlay.show()
+
+
+func _hide_death_overlay() -> void:
+	if is_instance_valid(_death_overlay):
+		_death_overlay.hide()
 
 
 func _play_attack_animation(target: Node2D) -> void:
@@ -743,7 +820,12 @@ func _update_walk_animation(delta: float) -> void:
 	if _attack_visual_time_left > 0.0 or _hit_visual_time_left > 0.0:
 		return
 	if velocity.length_squared() > 1.0:
+		var previous_landing := floori(_walk_time / PI)
 		_walk_time += delta * 11.0
+		if floori(_walk_time / PI) != previous_landing:
+			var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+			if audio:
+				audio.play_walking_step()
 		fox_sprite.position.y = -absf(sin(_walk_time)) * 5.0
 		fox_sprite.rotation = sin(_walk_time) * 0.09
 	else:

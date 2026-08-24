@@ -13,13 +13,14 @@ func _run() -> void:
 	var story := world.get_node("StoryManager") as StoryManager
 	var box := world.get_node("HUD/DialogueBox") as DialogueBox
 	var asha := world.get_node("FoxAsha") as FoxAsha
+	assert(_finish_dialogue(box) == " Oh gosh, what a nice nap! Alright, back to work!", "A new game must begin with Mira's wake-up dialogue")
 	story.completed_dialogues = 4
 
 	world.player.global_position = asha.global_position + Vector2(128, 0)
 	story._process(0.0)
 	assert(not box.is_open(), "Approaching Asha must remain silent")
 	asha.interact()
-	assert(_finish_dialogue(box) == " Oh, there you are! Welcome back :) Have a look at what I've got", "Asha's first interaction must play the requested greeting")
+	assert(_finish_dialogue(box) == " Oh, hey! There you are! Still keeping Tiny Woods safe I see :) Yeah. Though lately, it feels like it’s getting easier. Oh? How so? Every time I chase one of those creatures away, I feel a little stronger. Sounds like all that experience is finally paying off ;) Haha, I guess it is! Well, if you need anything, I’ll be right here :)", "Asha's first interaction must play the requested conversation")
 	await process_frame
 	assert(asha._shop != null and asha._shop.visible, "Asha's shop must open after her greeting")
 	var resources := world.get_node("ResourceManager") as ResourceManager
@@ -33,10 +34,10 @@ func _run() -> void:
 	asha.close_shop()
 
 	_build_and_expect(world, resources, box, &"fish", "That'll do.")
-	_build_and_expect(world, resources, box, &"gold_ore", "I'm going to get so much gold.")
+	var lio_ore := _build_and_expect(world, resources, box, &"gold_ore", "Whoa, that's quite the contraption! I guess that makes my work a lot easier then, haha!")
 	_build_and_expect(world, resources, box, &"jewels", "That'll do nicely.")
 	_build_and_expect(world, resources, box, &"wood", "A nice lodge to cut my wood from!")
-	story.on_structure_built(&"gold_ore")
+	story.on_structure_built(&"gold_ore", lio_ore)
 	assert(not box.is_open(), "A structure's dialogue must not repeat")
 
 	var first_campfire := world.get_node("Campfire") as Campfire
@@ -80,16 +81,16 @@ func _run() -> void:
 	assert(_finish_dialogue(box) == " Oh look, it dropped a shield!", "The first evil-goat kill must mention its shield")
 
 	var saved_events := story.get_save_data()[9] as Dictionary
-	assert(saved_events.has("asha_intro") and saved_events.has("bull_proximity") and saved_events.has("evil_goat_killed"), "One-time story events must be included in saves")
+	assert(saved_events.has("game_intro") and saved_events.has("asha_intro") and saved_events.has("bull_proximity") and saved_events.has("evil_goat_killed"), "One-time story events must be included in saves")
 	var story_save := story.get_save_data()
 	story._seen_events.clear()
 	story.load_save_data(story_save)
-	assert(story._has_seen(&"asha_intro") and story._has_seen(&"bull_proximity") and story._has_seen(&"evil_goat_killed"), "One-time story events must restore from saves")
+	assert(story._has_seen(&"game_intro") and story._has_seen(&"asha_intro") and story._has_seen(&"bull_proximity") and story._has_seen(&"evil_goat_killed"), "One-time story events must restore from saves")
 	print("PASS: one-time construction, shop, enemy, gate, campfire, and teleport dialogue events work")
 	quit()
 
 
-func _build_and_expect(world: WorldNavigation, resources: ResourceManager, box: DialogueBox, resource_id: StringName, expected: String) -> void:
+func _build_and_expect(world: WorldNavigation, resources: ResourceManager, box: DialogueBox, resource_id: StringName, expected: String) -> GoldOre:
 	resources.fill_all_to_maximum()
 	var deposit: GoldOre
 	for node in get_nodes_in_group("gold_ores"):
@@ -100,6 +101,7 @@ func _build_and_expect(world: WorldNavigation, resources: ResourceManager, box: 
 	deposit._try_build_mine()
 	assert(is_instance_valid(deposit._mine), "The structure must build successfully")
 	assert(_finish_dialogue(box) == " " + expected, "The first structure of its type must use the requested dialogue")
+	return deposit
 
 
 func _finish_dialogue(box: DialogueBox) -> String:

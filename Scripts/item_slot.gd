@@ -3,12 +3,14 @@ extends PanelContainer
 
 const HELMET_ICON := preload("res://Sprites/HelmetIcon.webp")
 const SWORD_ICON := preload("res://Sprites/SwordIcon.webp")
+const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 
 var owner_ui: Control
 var storage := "inventory"
 var slot_index := 0
 var item: Dictionary = {}
 var locked := false
+var shows_unarmed_damage := false
 
 var _icon: TextureRect
 var _empty_icon: TextureRect
@@ -18,13 +20,14 @@ var _was_dragged := false
 var _merge_tween: Tween
 
 
-func configure(new_owner: Control, new_storage: String, new_slot_index: int, new_item: Dictionary, highlight := false, is_locked := false) -> void:
+func configure(new_owner: Control, new_storage: String, new_slot_index: int, new_item: Dictionary, highlight := false, is_locked := false, show_unarmed_damage := false) -> void:
 	add_to_group("item_slots")
 	owner_ui = new_owner
 	storage = new_storage
 	slot_index = new_slot_index
 	item = new_item.duplicate()
 	locked = is_locked
+	shows_unarmed_damage = show_unarmed_damage
 	custom_minimum_size = Vector2(42, 42)
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if not item.is_empty() and not locked else Control.CURSOR_ARROW
 	_set_style(ItemPickup.get_grade_color(ItemPickup.get_item_grade(item)) if not item.is_empty() else Color("192236"), highlight)
@@ -44,7 +47,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		_empty_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_empty_icon.z_index = 0
 		add_child(_empty_icon)
-	_empty_icon.texture = HELMET_ICON if storage == "armor" else SWORD_ICON if storage == "weapon" else null
+	_empty_icon.texture = HELMET_ICON if storage == "armor" else DAMAGE_ICON if shows_unarmed_damage else SWORD_ICON if storage == "weapon" else null
 	_empty_icon.visible = item.is_empty() and _empty_icon.texture != null
 	if _cooldown_overlay == null:
 		_cooldown_overlay = ColorRect.new()
@@ -72,7 +75,7 @@ func _update_cooldown_overlay() -> void:
 	if _cooldown_overlay == null:
 		return
 	var ratio := 0.0
-	if storage == "weapon" and not item.is_empty() and owner_ui:
+	if storage == "weapon" and (not item.is_empty() or shows_unarmed_damage) and owner_ui:
 		ratio = float(owner_ui.call("get_weapon_cooldown_ratio", slot_index))
 	var slot_size := size if size.length_squared() > 0.0 else custom_minimum_size
 	if _icon:

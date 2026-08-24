@@ -7,10 +7,9 @@ const HEALTH_ICON := preload("res://Sprites/Heart.webp")
 const RESOURCE_PURCHASE_PRICE := 2
 const RESOURCE_PURCHASES := [&"fish", &"wood"]
 const UPGRADES := [
-	{"resource_id": &"gold_ore", "base_price": 5, "amount": 1, "stat_icon": DAMAGE_ICON, "stat": &"damage", "color": FoxPlayer.COLOR_RED, "name": "Red Damage", "description": "Increase red damage by 1."},
-	{"resource_id": &"fish", "base_price": 5, "amount": 20, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 20."},
-	{"resource_id": &"wood", "base_price": 3, "amount": 20, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 20."},
-	{"resource_id": &"jewels", "base_price": 5, "amount": 1, "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase passive health regeneration by 1."},
+	{"resource_id": &"gold_ore", "base_price": 5, "purchase_slot": 0, "amount": 1, "stat_icon": DAMAGE_ICON, "stat": &"damage", "color": FoxPlayer.COLOR_RED, "name": "Red Damage", "description": "Increase red damage by 1."},
+	{"resource_id": &"wood", "base_price": 3, "purchase_slot": 2, "amount": 20, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 20."},
+	{"resource_id": &"jewels", "base_price": 5, "purchase_slot": 3, "amount": 1, "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase passive health regeneration by 0.3."},
 ]
 
 var _shopkeeper: FoxAsha
@@ -70,7 +69,8 @@ func get_upgrade_price(upgrade_index: int) -> int:
 	var upgrade: Dictionary = upgrades[upgrade_index]
 	if bool(upgrade.get("fixed_price", false)):
 		return int(upgrade["base_price"])
-	return int(upgrade["base_price"]) * (_shopkeeper.purchase_counts[upgrade_index] + 1)
+	var purchase_slot := int(upgrade.get("purchase_slot", upgrade_index))
+	return int(upgrade["base_price"]) * (_shopkeeper.purchase_counts[purchase_slot] + 1)
 
 
 func is_upgrade_visible(upgrade_index: int) -> bool:
@@ -84,23 +84,26 @@ func buy_upgrade(upgrade_index: int) -> bool:
 	var upgrade: Dictionary = upgrades[upgrade_index]
 	var resource_id := StringName(upgrade["resource_id"])
 	var price := get_upgrade_price(upgrade_index)
-	var before_value := _get_upgrade_current_value(upgrade_index)
+	var before_value: Variant = _get_upgrade_current_value(upgrade_index)
 	if not _resource_manager.spend_resources({resource_id: price}):
 		_refresh()
 		_play_purchase_failure(_rows[upgrade_index], _price_labels[upgrade_index], _missing_resource_text(resource_id, price))
 		return false
 	_apply_upgrade(upgrade)
-	_shopkeeper.purchase_counts[upgrade_index] += 1
+	var purchase_slot := int(upgrade.get("purchase_slot", upgrade_index))
+	_shopkeeper.purchase_counts[purchase_slot] += 1
 	_refresh()
-	var after_value := _get_upgrade_current_value(upgrade_index)
+	var after_value: Variant = _get_upgrade_current_value(upgrade_index)
 	var result_name := str(upgrade["name"])
+	var before_text := _format_upgrade_value(upgrade, before_value)
+	var after_text := _format_upgrade_value(upgrade, after_value)
 	_remember_interaction_state(_rows[upgrade_index])
 	_play_purchase_success(
 		_rows[upgrade_index],
 		upgrade["stat_icon"] as Texture2D,
 		_price_icons[upgrade_index].texture,
 		&"",
-		"Purchased!  %s: %d → %d" % [result_name, before_value, after_value],
+		"Purchased!  %s: %s → %s" % [result_name, before_text, after_text],
 		upgrade_index
 	)
 	return true
@@ -183,7 +186,7 @@ func _apply_upgrade(upgrade: Dictionary) -> void:
 			_player.add_max_health(amount)
 
 
-func _get_upgrade_current_value(upgrade_index: int) -> int:
+func _get_upgrade_current_value(upgrade_index: int) -> Variant:
 	var upgrade: Dictionary = _get_upgrades()[upgrade_index]
 	match StringName(upgrade["stat"]):
 		&"damage":
@@ -191,10 +194,16 @@ func _get_upgrade_current_value(upgrade_index: int) -> int:
 		&"defense":
 			return _player.get_base_defense_for_color(int(upgrade.get("color", FoxPlayer.COLOR_RED)))
 		&"regeneration":
-			return _player.passive_healing_amount
+			return _player.get_passive_healing_per_second()
 		&"health":
 			return _player.max_health
 	return 0
+
+
+func _format_upgrade_value(upgrade: Dictionary, value: Variant) -> String:
+	if StringName(upgrade["stat"]) == &"regeneration":
+		return FoxPlayer.format_regeneration_value(float(value))
+	return str(int(value))
 
 
 func _missing_resource_text(resource_id: StringName, price: int) -> String:
@@ -237,11 +246,15 @@ func _animate_rows_open() -> void:
 		tween.tween_property(row, "scale", Vector2.ONE, 0.16).set_delay(index * 0.035)
 
 
-func _play_purchase_success(button: Button, benefit_texture: Texture2D, currency_texture: Texture2D, target_resource_id: StringName, result_text: String, upgrade_index: int) -> void:
+func _play_purchase_success(button: Button, benefit_texture: Texture2D, currency_texture: Texture2D, target_resource_id: StringName, _result_text: String, upgrade_index: int) -> void:
 	if button == null:
 		return
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_purchase()
 	_flash_button(button, Color(1.0, 0.82, 0.25, 0.42))
-	_show_feedback_label(button, result_text, Color("ffe082"))
+	var purchased_amount := int(_get_upgrades()[upgrade_index]["amount"]) if upgrade_index >= 0 else 1
+	_show_purchase_feedback(button, purchased_amount, benefit_texture)
 	var offer_icon := button.find_child("OfferIcon", true, false) as TextureRect
 	if offer_icon == null:
 		offer_icon = button.find_child("ResourceIcon", true, false) as TextureRect
@@ -305,6 +318,37 @@ func _show_feedback_label(button: Button, message: String, color: Color) -> void
 	tween.tween_property(feedback, "position:y", feedback.position.y - 24.0, 0.55)
 	tween.tween_property(feedback, "modulate:a", 0.0, 0.55).set_delay(0.18)
 	tween.chain().tween_callback(feedback.queue_free)
+
+
+func _show_purchase_feedback(button: Button, amount: int, texture: Texture2D) -> void:
+	var feedback := HBoxContainer.new()
+	feedback.name = "PurchaseFeedback"
+	feedback.alignment = BoxContainer.ALIGNMENT_CENTER
+	feedback.add_theme_constant_override("separation", 3)
+	feedback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	feedback.z_index = 70
+	add_child(feedback)
+	feedback.add_child(_make_feedback_copy("+%d" % amount))
+	var icon := _make_icon(texture, Vector2(22, 22))
+	icon.name = "PurchasedIcon"
+	feedback.add_child(icon)
+	feedback.add_child(_make_feedback_copy("!"))
+	feedback.size = feedback.get_combined_minimum_size()
+	feedback.global_position = button.get_global_rect().get_center() - Vector2(feedback.size.x * 0.5, 10)
+	var tween := feedback.create_tween().set_parallel(true)
+	tween.tween_property(feedback, "position:y", feedback.position.y - 24.0, 0.55)
+	tween.tween_property(feedback, "modulate:a", 0.0, 0.55).set_delay(0.18)
+	tween.chain().tween_callback(feedback.queue_free)
+
+
+func _make_feedback_copy(copy: String) -> Label:
+	var label := Label.new()
+	label.text = copy
+	label.add_theme_color_override("font_color", Color("ffe082"))
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 3)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return label
 
 
 func _spawn_flying_icon(texture: Texture2D, start: Vector2, target: Vector2, duration: float) -> void:
@@ -404,6 +448,10 @@ func _make_upgrade_button(upgrade_index: int) -> Button:
 	button.custom_minimum_size = Vector2(310, 40)
 	button.set_meta("upgrade_index", upgrade_index)
 	var description := str(upgrade["description"])
+	if StringName(upgrade["stat"]) == &"regeneration":
+		description = "Increase passive health regeneration by %s." % FoxPlayer.format_regeneration_value(
+			FoxPlayer.get_healing_increase_per_second(int(upgrade["amount"]))
+		)
 	button.tooltip_text = ""
 	_set_shop_button_style(button)
 	_connect_shop_tooltip(button, "", description)
@@ -435,7 +483,8 @@ func _make_upgrade_button(upgrade_index: int) -> Button:
 		damage_dot.add_theme_stylebox_override("panel", dot_style)
 		row.add_child(damage_dot)
 	var amount := Label.new()
-	amount.text = "+%d" % int(upgrade["amount"])
+	amount.text = "+%s" % FoxPlayer.format_regeneration_value(FoxPlayer.get_healing_increase_per_second(int(upgrade["amount"]))) \
+		if StringName(upgrade["stat"]) == &"regeneration" else "+%d" % int(upgrade["amount"])
 	amount.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	amount.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(amount)
@@ -552,7 +601,7 @@ func _refresh() -> void:
 	for index in range(upgrades.size()):
 		var resource_id := StringName(upgrades[index]["resource_id"])
 		var definition := _resource_manager.get_definition(resource_id)
-		_rows[index].visible = index == 0 or _resource_manager.has_ever_owned(resource_id)
+		_rows[index].visible = bool(upgrades[index].get("visible_by_default", false)) or index == 0 or _resource_manager.has_ever_owned(resource_id)
 		_price_icons[index].texture = definition.icon if definition else null
 		var price := get_upgrade_price(index)
 		_price_labels[index].text = str(price)

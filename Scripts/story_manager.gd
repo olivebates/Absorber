@@ -17,7 +17,7 @@ var _world: WorldNavigation
 var _dialogue_box: DialogueBox
 var _asha: FoxAsha
 var _luca: FoxLuca
-var _lio: StoryFox
+var _lio: FoxLio
 var _nia: StoryFox
 var _first_gate: Gate
 var _bull_spawn: EnemySpawnPoint
@@ -56,6 +56,7 @@ func _finish_setup() -> void:
 	_connect_enemy_story_signals()
 	_find_characters()
 	_initialized = true
+	_trigger_event_once(&"game_intro")
 
 
 func _process(_delta: float) -> void:
@@ -76,9 +77,7 @@ func _process(_delta: float) -> void:
 		1:
 			pass
 		2:
-			if is_instance_valid(_lio) and _tile_distance_to(_lio) <= TRIGGER_DISTANCE_TILES:
-				_start_dialogue(3)
-				return
+			pass
 	if _check_bull_proximity_event():
 		return
 	if _check_campfire_events():
@@ -127,11 +126,17 @@ func interact_with(character_id: StringName) -> bool:
 		_shop_to_reopen = null
 		return false
 	if character_id == &"lio":
-		if completed_dialogues == 2:
-			return _start_dialogue(3)
-		return _play_default_dialogue([
-			_line("Lio", "The giant bull in the cave is blocking the entrance to the desert.", LIO_PORTRAIT),
-		])
+		if _has_seen(&"lio_intro"):
+			return false
+		_seen_events[&"lio_intro"] = true
+		_reopen_shop_after_dialogue = true
+		_shop_to_reopen = _lio
+		if _start_dialogue(3):
+			return true
+		_seen_events.erase(&"lio_intro")
+		_reopen_shop_after_dialogue = false
+		_shop_to_reopen = null
+		return false
 	return false
 
 
@@ -186,17 +191,17 @@ func load_save_data(data: Array) -> void:
 	_queued_events.clear()
 	_reopen_shop_after_dialogue = false
 	_shop_to_reopen = null
+	_enable_biome_music()
 
 
 func _find_characters() -> void:
 	_asha = _world.get_node_or_null("FoxAsha") as FoxAsha
 	_luca = _world.get_node_or_null("FoxLuca") as FoxLuca
+	_lio = _world.get_node_or_null("FoxLio") as FoxLio
 	for node in get_tree().get_nodes_in_group("story_characters"):
 		if node is StoryFox:
 			var fox := node as StoryFox
-			if fox.character_id == &"lio":
-				_lio = fox
-			elif fox.character_id == &"nia":
+			if fox.character_id == &"nia":
 				_nia = fox
 
 
@@ -222,12 +227,15 @@ func _play_default_dialogue(lines: Array[Dictionary]) -> bool:
 	return _dialogue_box.play(lines)
 
 
-func on_structure_built(resource_id: StringName) -> void:
+func on_structure_built(resource_id: StringName, deposit: GoldOre = null) -> void:
 	match resource_id:
 		&"fish":
 			_trigger_event_once(&"fish_hut")
 		&"gold_ore":
-			_trigger_event_once(&"gold_mine")
+			if _is_nearest_gold_ore_to_lio(deposit):
+				_trigger_event_once(&"lio_gold_mine")
+			else:
+				_trigger_event_once(&"gold_mine")
 		&"jewels":
 			_trigger_event_once(&"gem_mine")
 		&"wood":
@@ -252,6 +260,32 @@ func on_luca_purchase() -> void:
 	_reopen_shop_after_dialogue = true
 	_shop_to_reopen = _luca
 	_trigger_event_once(&"luca_purchase")
+
+
+func on_lio_purchase() -> void:
+	if _has_seen(&"lio_purchase"):
+		return
+	if is_instance_valid(_lio):
+		_lio.close_shop()
+	_reopen_shop_after_dialogue = true
+	_shop_to_reopen = _lio
+	_trigger_event_once(&"lio_purchase")
+
+
+func _is_nearest_gold_ore_to_lio(deposit: GoldOre) -> bool:
+	if not is_instance_valid(deposit) or not is_instance_valid(_lio):
+		return false
+	var nearest: GoldOre
+	var nearest_distance := INF
+	for node in get_tree().get_nodes_in_group("gold_ores"):
+		if not node is GoldOre or (node as GoldOre).mined_resource_id != &"gold_ore":
+			continue
+		var ore := node as GoldOre
+		var distance := ore.global_position.distance_squared_to(_lio.global_position)
+		if distance < nearest_distance:
+			nearest = ore
+			nearest_distance = distance
+	return deposit == nearest
 
 
 func on_campfire_teleported() -> void:
@@ -286,6 +320,8 @@ func _on_dialogue_finished() -> void:
 		completed_dialogues = maxi(completed_dialogues, _active_dialogue)
 		_active_dialogue = 0
 	_active_event = &""
+	if finished_event == &"game_intro":
+		_enable_biome_music()
 	if finished_event == &"gate_tile":
 		_pan_camera_back()
 	if not _queued_events.is_empty():
@@ -297,6 +333,12 @@ func _on_dialogue_finished() -> void:
 		_shop_to_reopen = null
 		if is_instance_valid(shopkeeper):
 			shopkeeper.call_deferred("open_shop")
+
+
+func _enable_biome_music() -> void:
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.enable_biome_music()
 
 
 func _on_dialogue_line_shown(index: int) -> void:
@@ -387,14 +429,19 @@ func _get_dialogue(dialogue_number: int) -> Array[Dictionary]:
 			]
 		2:
 			return [
-				_line("Asha", "Oh, there you are! Welcome back :)", ASHA_PORTRAIT),
-				_line("Asha", "Have a look at what I've got", ASHA_PORTRAIT),
+				_line("Asha", "Oh, hey! There you are!", ASHA_PORTRAIT),
+				_line("Asha", "Still keeping Tiny Woods safe I see :)", ASHA_PORTRAIT),
+				_line("Mira", "Yeah. Though lately, it feels like it’s getting easier.", PLAYER_PORTRAIT),
+				_line("Asha", "Oh? How so?", ASHA_PORTRAIT),
+				_line("Mira", "Every time I chase one of those creatures away, I feel a little stronger.", PLAYER_PORTRAIT),
+				_line("Asha", "Sounds like all that experience is finally paying off ;)", ASHA_PORTRAIT),
+				_line("Mira", "Haha, I guess it is!", PLAYER_PORTRAIT),
+				_line("Asha", "Well, if you need anything, I’ll be right here :)", ASHA_PORTRAIT),
 			]
 		3:
 			return [
-				_line("Lio", "A giant bull in the cave is blocking the entrance to the desert.", LIO_PORTRAIT),
-				_line("Mira", "So I have to defeat it to pass?", PLAYER_PORTRAIT),
-				_line("Lio", "Exactly. Beat the bull and the road will be clear.", LIO_PORTRAIT),
+				_line("Lio", "You wouldn’t believe how much work it takes to dig up this gold!", LIO_PORTRAIT),
+				_line("Lio", "What I wouldn’t do for some fish right now, haha!", LIO_PORTRAIT),
 			]
 		4:
 			return [
@@ -405,12 +452,22 @@ func _get_dialogue(dialogue_number: int) -> Array[Dictionary]:
 
 func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 	match event_id:
+		&"game_intro":
+			return [
+				_line("Mira", "Oh gosh, what a nice nap!", PLAYER_PORTRAIT),
+				_line("Mira", "Alright, back to work!", PLAYER_PORTRAIT),
+			]
 		&"bull_proximity":
 			return [_line("Mira", "Whoa, I'm feeling some seriously synister energy from that cave.", PLAYER_PORTRAIT)]
 		&"fish_hut":
 			return [_line("Mira", "That'll do.", PLAYER_PORTRAIT)]
 		&"gold_mine":
 			return [_line("Mira", "I'm going to get so much gold.", PLAYER_PORTRAIT)]
+		&"lio_gold_mine":
+			return [
+				_line("Lio", "Whoa, that's quite the contraption!", LIO_PORTRAIT),
+				_line("Lio", "I guess that makes my work a lot easier then, haha!", LIO_PORTRAIT),
+			]
 		&"gem_mine":
 			return [_line("Mira", "That'll do nicely.", PLAYER_PORTRAIT)]
 		&"wood_lodge":
@@ -435,6 +492,8 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			]
 		&"luca_purchase":
 			return [_line("Luca", "Appreicate it.", LUCA_PORTRAIT)]
+		&"lio_purchase":
+			return [_line("Lio", "Oh man, I'm so hungry, thank you!", LIO_PORTRAIT)]
 		&"campfire_teleport":
 			return [_line("Mira", "Convenient.", PLAYER_PORTRAIT)]
 		&"evil_goat_killed":

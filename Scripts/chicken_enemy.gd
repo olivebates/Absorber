@@ -99,7 +99,7 @@ func take_damage(amount: int) -> void:
 	_health_regen_tick_left = 0.0
 	health_bar.value = health
 	_update_health_label()
-	_show_damage_popup(amount, enemy_color, blocked_damage)
+	_show_damage_popup(applied_damage, enemy_color, blocked_damage)
 	if health == 0:
 		died.emit(self)
 		_grant_kill_reward()
@@ -264,6 +264,9 @@ func _attack_player(in_combat_override: Variant = null) -> void:
 		return
 	var in_combat := _is_in_combat() if in_combat_override == null else bool(in_combat_override)
 	if in_combat and _player:
+		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+		if audio:
+			audio.play_damage()
 		_face_toward(_player)
 		_play_attack_animation(_player)
 		_show_slash(_player)
@@ -335,13 +338,15 @@ func _update_reward_visual() -> void:
 	elif reward_type == REWARD_REGENERATE:
 		reward_color = Color("65d76e")
 		reward_icon.texture = preload("res://Sprites/RecoveryHeart.webp")
+		reward_label.text = "+%s" % FoxPlayer.format_regeneration_value(FoxPlayer.get_healing_increase_per_second(damage_reward))
+		reward_label.offset_right = 112.0
 	elif reward_type == REWARD_RESOURCE:
 		var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
 		var definition := resource_manager.get_definition(reward_resource_id) if resource_manager else null
 		if definition:
-			reward_color = definition.display_color
 			reward_icon.texture = definition.icon
-			reward_icon.modulate = reward_color
+			reward_icon.modulate = Color.WHITE
+		reward_color = Color("ffe082")
 	elif reward_type == REWARD_DEFENSE:
 		reward_color = colors[defense_reward_color]
 		reward_icon.texture = preload("res://Sprites/ShieldIcon.webp")
@@ -460,7 +465,11 @@ func _get_hud_control(node_name: String) -> Control:
 
 func _launch_reward_orb(target_screen_position: Vector2, color: Color, on_arrive: Callable) -> void:
 	var target_world_position := get_viewport().get_canvas_transform().affine_inverse() * target_screen_position
-	RewardOrb.fly(get_parent(), global_position, target_world_position, color, on_arrive)
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	var on_collected := Callable()
+	if audio:
+		on_collected = audio.play_upgrade
+	RewardOrb.fly(get_parent(), global_position, target_world_position, color, on_arrive, on_collected)
 
 
 func _show_damage_popup(amount: int, color_index: int, blocked_damage: int) -> void:

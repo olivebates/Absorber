@@ -22,10 +22,15 @@ var _actor_cache_frame := -1
 var _cached_actor_counts: Dictionary = {}
 var _cached_actor_single_ids: Dictionary = {}
 var _cached_enemy_target_min_ids: Dictionary = {}
+var game_audio: GameAudio
 
 
 func _ready() -> void:
 	add_to_group("world_navigation")
+	game_audio = GameAudio.new()
+	game_audio.name = "GameAudio"
+	game_audio.setup(self)
+	add_child(game_audio)
 	_build_navigation_grid_from_tilemaps()
 	_create_tab_prompt()
 	_update_exploration()

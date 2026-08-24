@@ -6,6 +6,7 @@
 [node name="FoxLuca" type="Node2D"]
 z_index = 4
 script = ExtResource("1_luca")
+reverse_sprite_orientation = true
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 1

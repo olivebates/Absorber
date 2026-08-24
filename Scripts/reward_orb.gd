@@ -5,14 +5,16 @@ var _start := Vector2.ZERO
 var _end := Vector2.ZERO
 var _arc_height := 0.0
 var _on_arrive: Callable
+var _after_arrive: Callable
 
 
-static func fly(parent: Node, start_position: Vector2, end_position: Vector2, color: Color, on_arrive: Callable) -> RewardOrb:
+static func fly(parent: Node, start_position: Vector2, end_position: Vector2, color: Color, on_arrive: Callable, after_arrive := Callable()) -> RewardOrb:
 	var orb := RewardOrb.new()
 	orb._start = start_position
 	orb._end = end_position
 	orb._arc_height = randf_range(46.0, 92.0)
 	orb._on_arrive = on_arrive
+	orb._after_arrive = after_arrive
 	orb.global_position = start_position
 	orb.z_index = 30
 	orb.modulate = color
@@ -35,6 +37,8 @@ func _follow_arc(progress: float) -> void:
 func _finish() -> void:
 	if _on_arrive.is_valid():
 		_on_arrive.call()
+	if _after_arrive.is_valid():
+		_after_arrive.call()
 	queue_free()
 
 

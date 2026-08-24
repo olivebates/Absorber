@@ -69,7 +69,10 @@ func _run() -> void:
 	assert(not armor_slot.locked, "The first armor slot must start unlocked")
 	assert(locked_armor_slot.locked, "Later armor slots must remain locked")
 	assert(armor_slot._empty_icon.visible and armor_slot._empty_icon.texture.resource_path == "res://Sprites/HelmetIcon.webp", "Empty armor slots must show HelmetIcon")
-	assert(weapon_slot._empty_icon.visible and weapon_slot._empty_icon.texture.resource_path == "res://Sprites/SwordIcon.webp", "Empty weapon slots must show SwordIcon")
+	assert(weapon_slot.item.is_empty() and weapon_slot._empty_icon.visible and weapon_slot._empty_icon.texture.resource_path == "res://Sprites/DamageIcon.webp", "The first empty weapon slot must remain empty while showing the unarmed DamageIcon")
+	fox._weapon_cooldowns[0] = fox.attack_cooldown * 0.5
+	weapon_slot._update_cooldown_overlay()
+	assert(weapon_slot._cooldown_overlay.visible, "The unarmed DamageIcon must show the normal attack cooldown")
 	assert(locked_armor_slot._empty_icon.z_index < locked_armor_slot._lock_icon.z_index, "Empty slot icons must render beneath locks")
 	var item_tooltip := ItemTooltip.new()
 	root.add_child(item_tooltip)
@@ -81,7 +84,8 @@ func _run() -> void:
 	root.add_child(damage_popup)
 	damage_popup.show_damage(5, FoxPlayer.COLOR_RED, 2)
 	var popup_row := damage_popup.get_child(0) as HBoxContainer
-	assert((popup_row.get_child(2) as Label).text == "2", "Blocked armor text must not have a minus sign")
+	assert((popup_row.get_child(0) as TextureRect).texture.resource_path == "res://Sprites/DamageIcon.webp", "Damage popups must show DamageIcon before the damage amount")
+	assert((popup_row.get_child(3) as Label).text == "2", "Blocked armor text must not have a minus sign")
 
 	var reward_enemy := load("res://Scenes/chicken_enemy.tscn").instantiate() as ChickenEnemy
 	reward_enemy.setup(Vector2i.ZERO, 1, ChickenEnemy.REWARD_DAMAGE, [], &"gold_ore", FoxPlayer.COLOR_RED, 100)
@@ -97,6 +101,13 @@ func _run() -> void:
 	assert(reward_enemy.health == reward_enemy.max_health - 10, "Enemies must regenerate ten percent of maximum health per second")
 	reward_enemy._physics_process(1.0)
 	assert(reward_enemy.health == reward_enemy.max_health, "Enemy regeneration must apply once per second")
+	var resource_reward_enemy := load("res://Scenes/chicken_enemy.tscn").instantiate() as ChickenEnemy
+	resource_reward_enemy.setup(Vector2i.ZERO, 2, ChickenEnemy.REWARD_RESOURCE, [], &"gold_ore")
+	root.add_child(resource_reward_enemy)
+	await process_frame
+	assert(resource_reward_enemy.reward_icon.modulate == Color.WHITE, "Resource reward icons above enemy health bars must keep their original colors")
+	assert(resource_reward_enemy.reward_label.get_theme_color("font_color") == Color("ffe082"), "Resource reward numbers above enemy health bars must always be gold")
+	resource_reward_enemy.queue_free()
 
 	var expected_sprite_paths: Array[String] = ["res://Sprites/Mole.webp", "res://Sprites/Mole2.webp", "res://Sprites/Goat.webp"]
 	for index in range(expected_sprite_paths.size()):

@@ -68,7 +68,7 @@ func _update_merge_highlights() -> void:
 				var slot := child as ItemSlot
 				var merge_target := not (storage == _drag_source_storage and slot.slot_index == _drag_source_index) and _player.can_merge(_dragged_item, slot.item)
 				var valid_equipment_target := _is_valid_equipment_target(storage, slot.slot_index, _dragged_item)
-				slot.configure(self, storage, slot.slot_index, slot.item, merge_target or valid_equipment_target, _is_locked(storage, slot.slot_index))
+				slot.configure(self, storage, slot.slot_index, slot.item, merge_target or valid_equipment_target, _is_locked(storage, slot.slot_index), _shows_unarmed_damage(storage, slot.slot_index))
 
 
 func _refresh() -> void:
@@ -86,7 +86,7 @@ func _rebuild_row(row: HBoxContainer, storage: String) -> void:
 		var slot := ItemSlot.new()
 		var merge_target := not (storage == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item)
 		var valid_equipment_target := _is_valid_equipment_target(storage, index, _dragged_item)
-		slot.configure(self, storage, index, item, merge_target or valid_equipment_target, _is_locked(storage, index))
+		slot.configure(self, storage, index, item, merge_target or valid_equipment_target, _is_locked(storage, index), _shows_unarmed_damage(storage, index))
 		_connect_tooltip(slot)
 		row.add_child(slot)
 
@@ -154,6 +154,15 @@ func get_weapon_cooldown_ratio(index: int) -> float:
 
 func _is_locked(storage: String, index: int) -> bool:
 	return index != 0 or (storage != "weapon" and storage != "armor")
+
+
+func _shows_unarmed_damage(storage: String, index: int) -> bool:
+	if storage != "weapon" or index != 0:
+		return false
+	for weapon_index in range(4):
+		if not _player.get_slot_item("weapon", weapon_index).is_empty():
+			return false
+	return true
 
 
 func _is_valid_equipment_target(storage: String, index: int, item: Dictionary) -> bool:

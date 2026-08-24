@@ -5,7 +5,7 @@ const LUCA_UPGRADES := [
 	{"resource_id": &"wood", "base_price": 7, "fixed_price": true, "amount": 1, "stat_icon": DAMAGE_ICON, "stat": &"damage", "color": FoxPlayer.COLOR_RED, "name": "Red Damage", "description": "Increase red damage by 1."},
 	{"resource_id": &"gold_ore", "base_price": 3, "fixed_price": true, "amount": 1, "stat_icon": preload("res://Sprites/ShieldIcon.webp"), "stat": &"defense", "color": FoxPlayer.COLOR_RED, "name": "Red Defense", "description": "Increase red defense by 1."},
 	{"resource_id": &"fish", "base_price": 10, "fixed_price": true, "amount": 40, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 40."},
-	{"resource_id": &"jewels", "base_price": 8, "fixed_price": true, "amount": 1, "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase passive health regeneration by 1."},
+	{"resource_id": &"jewels", "base_price": 8, "fixed_price": true, "amount": 1, "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase passive health regeneration by 0.3."},
 ]
 
 

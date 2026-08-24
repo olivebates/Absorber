@@ -14,11 +14,13 @@ func _run() -> void:
 	var box := world.get_node("HUD/DialogueBox") as DialogueBox
 	var asha := world.get_node("FoxAsha") as FoxAsha
 	var nia := world.get_node("FoxNia") as StoryFox
-	var lio := world.get_node("FoxLio") as StoryFox
+	var lio := world.get_node("FoxLio") as FoxLio
 	assert(story != null and box != null and asha != null and nia != null and lio != null, "The world must contain the dialogue system and all three story foxes")
-	assert(not box.is_open(), "The opening dialogue must not play when the game starts")
+	assert(box.is_open() and box.get_current_speaker() == "Mira", "The first new game must begin with Mira's opening monologue")
+	var game_intro_copy := _finish_dialogue(box)
+	assert(game_intro_copy.contains("Oh gosh, what a nice nap!") and game_intro_copy.contains("Alright, back to work!"), "Mira must wake from her nap and return to work")
 	for dialogue_number in range(1, 5):
-		assert(story._get_dialogue(dialogue_number).size() <= 6, "Every story dialogue must contain at most six messages")
+		assert(story._get_dialogue(dialogue_number).size() <= 8, "Every story dialogue must contain at most eight messages")
 	world.player.global_position = nia.global_position + Vector2(256, 0)
 	story._process(0.0)
 	assert(not box.is_open(), "Nia's opening dialogue must not trigger beyond three tiles")
@@ -31,7 +33,8 @@ func _run() -> void:
 	var dialogue_panel := box.get_child(0) as MarginContainer
 	var first_line_width := dialogue_panel.size.x
 	var opening_copy := box.get_current_text()
-	assert(box.is_typing() and not (box.find_child("ContinueHint", true, false) as Label).visible, "Dialogue must type before showing its continue arrow")
+	var continue_hint := box.find_child("ContinueHint", true, false) as Label
+	assert(box.is_typing() and continue_hint.visible and is_zero_approx(continue_hint.modulate.a), "Dialogue must reserve invisible space for its continue arrow while typing")
 	box.finish_typing()
 	assert((box.find_child("ContinueHint", true, false) as Label).visible, "Completing a line must reveal the continue arrow")
 	box.advance()
@@ -57,7 +60,7 @@ func _run() -> void:
 	assert(box.is_open() and box.get_current_speaker() == "Asha", "Asha's introduction must start when she is first interacted with")
 	assert(identity.get_index() == 1 and not portrait.flip_h, "Asha must appear on the right without flipping her portrait")
 	var asha_copy := _finish_dialogue(box)
-	assert(asha_copy.contains("Oh, there you are! Welcome back :)") and asha_copy.contains("Have a look at what I've got"), "Asha must welcome the player before showing her wares")
+	assert(asha_copy.contains("Oh, hey! There you are!") and asha_copy.contains("Still keeping Tiny Woods safe I see :)") and asha_copy.contains("experience is finally paying off") and asha_copy.contains("I’ll be right here :)"), "Asha and Mira must have their full first-interaction conversation")
 	await process_frame
 	assert(asha._shop != null and asha._shop.visible, "Asha's shop must open after her first dialogue")
 	asha.close_shop()
@@ -68,13 +71,15 @@ func _run() -> void:
 	assert(not box.is_open(), "Absorbing enemy Health must not start an extra dialogue")
 	world.player.global_position = lio.global_position + Vector2(128, 0)
 	story._process(0.0)
-	assert(box.is_open() and box.get_current_speaker() == "Lio" and portrait.flip_h, "Lio's introduction must trigger and use a flipped right-side portrait")
+	assert(not box.is_open(), "Getting close to Lio must not trigger dialogue")
+	assert(story.interact_with(&"lio"), "Lio's first interaction must start his introduction")
+	assert(box.is_open() and box.get_current_speaker() == "Lio" and portrait.flip_h, "Lio's interaction dialogue must use a flipped right-side portrait")
 	var lio_copy := _finish_dialogue(box)
-	assert(lio_copy.contains("giant bull") and lio_copy.contains("cave") and lio_copy.contains("entrance to the desert"), "Lio must explain that the cave's giant bull blocks the desert entrance")
-	assert(story.interact_with(&"lio") and box.is_open(), "Lio must have default interaction dialogue")
-	assert(box.get_current_text().contains("giant bull") and box.get_current_text().contains("desert"), "Lio's default interaction must be one line about the bull blocking the desert")
-	box.finish_typing()
-	box.advance()
+	assert(lio_copy.contains("work it takes to dig up this gold") and lio_copy.contains("some fish right now, haha"), "Lio must explain his gold work and craving for fish")
+	await process_frame
+	assert(lio._shop is FoxLioShop and lio._shop.visible, "Lio's shop must open after his first interaction dialogue")
+	lio.close_shop()
+	assert(not story.interact_with(&"lio") and not box.is_open(), "Lio's introduction must not repeat")
 
 	var first_gate := world.get_node("Gate") as Gate
 	first_gate.set_unlocked(true)

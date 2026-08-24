@@ -5,6 +5,8 @@ const ADJACENT_OFFSETS := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.
 const PATROL_RADIUS_TILES := 2
 const MOVE_SPEED := 120.0
 
+@export var reverse_sprite_orientation := false
+
 var purchase_counts: Array[int] = [0, 0, 0, 0]
 var _waiting_for_player := false
 var _player: FoxPlayer
@@ -172,9 +174,9 @@ func _patrol(delta: float) -> void:
 	global_position += motion
 	_is_walking = true
 	if motion.x < -0.1:
-		fox_sprite.flip_h = false
+		fox_sprite.flip_h = reverse_sprite_orientation
 	elif motion.x > 0.1:
-		fox_sprite.flip_h = true
+		fox_sprite.flip_h = not reverse_sprite_orientation
 
 
 func _update_walk_animation(delta: float) -> void:

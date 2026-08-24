@@ -45,7 +45,7 @@ func _run() -> void:
 	assert(world.player.is_moving(), "The player must walk toward a non-adjacent FoxAsha")
 	world.player.global_position = world.cell_to_world(world.world_to_cell(shopkeeper.global_position) + Vector2i.LEFT)
 	shopkeeper._process(0.0)
-	assert(dialogue_box.is_open() and dialogue_box.get_current_text() == "Oh, there you are! Welcome back :)", "Asha must greet the player on the first interaction")
+	assert(dialogue_box.is_open() and dialogue_box.get_current_text() == "Oh, hey! There you are!", "Asha must greet the player on the first interaction")
 	while dialogue_box.is_open():
 		dialogue_box.finish_typing()
 		dialogue_box.advance()
@@ -70,7 +70,7 @@ func _run() -> void:
 	assert(shop._rows[0].find_child("DamageColorDot", true, false) != null, "Red damage must show a red dot between its stat icon and amount")
 	assert(shop._price_labels[0].get_theme_color("font_color") == Color("ef5350"), "Unaffordable shop prices must be red")
 	assert(shop.is_upgrade_visible(0), "The Gold upgrade must be visible by default")
-	assert(not shop.is_upgrade_visible(1) and not shop.is_upgrade_visible(2) and not shop.is_upgrade_visible(3), "Other upgrades must remain hidden until their resource is discovered")
+	assert(not shop.is_upgrade_visible(1) and not shop.is_upgrade_visible(2), "Other upgrades must remain hidden until their resource is discovered")
 	var style := shop.get_panel().get_theme_stylebox("panel")
 	assert(style.content_margin_left == 8.0 and style.content_margin_right == 8.0 and style.content_margin_top == 8.0 and style.content_margin_bottom == 8.0, "The shop box must have exact eight-pixel content margins")
 
@@ -88,26 +88,25 @@ func _run() -> void:
 	assert(shop.buy_resource(&"wood"), "Wood must be purchasable for two Gold without repeating the dialogue")
 	assert(manager.get_amount(&"gold_ore") == 0 and manager.get_amount(&"fish") == 1 and manager.get_amount(&"wood") == 1, "Store resource purchases must charge two Gold and grant one resource")
 	manager.add_resource(&"jewels", 1.0)
-	assert(shop.is_upgrade_visible(1) and shop.is_upgrade_visible(2) and shop.is_upgrade_visible(3), "Store purchases and resource acquisition must reveal their matching upgrades")
+	assert(shop.is_upgrade_visible(1) and shop.is_upgrade_visible(2), "Wood and Jewel acquisition must reveal Asha's remaining upgrades")
+	assert(shop._get_upgrades().all(func(upgrade: Dictionary) -> bool: return StringName(upgrade["resource_id"]) != &"fish"), "Asha must no longer offer a Fish-priced health upgrade")
 	manager.fill_all_to_maximum()
-	assert(shop.is_upgrade_visible(2) and shop.is_upgrade_visible(3), "Fish and Wood upgrades must reveal after discovery")
+	assert(shop.is_upgrade_visible(1) and shop.is_upgrade_visible(2), "Wood and Jewel upgrades must reveal after discovery")
 	var old_red_damage := world.player.get_base_damage_for_color(FoxPlayer.COLOR_RED)
 	assert(shop.get_upgrade_price(0) == 5 and shop.buy_upgrade(0), "The first red damage upgrade must cost five Gold")
 	assert(world.player.get_base_damage_for_color(FoxPlayer.COLOR_RED) == old_red_damage + 1 and shop.get_upgrade_price(0) == 10, "Gold must grant red damage and raise its price by five")
 	var old_max_health := world.player.max_health
-	assert(shop.get_upgrade_price(1) == 5 and shop.buy_upgrade(1), "The first Fish health upgrade must cost five Fish")
-	assert(world.player.max_health == old_max_health + 20 and shop.get_upgrade_price(1) == 10, "Fish must grant twenty health and raise its price by five")
-	assert(shop.get_upgrade_price(2) == 3 and shop.buy_upgrade(2), "The first Wood health upgrade must cost three Wood")
-	assert(world.player.max_health == old_max_health + 40 and shop.get_upgrade_price(2) == 6, "Wood must grant twenty health and raise its price by three")
+	assert(shop.get_upgrade_price(1) == 3 and shop.buy_upgrade(1), "The first Wood health upgrade must cost three Wood")
+	assert(world.player.max_health == old_max_health + 20 and shop.get_upgrade_price(1) == 6, "Wood must grant twenty health and raise its price by three")
 	var old_regeneration := world.player.passive_healing_amount
-	assert(shop.get_upgrade_price(3) == 5 and shop.buy_upgrade(3), "The first regeneration upgrade must cost five Jewels")
-	assert(world.player.passive_healing_amount == old_regeneration + 1 and shop.get_upgrade_price(3) == 10, "Jewels must grant regeneration and raise its price by five")
+	assert(shop.get_upgrade_price(2) == 5 and shop.buy_upgrade(2), "The first regeneration upgrade must cost five Jewels")
+	assert(world.player.passive_healing_amount == old_regeneration + 1 and shop.get_upgrade_price(2) == 10, "Jewels must grant regeneration and raise its price by five")
 
 	var save_system := world.get_node("SaveSystem") as SaveSystem
 	var encoded := save_system.create_save_string(1000)
 	shopkeeper.purchase_counts = [0, 0, 0, 0]
 	assert(save_system.load_save_string(encoded, 1000), "Shop progression must load")
-	assert(shopkeeper.purchase_counts == [1, 1, 1, 1] and not shop.visible, "Purchase counts must persist and loading must close the shop")
+	assert(shopkeeper.purchase_counts == [1, 0, 1, 1] and not shop.visible, "Purchase counts must persist and loading must close the shop")
 
 	shopkeeper.open_shop()
 	var escape := InputEventKey.new()

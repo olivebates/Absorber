@@ -76,12 +76,13 @@ func _try_build_mine() -> void:
 		_update_build_availability()
 		return
 	_create_mine()
+	_play_building_sfx()
 	build_button.visible = false
 	_clear_shack_buttons()
 	_hide_build_tooltip()
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
 	if story:
-		story.on_structure_built(mined_resource_id)
+		story.on_structure_built(mined_resource_id, self)
 
 
 func _on_build_button_pressed() -> void:
@@ -288,8 +289,15 @@ func _try_build_shack(cell: Vector2i) -> void:
 	var shack := shack_scene.instantiate() as GoldShack
 	shack.global_position = world.cell_to_world(cell)
 	world.add_child(shack)
+	_play_building_sfx()
 	_clear_shack_buttons()
 	_hide_build_tooltip()
+
+
+func _play_building_sfx() -> void:
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_building()
 
 
 func _show_shack_tooltip(button: Button) -> void:
