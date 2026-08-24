@@ -42,6 +42,7 @@ const SPAWN_RADIUS_TILES := 2
 @export_range(1, 999, 1) var enemy_damage := 1
 @export_enum("Red", "Yellow", "Blue") var enemy_damage_color := FoxPlayer.COLOR_RED
 @export_range(0, 999, 1) var enemy_armor := 0
+@export var aggressive := false
 @export_category("Spawning")
 @export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse", "Kangaroo Rat", "Mad Coyote", "Squirrel", "Deer", "Porcupine", "Bunny", "Evil Raccoon", "Evil Owl") var enemy_type := 0
 @export var enemy_scene: PackedScene
@@ -100,7 +101,7 @@ func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector
 	var enemy := _get_enemy_scene().instantiate() as ChickenEnemy
 	enemy.spawn_point = self
 	enemy.global_position = spawn_position
-	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor, defense_reward_color)
+	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor, defense_reward_color, aggressive)
 	enemy.died.connect(_on_spawned_enemy_died)
 	get_parent().add_child(enemy)
 	if not saved_data.is_empty():

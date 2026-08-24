@@ -11,6 +11,14 @@ const REWARD_DEFENSE := 4
 const HEALTH_REGEN_DELAY := 3.0
 const HEALTH_REGEN_INTERVAL := 1.0
 const REWARD_ICON_SIZE := 16.0
+const AGGRO_RADIUS_TILES := 3.0
+const DISENGAGE_FOLLOW_TILES := 3
+
+enum MovementMode {
+	PATROL,
+	CHASE,
+	RETURN_HOME,
+}
 
 signal died(enemy: ChickenEnemy)
 
@@ -22,6 +30,7 @@ var armor := 0
 @export var attack_range := 46.0
 @export var attack_cooldown := 1.0
 @export_enum("Red", "Yellow", "Blue") var enemy_color := FoxPlayer.COLOR_RED
+@export var aggressive := false
 
 var damage_reward := 1
 var reward_type := REWARD_DAMAGE
@@ -47,6 +56,12 @@ var _world: WorldNavigation
 var _player: FoxPlayer
 var spawn_point: EnemySpawnPoint
 var _suppress_reward_collection_sound := false
+var _movement_mode := MovementMode.PATROL
+var _was_in_combat := false
+var _pursuit_is_limited := false
+var _pursuit_tiles_left := 0
+var _pursuit_distance_left := 0.0
+var _chased_player_cell := Vector2i(-999999, -999999)
 
 @onready var chicken_sprite: Sprite2D = $ChickenSprite
 @onready var health_bar: ProgressBar = $HealthBar
@@ -59,7 +74,7 @@ var _suppress_reward_collection_sound := false
 @onready var reward_dot_outline: Polygon2D = $RewardDotOutline
 
 
-func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1, new_damage_color := FoxPlayer.COLOR_RED, new_armor := 0, new_defense_reward_color := FoxPlayer.COLOR_RED) -> void:
+func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1, new_damage_color := FoxPlayer.COLOR_RED, new_armor := 0, new_defense_reward_color := FoxPlayer.COLOR_RED, new_aggressive: Variant = null) -> void:
 	home_cell = spawn_cell
 	damage_reward = reward
 	reward_type = type
@@ -71,6 +86,8 @@ func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_ta
 	attack_damage = maxi(1, new_attack_damage)
 	armor = maxi(0, new_armor)
 	enemy_color = clampi(new_damage_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
+	if new_aggressive != null:
+		aggressive = bool(new_aggressive)
 
 
 func _ready() -> void:
@@ -100,6 +117,7 @@ func take_damage(amount: int, automatic := false) -> void:
 	health = max(0, health - applied_damage)
 	_health_regen_delay_left = HEALTH_REGEN_DELAY
 	_health_regen_tick_left = 0.0
+	_begin_limited_pursuit()
 	health_bar.value = health
 	_update_health_label()
 	_show_damage_popup(amount, enemy_color, blocked_damage)
@@ -177,10 +195,15 @@ func _physics_process(delta: float) -> void:
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
 	var in_combat := _is_in_combat()
+	_update_behavior_state(in_combat)
 	if in_combat:
 		velocity = Vector2.ZERO
 		_path.clear()
 		_path_index = 0
+	elif _movement_mode == MovementMode.CHASE:
+		_chase_player(delta)
+	elif _movement_mode == MovementMode.RETURN_HOME:
+		_return_to_spawn_area(delta)
 	elif _pause_time_left > 0.0:
 		_pause_time_left -= delta
 		velocity = Vector2.ZERO
@@ -191,6 +214,151 @@ func _physics_process(delta: float) -> void:
 	_update_combat_ring(in_combat)
 	_face_player_in_combat(in_combat)
 	_update_health_regeneration(delta, in_combat)
+	_was_in_combat = in_combat
+
+
+func _update_behavior_state(in_combat: bool) -> void:
+	if _world == null or _player == null or _player.health <= 0:
+		if _movement_mode == MovementMode.CHASE:
+			_begin_return_home()
+		return
+	if in_combat:
+		_movement_mode = MovementMode.CHASE
+		_pursuit_is_limited = false
+		_pursuit_tiles_left = DISENGAGE_FOLLOW_TILES
+		_pursuit_distance_left = DISENGAGE_FOLLOW_TILES * WorldNavigation.TILE_SIZE
+		return
+	if _was_in_combat:
+		_begin_limited_pursuit()
+		return
+	if aggressive and _movement_mode == MovementMode.PATROL and _is_player_in_aggro_radius():
+		_begin_unlimited_pursuit()
+
+
+func _is_player_in_aggro_radius() -> bool:
+	var radius := AGGRO_RADIUS_TILES * WorldNavigation.TILE_SIZE
+	return global_position.distance_squared_to(_player.global_position) <= radius * radius
+
+
+func _begin_unlimited_pursuit() -> void:
+	_movement_mode = MovementMode.CHASE
+	_pursuit_is_limited = false
+	_pursuit_tiles_left = DISENGAGE_FOLLOW_TILES
+	_pursuit_distance_left = DISENGAGE_FOLLOW_TILES * WorldNavigation.TILE_SIZE
+	_chased_player_cell = Vector2i(-999999, -999999)
+	_clear_movement_path()
+
+
+func _begin_limited_pursuit() -> void:
+	if _world == null:
+		return
+	_movement_mode = MovementMode.CHASE
+	_pursuit_is_limited = true
+	_pursuit_tiles_left = DISENGAGE_FOLLOW_TILES
+	_pursuit_distance_left = DISENGAGE_FOLLOW_TILES * WorldNavigation.TILE_SIZE
+	_chased_player_cell = Vector2i(-999999, -999999)
+	_clear_movement_path()
+
+
+func _begin_return_home() -> void:
+	_movement_mode = MovementMode.RETURN_HOME
+	_pursuit_is_limited = false
+	_chased_player_cell = Vector2i(-999999, -999999)
+	_clear_movement_path()
+
+
+func _clear_movement_path() -> void:
+	velocity = Vector2.ZERO
+	_path.clear()
+	_path_index = 0
+
+
+func _chase_player(delta: float) -> void:
+	if not is_instance_valid(_player) or _player.health <= 0:
+		_begin_return_home()
+		return
+	var player_cell := _world.world_to_cell(_player.global_position)
+	if player_cell != _chased_player_cell or _path_index >= _path.size():
+		_choose_player_adjacent_path(player_cell)
+	if _path_index >= _path.size():
+		velocity = Vector2.ZERO
+		return
+	_record_pursuit_progress(_follow_behavior_path(delta))
+
+
+func _record_pursuit_progress(distance_traveled: float) -> void:
+	if not _pursuit_is_limited:
+		return
+	_pursuit_distance_left = maxf(0.0, _pursuit_distance_left - distance_traveled)
+	_pursuit_tiles_left = ceili(_pursuit_distance_left / WorldNavigation.TILE_SIZE)
+	if is_zero_approx(_pursuit_distance_left) and not _is_in_combat():
+		_begin_return_home()
+
+
+func _choose_player_adjacent_path(player_cell: Vector2i) -> void:
+	_chased_player_cell = player_cell
+	var best_path := PackedVector2Array()
+	var best_distance := INF
+	for offset: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		var adjacent_cell := player_cell + offset
+		if not _world.is_walkable(adjacent_cell) or _world.is_cell_occupied(adjacent_cell, self):
+			continue
+		var candidate := _world.find_path(global_position, _world.cell_to_world(adjacent_cell), self)
+		if candidate.is_empty():
+			continue
+		var distance := _path_distance(candidate)
+		if distance < best_distance:
+			best_distance = distance
+			best_path = candidate
+	_path = best_path
+	_path_index = 1 if _path.size() > 1 else _path.size()
+
+
+func _return_to_spawn_area(delta: float) -> void:
+	var current_cell := _world.world_to_cell(global_position)
+	if (current_cell - home_cell).length_squared() <= 4:
+		_movement_mode = MovementMode.PATROL
+		_pause_time_left = randf_range(1.0, 2.0)
+		_clear_movement_path()
+		return
+	if _path_index >= _path.size():
+		_path = _world.find_path(global_position, _world.cell_to_world(home_cell), self)
+		_path_index = 1 if _path.size() > 1 else _path.size()
+	if _path_index < _path.size():
+		_follow_behavior_path(delta)
+	else:
+		velocity = Vector2.ZERO
+
+
+func _follow_behavior_path(delta: float) -> float:
+	var previous_position := global_position
+	var target := _path[_path_index]
+	if _world.is_enemy_target_conflicted(self, _world.world_to_cell(target)):
+		_clear_movement_path()
+		return 0.0
+	var offset := target - global_position
+	if offset.length() <= 3.0:
+		global_position = target
+		_path_index += 1
+		velocity = Vector2.ZERO
+		return previous_position.distance_to(global_position)
+	velocity = offset.normalized() * move_speed
+	if velocity.x < -0.1:
+		chicken_sprite.flip_h = true
+	elif velocity.x > 0.1:
+		chicken_sprite.flip_h = false
+	if not _world.can_enter_position(self, global_position + velocity * delta):
+		_clear_movement_path()
+		return 0.0
+	move_and_slide()
+	return previous_position.distance_to(global_position)
+
+
+func _path_distance(points: PackedVector2Array) -> float:
+	var distance := 0.0
+	for index in range(1, points.size()):
+		distance += points[index - 1].distance_to(points[index])
+	return distance
 
 
 func _update_health_regeneration(delta: float, in_combat: bool) -> void:

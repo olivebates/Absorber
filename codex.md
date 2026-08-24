@@ -187,6 +187,8 @@ Chickens:
 - avoid occupied player/enemy tiles while selecting and following patrol routes;
 - bounce and rotate while walking;
 - attack a fox on a directly adjacent tile once per cooldown, for the `enemy_damage` and outgoing color configured by their spawn point;
+- when `aggressive` is enabled, notice the fox within three tiles and take the shortest available route to a cardinally adjacent tile;
+- after any enemy disengages, follow the fox for three traversed tiles, reset that allowance when damaged, and then return to their spawn area;
 - show the reward amount above the health bar; Resource rewards use the GoldOreResource icon tinted to the selected resource color;
 - launch a randomized reward orb to the matching damage HUD row, player, or resource HUD before the configured Damage, Health, or Resource reward is applied;
 - own an item drop table, exposed through the enemy hover tooltip, and roll configured item pickups when their health reaches zero.
@@ -204,6 +206,7 @@ Exports:
 - `enemy_damage`: attack damage assigned to every chicken created by this marker;
 - `enemy_damage_color`: outgoing attack/slash color;
 - `enemy_armor`: flat incoming-damage reduction;
+- `aggressive`: enables three-tile player detection and pursuit behavior;
 - `enemy_damage_taken_color`: selects which player damage-color row applies;
 - `enemy_type`: Inspector selection for Chicken, Cow, Bull, Mole, Mole 2, Goat, Evil Goat, Crab, Snake, Camel, Crocodile, or Mouse;
 - `enemy_scene`: optional custom-scene override;
