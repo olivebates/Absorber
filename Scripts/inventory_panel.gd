@@ -31,14 +31,15 @@ func _ready() -> void:
 	content.add_child(_items)
 	var trash_row := HBoxContainer.new()
 	trash_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	trash_row.add_theme_constant_override("separation", 5)
 	content.add_child(trash_row)
 	_trash_slot = ItemSlot.new()
 	_trash_slot.name = "TrashSlot"
 	trash_row.add_child(_trash_slot)
 	_trash_slot.mouse_entered.connect(func() -> void:
 		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
-		if tooltip and not _trash_slot.item.is_empty():
-			tooltip.show_item(_trash_slot.item)
+		if tooltip:
+			tooltip.show_description(ItemSlot.TRASH_ICON, "Trash", "Throw unwanted in items here. They will remain until you drag the next item in here.")
 	)
 	_trash_slot.mouse_exited.connect(func() -> void:
 		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
@@ -46,13 +47,15 @@ func _ready() -> void:
 			tooltip.hide_item()
 	)
 	_auto_merge_button = Button.new()
-	_auto_merge_button.text = "Auto Merge"
+	_auto_merge_button.text = "Merge All"
 	_auto_merge_button.tooltip_text = "Merge all matching items in the inventory"
-	_auto_merge_button.custom_minimum_size = Vector2(0, 26)
+	_auto_merge_button.custom_minimum_size = Vector2(136, 42)
+	_auto_merge_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_auto_merge_button.focus_mode = Control.FOCUS_NONE
 	_set_auto_merge_style(_auto_merge_button)
 	_auto_merge_button.pressed.connect(_on_auto_merge_pressed)
 	_auto_merge_button.visible = false
-	content.add_child(_auto_merge_button)
+	trash_row.add_child(_auto_merge_button)
 	call_deferred("_connect_player")
 
 
@@ -107,7 +110,7 @@ func _refresh() -> void:
 		_items.add_child(slot)
 	var trash_item := _player.get_slot_item("trash", 0)
 	_trash_slot.configure(self, "trash", 0, trash_item)
-	_trash_slot.tooltip_text = "Trash (drag an item here; the previous item is discarded)"
+	_trash_slot.tooltip_text = ""
 	_auto_merge_button.visible = _player.has_auto_mergeable_inventory_pair()
 	_auto_merge_button.disabled = _auto_merge_in_progress
 

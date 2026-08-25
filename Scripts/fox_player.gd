@@ -56,6 +56,7 @@ var _walk_time := 0.0
 var _attack_visual_time_left := 0.0
 var _hit_visual_time_left := 0.0
 var _spawn_position := Vector2.ZERO
+var _beginning_position := Vector2.ZERO
 var _pending_item_collections := 0
 var _combat_ring: Line2D
 var _healing_particles: HealingParticles
@@ -71,6 +72,7 @@ var _auto_fight_range_border: Line2D
 
 func _ready() -> void:
 	_spawn_position = global_position
+	_beginning_position = global_position
 	health = max_health
 	health_bar.max_value = max_health
 	health_bar.value = health
@@ -305,6 +307,13 @@ func get_item_collection_target_screen_position(item_id: String) -> Vector2:
 
 func set_respawn_position(new_position: Vector2) -> void:
 	_spawn_position = new_position
+
+
+func reset_to_beginning() -> void:
+	stop()
+	clear_attack_target()
+	global_position = _beginning_position
+	_spawn_position = _beginning_position
 
 
 func get_weapon_cooldown_ratio(weapon_index: int) -> float:
@@ -1008,6 +1017,10 @@ func _begin_death_sequence() -> void:
 	_show_death_overlay()
 	await get_tree().create_timer(0.5).timeout
 	global_position = _spawn_position
+	if world:
+		var asha := world.get_node_or_null("FoxAsha") as FoxAsha
+		if asha and asha.is_recruited():
+			asha.place_left_of_player_after_respawn()
 	health = 1
 	health_bar.value = health
 	_update_health_label()

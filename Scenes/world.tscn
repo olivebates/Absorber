@@ -299,7 +299,7 @@ position = Vector2(3936, 1568)
 position = Vector2(4000, 1888)
 
 [node name="PalmTree3" parent="." unique_id=496616653 instance=ExtResource("25_palm_tree")]
-position = Vector2(3360, 2592)
+position = Vector2(3488, 2848)
 
 [node name="PalmTree4" parent="." unique_id=158721735 instance=ExtResource("25_palm_tree")]
 position = Vector2(1696, 2144)
@@ -312,6 +312,7 @@ position = Vector2(864, 416)
 
 [node name="Campfire2" parent="." unique_id=939463375 instance=ExtResource("15_campfire")]
 position = Vector2(2016, 1952)
+area_id = 2
 
 [node name="ChickenSpawn2" parent="." unique_id=946325617 instance=ExtResource("4_spawn")]
 position = Vector2(416, 96)
@@ -339,6 +340,7 @@ enemy_health = 15
 position = Vector2(1440, -480)
 respawn_time = 2700.0
 max_enemies = 1
+area_id = 0
 stat_reward_amount = 2
 reward_resource_id = &"jewels"
 enemy_health = 90
@@ -361,6 +363,7 @@ enemy_health = 15
 [node name="ChickenSpawn15" parent="." unique_id=698119939 instance=ExtResource("4_spawn")]
 position = Vector2(-608, 1504)
 respawn_time = 900.0
+area_id = 0
 reward_type = 1
 reward_resource_id = &"jewels"
 enemy_health = 72
@@ -388,9 +391,10 @@ enemy_damage = 2
 enemy_type = 5
 
 [node name="ChickenSpawn36" parent="." unique_id=1686646778 instance=ExtResource("4_spawn")]
-position = Vector2(3040, 2400)
+position = Vector2(3168, 2784)
 respawn_time = 2700.0
 max_enemies = 1
+area_id = 2
 reward_resource_id = &"jewels"
 enemy_health = 120
 enemy_damage = 12
@@ -428,6 +432,7 @@ enemy_type = 1
 position = Vector2(1824, 1696)
 respawn_time = 900.0
 max_enemies = 4
+area_id = 2
 stat_reward_amount = 2
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -439,6 +444,7 @@ enemy_type = 8
 position = Vector2(2592, 2144)
 respawn_time = 900.0
 max_enemies = 3
+area_id = 2
 stat_reward_amount = 2
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -446,19 +452,10 @@ enemy_health = 80
 enemy_damage = 4
 enemy_type = 8
 
-[node name="ChickenSpawn27" parent="." unique_id=1685635594 instance=ExtResource("4_spawn")]
-position = Vector2(2976, 3104)
-respawn_time = 900.0
-stat_reward_amount = 2
-reward_type = 1
-reward_resource_id = &"jewels"
-enemy_health = 80
-enemy_damage = 7
-enemy_type = 8
-
 [node name="ChickenSpawn37" parent="." unique_id=1731688026 instance=ExtResource("4_spawn")]
-position = Vector2(2656, 2720)
+position = Vector2(2592, 2592)
 respawn_time = 1800.0
+area_id = 2
 reward_type = 3
 reward_resource_id = &"jewels"
 enemy_health = 95
@@ -468,6 +465,7 @@ enemy_type = 12
 [node name="ChickenSpawn39" parent="." unique_id=454940025 instance=ExtResource("4_spawn")]
 position = Vector2(4640, 2080)
 respawn_time = 1800.0
+area_id = 2
 reward_type = 3
 reward_resource_id = &"jewels"
 enemy_health = 95
@@ -477,6 +475,7 @@ enemy_type = 12
 [node name="ChickenSpawn31" parent="." unique_id=1717838481 instance=ExtResource("4_spawn")]
 position = Vector2(3872, 2528)
 respawn_time = 900.0
+area_id = 2
 stat_reward_amount = 3
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -488,6 +487,7 @@ enemy_type = 8
 position = Vector2(5216, 3232)
 respawn_time = 5400.0
 max_enemies = 1
+area_id = 2
 stat_reward_amount = 90
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -496,9 +496,10 @@ enemy_damage = 13
 enemy_type = 13
 
 [node name="ChickenSpawn34" parent="." unique_id=587052680 instance=ExtResource("4_spawn")]
-position = Vector2(2272, 3360)
+position = Vector2(2400, 3616)
 respawn_time = 900.0
 max_enemies = 3
+area_id = 2
 stat_reward_amount = 4
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -510,6 +511,7 @@ enemy_type = 9
 position = Vector2(1440, 3488)
 respawn_time = 900.0
 max_enemies = 3
+area_id = 2
 stat_reward_amount = 4
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -518,8 +520,9 @@ enemy_damage = 12
 enemy_type = 9
 
 [node name="ChickenSpawn28" parent="." unique_id=722446106 instance=ExtResource("4_spawn")]
-position = Vector2(2848, 3552)
+position = Vector2(2912, 3424)
 respawn_time = 900.0
+area_id = 2
 stat_reward_amount = 4
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -530,6 +533,7 @@ enemy_type = 8
 [node name="ChickenSpawn29" parent="." unique_id=1515625858 instance=ExtResource("4_spawn")]
 position = Vector2(3232, 3296)
 respawn_time = 900.0
+area_id = 2
 stat_reward_amount = 3
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -541,6 +545,7 @@ enemy_type = 8
 position = Vector2(3360, 4192)
 respawn_time = 900.0
 max_enemies = 3
+area_id = 2
 reward_type = 2
 reward_resource_id = &"jewels"
 enemy_health = 80
@@ -550,6 +555,7 @@ enemy_type = 4
 [node name="ChickenSpawn40" parent="." unique_id=259780493 instance=ExtResource("4_spawn")]
 position = Vector2(3232, 1824)
 respawn_time = 1800.0
+area_id = 2
 reward_type = 3
 reward_resource_id = &"jewels"
 enemy_health = 120
@@ -560,6 +566,7 @@ enemy_type = 12
 position = Vector2(1888, 2528)
 respawn_time = 900.0
 max_enemies = 3
+area_id = 2
 stat_reward_amount = 2
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -568,8 +575,20 @@ enemy_damage = 12
 enemy_type = 9
 
 [node name="ChickenSpawn24" parent="." unique_id=1751302336 instance=ExtResource("4_spawn")]
-position = Vector2(1632, 2912)
+position = Vector2(1568, 2976)
 respawn_time = 900.0
+area_id = 2
+stat_reward_amount = 4
+reward_type = 1
+reward_resource_id = &"jewels"
+enemy_health = 160
+enemy_damage = 14
+enemy_type = 9
+
+[node name="ChickenSpawn41" parent="." unique_id=1914977612 instance=ExtResource("4_spawn")]
+position = Vector2(3232, 2336)
+respawn_time = 900.0
+area_id = 2
 stat_reward_amount = 4
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -581,6 +600,7 @@ enemy_type = 9
 position = Vector2(1312, 4128)
 respawn_time = 1800.0
 max_enemies = 3
+area_id = 2
 reward_type = 3
 reward_resource_id = &"jewels"
 enemy_health = 120
@@ -592,6 +612,7 @@ enemy_type = 10
 position = Vector2(3808, 1376)
 respawn_time = 1800.0
 max_enemies = 4
+area_id = 2
 reward_type = 2
 reward_resource_id = &"fish"
 enemy_health = 120
@@ -603,6 +624,7 @@ enemy_type = 10
 position = Vector2(4128, 1696)
 respawn_time = 1800.0
 max_enemies = 3
+area_id = 2
 reward_type = 2
 reward_resource_id = &"fish"
 enemy_health = 120
@@ -613,6 +635,7 @@ enemy_type = 10
 [node name="ChickenSpawn26" parent="." unique_id=899008041 instance=ExtResource("4_spawn")]
 position = Vector2(1120, 4000)
 respawn_time = 1800.0
+area_id = 2
 reward_type = 3
 reward_resource_id = &"jewels"
 enemy_health = 120
@@ -641,6 +664,7 @@ enemy_type = 7
 [node name="ChickenSpawn9" parent="." unique_id=957023596 instance=ExtResource("4_spawn")]
 position = Vector2(-544, 1888)
 respawn_time = 1500.0
+area_id = 0
 reward_type = 2
 reward_resource_id = &"jewels"
 enemy_health = 62
@@ -650,6 +674,7 @@ enemy_type = 4
 [node name="ChickenSpawn10" parent="." unique_id=417865363 instance=ExtResource("4_spawn")]
 position = Vector2(1120, 2016)
 respawn_time = 900.0
+area_id = 0
 reward_type = 2
 enemy_health = 55
 enemy_damage = 2
@@ -659,6 +684,7 @@ enemy_type = 3
 position = Vector2(1056, 1824)
 respawn_time = 900.0
 max_enemies = 3
+area_id = 0
 reward_type = 2
 enemy_health = 55
 enemy_damage = 2
@@ -668,6 +694,7 @@ enemy_type = 3
 position = Vector2(2464, 1248)
 respawn_time = 3600.0
 max_enemies = 1
+area_id = 0
 stat_reward_amount = 50
 reward_type = 1
 reward_resource_id = &"jewels"
@@ -811,10 +838,10 @@ position = Vector2(416, 1248)
 position = Vector2(2272, 672)
 
 [node name="FoxDeru" parent="." unique_id=1243619500 instance=ExtResource("43_deru")]
-position = Vector2(2400, 2784)
+position = Vector2(2400, 3104)
 
 [node name="ObstacleBrokenCart" parent="." unique_id=397632413 instance=ExtResource("44_cart")]
-position = Vector2(2464, 2784)
+position = Vector2(2464, 3104)
 
 [node name="FoxLuca" parent="." unique_id=984191575 instance=ExtResource("34_fox_luca")]
 position = Vector2(4000, 2080)
@@ -881,7 +908,7 @@ position = Vector2(2592, 1312)
 position = Vector2(2528, 1440)
 
 [node name="ObstacleJaw" parent="." unique_id=928782991 instance=ExtResource("41_w5giw")]
-position = Vector2(2272, 2720)
+position = Vector2(2272, 3040)
 
 [node name="ObstacleSkull" parent="." unique_id=528765952 instance=ExtResource("42_jwdyn")]
-position = Vector2(2400, 2656)
+position = Vector2(2400, 2976)

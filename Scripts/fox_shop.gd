@@ -69,7 +69,9 @@ func get_upgrade_price(upgrade_index: int) -> int:
 	if _shopkeeper == null or upgrade_index < 0 or upgrade_index >= upgrades.size():
 		return 0
 	var upgrade: Dictionary = upgrades[upgrade_index]
-	if bool(upgrade.get("fixed_price", false)):
+	# Consumable and quest items retain their listed price. Every stat upgrade,
+	# regardless of which fox sells it, rises by exactly one base price per buy.
+	if StringName(upgrade.get("stat", &"")) == &"item":
 		return int(upgrade["base_price"])
 	var purchase_slot := int(upgrade.get("purchase_slot", upgrade_index))
 	return int(upgrade["base_price"]) * (_shopkeeper.purchase_counts[purchase_slot] + 1)

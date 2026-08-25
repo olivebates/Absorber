@@ -67,6 +67,8 @@ func _finish_setup() -> void:
 func _process(_delta: float) -> void:
 	if not _initialized or _world == null or not is_instance_valid(_world.player):
 		return
+	if _world.gameplay_paused:
+		return
 	if not is_instance_valid(_asha) or not is_instance_valid(_luca) or not is_instance_valid(_lio) or not is_instance_valid(_nia):
 		_find_characters()
 	if _dialogue_box == null or _dialogue_box.is_open() or _active_dialogue != 0 or _active_event != &"":
@@ -152,6 +154,64 @@ func interact_with(character_id: StringName) -> bool:
 		_shop_to_reopen = null
 		return false
 	if character_id == &"lio":
+		if is_instance_valid(_lio) and _lio.is_hunter_recruited():
+			if _lio.is_waiting_at_campfire():
+				if _lio.is_reward_handoff_free():
+					_active_event = &"lio_reward_intro"
+					if _play_default_dialogue([
+						_line("Lio", "Hey, this one's on me. Here you go, sir!", LIO_PORTRAIT),
+					]):
+						_lio.authorize_free_reward_handoff()
+						return true
+					_active_event = &""
+					return false
+				if not _lio.has_paid_reward_fee() and not _lio.can_pay_reward_fee():
+					return _play_default_dialogue([
+						_line("Lio", "Haha, appologies, I don't work for free. We agreed on 3 gold, right?", LIO_PORTRAIT),
+						_line("Mira", "I don't have that right now...", PLAYER_PORTRAIT),
+						_line("Lio", "Well come back when you got the pay :)", LIO_PORTRAIT),
+					])
+				_active_event = &"lio_reward_intro"
+				if _play_default_dialogue([
+					_line("Lio", "Sorry I couldn't carry anything more than this.", LIO_PORTRAIT),
+					_line("Lio", "Here you are, sir!", LIO_PORTRAIT),
+				]):
+					if not _lio.has_paid_reward_fee():
+						_lio.pay_reward_fee()
+					return true
+				_active_event = &""
+				return false
+			return _play_default_dialogue([
+				_line("Lio", "Come see me at the campfire once I'm done roundin' up these here critters.", LIO_PORTRAIT),
+			])
+		if is_instance_valid(_lio) and _lio.has_required_gold_mines() and not _has_seen(&"lio_recruited"):
+			_seen_events[&"lio_recruited"] = true
+			_seen_events[&"lio_intro"] = true
+			_active_event = &"lio_recruitment"
+			if _play_default_dialogue([
+				_line("Lio", "Well I be, I never thought I'd see the day. Now about that offer...", LIO_PORTRAIT),
+				_line("Lio", "Well I see the good work you are doing for our fellow foxes out there in the world.", LIO_PORTRAIT),
+				_line("Lio", "I'd like to contribute!", LIO_PORTRAIT),
+				_line("Lio", "I think I'd be strong enough to take care of Tiny Woods for yer.", LIO_PORTRAIT),
+				_line("Mira", "Yes, that would be a huge help!", PLAYER_PORTRAIT),
+				_line("Lio", "Come see me at the campfire once I'm done roundin' up these here critters.", LIO_PORTRAIT),
+				_line("Lio", "I won't touch the moles or bosses though, those things scare me.", LIO_PORTRAIT),
+			]):
+				return true
+			_active_event = &""
+			_seen_events.erase(&"lio_recruited")
+			return false
+		if is_instance_valid(_lio) and _lio.has_first_gold_mine():
+			_seen_events[&"lio_intro"] = true
+			_reopen_shop_after_dialogue = true
+			_shop_to_reopen = _lio
+			if _play_default_dialogue([
+				_line("Lio", "Say, if you could build those contraptions for the remaining gold veins, I'd be happy to quit and come work for you instead, sir!", LIO_PORTRAIT),
+			]):
+				return true
+			_reopen_shop_after_dialogue = false
+			_shop_to_reopen = null
+			return false
 		if _has_seen(&"lio_intro"):
 			return false
 		_seen_events[&"lio_intro"] = true
@@ -290,6 +350,8 @@ func _find_characters() -> void:
 				_nia = fox
 	if is_instance_valid(_asha):
 		_asha.set_recruited(is_asha_recruited(), false)
+	if is_instance_valid(_lio) and _has_seen(&"lio_recruited") and not _lio.is_hunter_recruited():
+		_lio.set_hunter_recruited(true)
 	_apply_deru_repaired_state()
 
 
@@ -325,7 +387,9 @@ func on_structure_built(resource_id: StringName, deposit: GoldOre = null) -> voi
 		&"fish":
 			_trigger_event_once(&"fish_hut")
 		&"gold_ore":
-			if _is_nearest_gold_ore_to_lio(deposit):
+			if is_instance_valid(_lio) and _lio.has_required_gold_mines():
+				_trigger_event_once(&"lio_all_gold_mines")
+			elif _is_nearest_gold_ore_to_lio(deposit):
 				_trigger_event_once(&"lio_gold_mine")
 			else:
 				_trigger_event_once(&"gold_mine")
@@ -395,6 +459,16 @@ func on_lio_purchase() -> void:
 	_trigger_event_once(&"lio_purchase")
 
 
+func on_lio_reward_delivery_finished() -> void:
+	if not is_instance_valid(_dialogue_box):
+		return
+	if _dialogue_box.is_open() or _active_event != &"":
+		_queued_events.append(&"lio_hunt_departure")
+		return
+	if not _begin_event_dialogue(&"lio_hunt_departure") and is_instance_valid(_lio):
+		_lio.start_hunting_after_handoff()
+
+
 func _is_nearest_gold_ore_to_lio(deposit: GoldOre) -> bool:
 	if not is_instance_valid(deposit) or not is_instance_valid(_lio):
 		return false
@@ -461,6 +535,16 @@ func _on_dialogue_finished() -> void:
 	if finished_event == &"asha_first_smooch":
 		_finish_first_smooch()
 		return
+	if finished_event == &"lio_recruitment":
+		if is_instance_valid(_lio):
+			_lio.set_hunter_recruited(true)
+	if finished_event == &"lio_reward_intro":
+		if is_instance_valid(_lio):
+			_lio.begin_reward_delivery()
+		return
+	if finished_event == &"lio_hunt_departure":
+		if is_instance_valid(_lio):
+			_lio.start_hunting_after_handoff()
 	if not _queued_events.is_empty():
 		_begin_event_dialogue(_queued_events.pop_front())
 		return
@@ -637,7 +721,10 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			return [
 				_line("Lio", "Whoa, that's quite the contraption!", LIO_PORTRAIT),
 				_line("Lio", "I guess that makes my work a lot easier then, haha!", LIO_PORTRAIT),
+				_line("Lio", "Say, if you could build those contraptions for the remaining gold veins, I'd be happy to quit and come work for you instead, sir!", LIO_PORTRAIT),
 			]
+		&"lio_all_gold_mines":
+			return [_line("Mira", "There we go, I should speak to Lio about that job offer.", PLAYER_PORTRAIT)]
 		&"gem_mine":
 			return [_line("Mira", "That'll do nicely.", PLAYER_PORTRAIT)]
 		&"wood_lodge":
@@ -658,12 +745,14 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 		&"second_campfire":
 			return [
 				_line("Mira", "These campfires seem to be connected.", PLAYER_PORTRAIT),
-				_line("Mira", "I can get around quickly by pressing TAB and selecting a campfire.", PLAYER_PORTRAIT),
+				_line("Mira", "I can get around quickly by pressing M and selecting a campfire.", PLAYER_PORTRAIT),
 			]
 		&"luca_purchase":
 			return [_line("Luca", "Appreicate it.", LUCA_PORTRAIT)]
 		&"lio_purchase":
 			return [_line("Lio", "Oh man, I'm so hungry, thank you!", LIO_PORTRAIT)]
+		&"lio_hunt_departure":
+			return [_line("Lio", "Once those critters return, I'll head out again! :)", LIO_PORTRAIT)]
 		&"campfire_teleport":
 			return [_line("Mira", "Convenient.", PLAYER_PORTRAIT)]
 		&"evil_goat_killed":

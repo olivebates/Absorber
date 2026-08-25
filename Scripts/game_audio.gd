@@ -23,6 +23,7 @@ const SILENT_DB := -80.0
 const MUSIC_DB := -8.0
 const FADE_SECONDS := 3.0
 const MUSIC_CHECK_INTERVAL := 0.15
+const LIO_FIGHT_AUDIBLE_TILES := 8.0
 const GRASS_AREA_NAME := "~ Tiny Woods ~"
 const DESERT_AREA_NAME := "~ The Snakemouth Expanse ~"
 const MUSIC_BUS := &"Music"
@@ -96,6 +97,20 @@ func play_upgrade() -> void:
 
 func play_damage() -> void:
 	_play_sfx(DAMAGE_SFX)
+
+
+func play_lio_fight(source_position: Vector2) -> void:
+	var volume_scale := get_lio_fight_volume_scale(source_position)
+	if volume_scale <= 0.0:
+		return
+	_play_sfx(DAMAGE_SFX, true, volume_scale)
+
+
+func get_lio_fight_volume_scale(source_position: Vector2) -> float:
+	if not is_instance_valid(_world) or not is_instance_valid(_world.player):
+		return 0.0
+	var maximum_distance := LIO_FIGHT_AUDIBLE_TILES * WorldNavigation.TILE_SIZE
+	return 1.0 - clampf(source_position.distance_to(_world.player.global_position) / maximum_distance, 0.0, 1.0)
 
 
 func play_death() -> void:

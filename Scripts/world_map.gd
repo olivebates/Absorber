@@ -38,7 +38,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	var key_event := event as InputEventKey
 	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
-	if key == KEY_TAB:
+	if key == KEY_M:
 		if _world:
 			_world.dismiss_second_campfire_tab_prompt()
 		if visible:
@@ -86,6 +86,7 @@ func _build_interface() -> void:
 	var close_button := Button.new()
 	close_button.text = "X"
 	close_button.custom_minimum_size = Vector2(28, 26)
+	close_button.focus_mode = Control.FOCUS_NONE
 	close_button.pressed.connect(close)
 	title_row.add_child(close_button)
 	_canvas = WorldMapCanvas.new()

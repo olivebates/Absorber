@@ -20,7 +20,7 @@ func _run() -> void:
 	story._process(0.0)
 	assert(not box.is_open(), "Approaching Asha must remain silent")
 	asha.interact()
-	assert(_finish_dialogue(box) == " Oh, hey! There you are! Still keeping Tiny Woods safe I see :) Yeah. Though lately, it feels like it’s getting easier. Oh? How so? Every time I chase one of those creatures away, I feel a little stronger. Sounds like all that experience is finally paying off ;) Haha, I guess it is! Well, if you need anything, I’ll be right here :)", "Asha's first interaction must play the requested conversation")
+	assert(_finish_dialogue(box) == " Oh, hey! There you are! Still keeping Tiny Woods safe I see :) Yeah. Though lately, it feels like it’s getting easier. Oh? How so? Every time I chase one of those creatures away, I feel a little stronger. Sounds like all that experience is finally paying off ;) Haha, I guess it is! Well if you need anything, I'm here for you Mira :)", "Asha's first interaction must play the requested conversation")
 	await process_frame
 	assert(asha._shop != null and asha._shop.visible, "Asha's shop must open after her greeting")
 	var resources := world.get_node("ResourceManager") as ResourceManager
@@ -34,7 +34,7 @@ func _run() -> void:
 	asha.close_shop()
 
 	_build_and_expect(world, resources, box, &"fish", "That'll do.")
-	var lio_ore := _build_and_expect(world, resources, box, &"gold_ore", "Whoa, that's quite the contraption! I guess that makes my work a lot easier then, haha!")
+	var lio_ore := _build_and_expect(world, resources, box, &"gold_ore", "Whoa, that's quite the contraption! I guess that makes my work a lot easier then, haha! Say, if you could build those contraptions for the remaining gold veins, I'd be happy to quit and come work for you instead, sir!")
 	_build_and_expect(world, resources, box, &"jewels", "That'll do nicely.")
 	_build_and_expect(world, resources, box, &"wood", "A nice lodge to cut my wood from!")
 	story.on_structure_built(&"gold_ore", lio_ore)
@@ -47,7 +47,7 @@ func _run() -> void:
 	var second_campfire := world.get_node("Campfire2") as Campfire
 	world.player.global_position = second_campfire.global_position
 	story._process(0.0)
-	assert(_finish_dialogue(box) == " These campfires seem to be connected. I can get around quickly by pressing TAB and selecting a campfire.", "The second campfire must explain fast travel")
+	assert(_finish_dialogue(box) == " These campfires seem to be connected. I can get around quickly by pressing M and selecting a campfire.", "The second campfire must explain fast travel")
 
 	var bull_spawn := story._bull_spawn
 	if bull_spawn._spawned_enemies.is_empty():

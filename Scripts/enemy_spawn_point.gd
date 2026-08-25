@@ -31,6 +31,7 @@ const SPAWN_RADIUS_TILES := 2
 
 @export var respawn_time := 8.0
 @export var max_enemies := 2
+@export var area_id := 1
 @export_category("Rewards")
 @export_range(0, 999, 1) var stat_reward_amount := 1
 @export_enum("Damage", "Health", "Resource", "Regenerate", "Defense") var reward_type := ChickenEnemy.REWARD_DAMAGE
@@ -95,6 +96,14 @@ func _spawn_enemy() -> bool:
 	if enemy and _initial_spawn_complete:
 		enemy_respawned.emit(enemy)
 	return enemy != null
+
+
+func get_active_enemies() -> Array[ChickenEnemy]:
+	var result: Array[ChickenEnemy] = []
+	for enemy in _spawned_enemies:
+		if is_instance_valid(enemy) and enemy.health > 0:
+			result.append(enemy)
+	return result
 
 
 func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector2i, saved_data: Array = []) -> ChickenEnemy:

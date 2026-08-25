@@ -4,6 +4,7 @@ extends Node2D
 const TILE_SIZE := 64.0
 
 @export_range(1.0, 10.0, 0.5, "suffix: tiles") var healing_radius_tiles := 2.0
+@export var area_id := 1
 
 
 func _ready() -> void:

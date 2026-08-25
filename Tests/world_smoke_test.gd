@@ -181,6 +181,7 @@ func _run() -> void:
 	assert(starting_position == respawn_campfire.get_respawn_position(), "A visited campfire must set the respawn point to the tile directly below it")
 	fox.global_position += Vector2(64, 0)
 	fox.take_damage(fox.health + fox.get_total_block())
+	await create_timer(1.0).timeout
 	assert(fox.health == 1 and fox.global_position == starting_position, "Death should restore the fox at its last campfire with one health")
 	fox.health = fox.max_health - 1
 	fox._heal_time_left = 0.01

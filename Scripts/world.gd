@@ -4,6 +4,8 @@ extends Node2D
 const TILE_SIZE := 64
 const EXPLORATION_RADIUS_TILES := 6
 
+@export var version_number := 1
+
 @onready var floor_layer: TileMapLayer = $FloorTerrain
 @onready var wall_layer: TileMapLayer = $WallTerrain
 @onready var player: FoxPlayer = $Fox
@@ -35,6 +37,26 @@ func _ready() -> void:
 	_build_navigation_grid_from_tilemaps()
 	_create_tab_prompt()
 	_update_exploration()
+
+
+func _input(event: InputEvent) -> void:
+	_consume_tab_navigation(event)
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	_consume_tab_navigation(event)
+
+
+func _consume_tab_navigation(event: InputEvent) -> void:
+	if not event is InputEventKey or not event.pressed or event.echo:
+		return
+	var key_event := event as InputEventKey
+	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
+	if key == KEY_TAB:
+		var focus_owner := get_viewport().gui_get_focus_owner()
+		if focus_owner:
+			focus_owner.release_focus()
+		get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
@@ -113,7 +135,7 @@ func dismiss_second_campfire_tab_prompt() -> void:
 func _create_tab_prompt() -> void:
 	_tab_prompt = Label.new()
 	_tab_prompt.name = "CampfireTabPrompt"
-	_tab_prompt.text = "TAB to Teleport"
+	_tab_prompt.text = "M to Teleport"
 	_tab_prompt.position = Vector2(-24, -82)
 	_tab_prompt.size = Vector2(48, 28)
 	_tab_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

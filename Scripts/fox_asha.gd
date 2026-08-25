@@ -124,6 +124,17 @@ func reset_smooch_cooldown() -> void:
 	_smooch_in_progress = false
 
 
+func place_left_of_player_after_respawn() -> void:
+	if not _recruited or not is_instance_valid(_player) or not is_instance_valid(_world):
+		return
+	var player_cell := _world.world_to_cell(_player.global_position)
+	var destination := player_cell + Vector2i.LEFT
+	global_position = _world.cell_to_world(destination)
+	_last_player_cell = player_cell
+	_follow_target_cell = INVALID_CELL
+	_stop_patrol()
+
+
 func _follow_player(delta: float) -> void:
 	if not is_instance_valid(_player):
 		_player = get_tree().get_first_node_in_group("player") as FoxPlayer

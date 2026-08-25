@@ -4,6 +4,8 @@ extends PanelContainer
 const HELMET_ICON := preload("res://Sprites/HelmetIcon.webp")
 const SWORD_ICON := preload("res://Sprites/SwordIcon.webp")
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
+const TRASH_ICON := preload("res://Sprites/IconTrash.webp")
+const SPRITE_BASE_SIZE := Vector2(32, 32)
 
 var owner_ui: Control
 var storage := "inventory"
@@ -36,7 +38,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_icon.z_index = 0
+		_icon.z_index = 1
 		add_child(_icon)
 	_icon.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", ""))) if not item.is_empty() else null
 	_icon.visible = not item.is_empty()
@@ -47,13 +49,13 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		_empty_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_empty_icon.z_index = 0
 		add_child(_empty_icon)
-	_empty_icon.texture = HELMET_ICON if storage == "armor" else DAMAGE_ICON if shows_unarmed_damage else SWORD_ICON if storage == "weapon" else null
-	_empty_icon.visible = item.is_empty() and _empty_icon.texture != null
+	_empty_icon.texture = TRASH_ICON if storage == "trash" else HELMET_ICON if storage == "armor" else DAMAGE_ICON if shows_unarmed_damage else SWORD_ICON if storage == "weapon" else null
+	_empty_icon.visible = (storage == "trash" or item.is_empty()) and _empty_icon.texture != null
 	if _cooldown_overlay == null:
 		_cooldown_overlay = ColorRect.new()
 		_cooldown_overlay.color = Color(0.0, 0.0, 0.0, 0.52)
 		_cooldown_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_cooldown_overlay.z_index = 1
+		_cooldown_overlay.z_index = 2
 		add_child(_cooldown_overlay)
 	if _lock_icon == null:
 		_lock_icon = TextureRect.new()
@@ -61,7 +63,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		_lock_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		_lock_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		_lock_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_lock_icon.z_index = 2
+		_lock_icon.z_index = 3
 		add_child(_lock_icon)
 	_lock_icon.visible = locked
 	_update_cooldown_overlay()
@@ -78,12 +80,14 @@ func _update_cooldown_overlay() -> void:
 	if storage == "weapon" and (not item.is_empty() or shows_unarmed_damage) and owner_ui:
 		ratio = float(owner_ui.call("get_weapon_cooldown_ratio", slot_index))
 	var slot_size := size if size.length_squared() > 0.0 else custom_minimum_size
+	var icon_size := Vector2(minf(SPRITE_BASE_SIZE.x, slot_size.x), minf(SPRITE_BASE_SIZE.y, slot_size.y))
+	var icon_position := (slot_size - icon_size) * 0.5
 	if _icon:
-		_icon.position = Vector2.ZERO
-		_icon.size = slot_size
+		_icon.position = icon_position
+		_icon.size = icon_size
 	if _empty_icon:
-		_empty_icon.position = Vector2.ZERO
-		_empty_icon.size = slot_size
+		_empty_icon.position = icon_position
+		_empty_icon.size = icon_size
 	_cooldown_overlay.position = Vector2.ZERO
 	_cooldown_overlay.size = Vector2(slot_size.x, slot_size.y * clampf(ratio, 0.0, 1.0))
 	_cooldown_overlay.visible = ratio > 0.0

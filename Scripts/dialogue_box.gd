@@ -136,7 +136,9 @@ func _process(delta: float) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not visible or not event is InputEventKey or not event.pressed or event.echo:
 		return
-	if not _externally_locked and _input_delay_left <= 0.0 and (event.keycode == KEY_SPACE or event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
+	var key_event := event as InputEventKey
+	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
+	if not _externally_locked and _input_delay_left <= 0.0 and (key == KEY_SPACE or key == KEY_ENTER or key == KEY_KP_ENTER):
 		advance()
 	get_viewport().set_input_as_handled()
 

@@ -18,6 +18,7 @@ func _ready() -> void:
 	_toggle = CheckButton.new()
 	_toggle.name = "AutoFightToggle"
 	_toggle.text = "Auto Fight"
+	_toggle.focus_mode = Control.FOCUS_NONE
 	_toggle.tooltip_text = ""
 	_toggle.mouse_entered.connect(_show_inventory_style_tooltip)
 	_toggle.mouse_exited.connect(_hide_inventory_style_tooltip)

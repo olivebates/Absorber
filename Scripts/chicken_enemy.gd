@@ -54,6 +54,7 @@ var _health_regen_delay_left := HEALTH_REGEN_DELAY
 var _health_regen_tick_left := 0.0
 var _world: WorldNavigation
 var _player: FoxPlayer
+var _hunter_target: FoxLio
 var spawn_point: EnemySpawnPoint
 var _suppress_reward_collection_sound := false
 var _movement_mode := MovementMode.PATROL
@@ -125,6 +126,24 @@ func take_damage(amount: int, automatic := false) -> void:
 		died.emit(self)
 		_grant_kill_reward()
 		_drop_items()
+		queue_free()
+
+
+func take_hunter_damage(hunter: FoxLio) -> void:
+	if health <= 0 or hunter == null:
+		return
+	_hunter_target = hunter
+	# Lio always lands a flat two-damage hit. His attacks deliberately skip
+	# the floating damage popup, since only the player needs that feedback.
+	health = max(0, health - FoxLio.HUNT_DAMAGE)
+	_health_regen_delay_left = HEALTH_REGEN_DELAY
+	_health_regen_tick_left = 0.0
+	health_bar.value = health
+	_update_health_label()
+	_play_hit_animation()
+	if health == 0:
+		hunter.collect_enemy_reward(self)
+		died.emit(self)
 		queue_free()
 
 
@@ -204,8 +223,10 @@ func _physics_process(delta: float) -> void:
 	_attack_time_left = maxf(0.0, _attack_time_left - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
-	var in_combat := _is_in_combat()
-	_update_behavior_state(in_combat)
+	var player_in_combat := _is_in_combat()
+	var hunter_in_combat := _is_hunter_in_combat()
+	var in_combat := player_in_combat or hunter_in_combat
+	_update_behavior_state(player_in_combat)
 	if in_combat:
 		velocity = Vector2.ZERO
 		_path.clear()
@@ -219,12 +240,15 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 	else:
 		_patrol(delta)
-	_attack_player(in_combat)
+	if hunter_in_combat:
+		_attack_hunter()
+	else:
+		_attack_player(player_in_combat)
 	_update_walk_animation(delta)
 	_update_combat_ring(in_combat)
-	_face_player_in_combat(in_combat)
+	_face_combat_target(player_in_combat, hunter_in_combat)
 	_update_health_regeneration(delta, in_combat)
-	_was_in_combat = in_combat
+	_was_in_combat = player_in_combat
 
 
 func _dialogue_is_open() -> bool:
@@ -464,6 +488,18 @@ func _attack_player(in_combat_override: Variant = null) -> void:
 		_attack_time_left = attack_cooldown
 
 
+func _attack_hunter() -> void:
+	if _attack_time_left > 0.0 or not _is_hunter_in_combat():
+		return
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_lio_fight(_hunter_target.global_position)
+	_face_toward(_hunter_target)
+	_play_attack_animation(_hunter_target)
+	# Lio is invulnerable; this counterattack is intentionally visual only.
+	_attack_time_left = attack_cooldown
+
+
 func _play_attack_animation(target: Node2D) -> void:
 	if _attack_tween and _attack_tween.is_valid():
 		_attack_tween.kill()
@@ -564,9 +600,24 @@ func _is_in_combat() -> bool:
 	return _player != null and _world != null and _player.health > 0 and _world.are_adjacent(self, _player)
 
 
+func _is_hunter_in_combat() -> bool:
+	if not is_instance_valid(_hunter_target):
+		_hunter_target = null
+		return false
+	return _world != null and _hunter_target.is_hunter_recruited() \
+		and _hunter_target.hunt_state == FoxLio.HuntState.HUNTING and _world.are_adjacent(self, _hunter_target)
+
+
 func _face_player_in_combat(in_combat: bool) -> void:
 	if in_combat and _player:
 		_face_toward(_player)
+
+
+func _face_combat_target(player_in_combat: bool, hunter_in_combat: bool) -> void:
+	if hunter_in_combat:
+		_face_toward(_hunter_target)
+	else:
+		_face_player_in_combat(player_in_combat)
 
 
 func _face_toward(target: Node2D) -> void:

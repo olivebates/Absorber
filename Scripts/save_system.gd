@@ -296,6 +296,7 @@ func _capture_state(timestamp: int) -> Array:
 		_get_story_manager().get_save_data() if _get_story_manager() else [],
 		_get_luca().get_save_data() if _get_luca() else [],
 		_get_deru().get_save_data() if _get_deru() else [],
+		_world.version_number,
 	]
 
 
@@ -341,6 +342,9 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 
 	if not _world.player.load_save_data(state[2] as Array, offline_seconds):
 		return false
+	var saved_world_version := int(state[14]) if state.size() > 14 else -1
+	if saved_world_version != _world.version_number:
+		_world.player.reset_to_beginning()
 	_world.load_exploration_save_data(state[10] as Array if state.size() > 10 and state[10] is Array else [])
 	var story := _get_story_manager()
 	if story:
