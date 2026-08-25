@@ -400,7 +400,7 @@ func auto_merge_inventory() -> int:
 	var merge_count := 0
 	while true:
 		var pair := get_next_auto_merge_pair()
-		if pair.is_empty() or not merge_inventory_pair(int(pair["source_index"]), int(pair["target_index"])):
+		if pair.is_empty() or not merge_auto_pair(pair):
 			break
 		merge_count += 1
 	return merge_count
@@ -411,13 +411,35 @@ func has_auto_mergeable_inventory_pair() -> bool:
 
 
 func get_next_auto_merge_pair() -> Dictionary:
-	for target_index in range(inventory_slots.size()):
-		if inventory_slots[target_index].is_empty():
-			continue
-		for source_index in range(target_index + 1, inventory_slots.size()):
-			if can_merge(inventory_slots[source_index], inventory_slots[target_index]):
-				return {"source_index": source_index, "target_index": target_index}
+	# Equipped locations come first so merging an equipped item with a matching
+	# inventory item keeps the upgraded result equipped.
+	var locations: Array[Dictionary] = []
+	for storage in ["weapon", "armor", "inventory"]:
+		var slots := _get_slots(storage)
+		for index in range(slots.size()):
+			if not slots[index].is_empty():
+				locations.append({"storage": storage, "index": index, "item": slots[index]})
+	for target_location_index in range(locations.size()):
+		var target := locations[target_location_index]
+		for source_location_index in range(target_location_index + 1, locations.size()):
+			var source := locations[source_location_index]
+			if can_merge(source["item"], target["item"]):
+				return {
+					"source_storage": source["storage"],
+					"source_index": source["index"],
+					"target_storage": target["storage"],
+					"target_index": target["index"],
+				}
 	return {}
+
+
+func merge_auto_pair(pair: Dictionary) -> bool:
+	if not pair.has("source_index") or not pair.has("target_index"):
+		return false
+	return move_or_merge(
+		str(pair.get("source_storage", "inventory")), int(pair["source_index"]),
+		str(pair.get("target_storage", "inventory")), int(pair["target_index"])
+	)
 
 
 func merge_inventory_pair(source_index: int, target_index: int) -> bool:

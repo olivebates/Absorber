@@ -135,7 +135,7 @@ func dismiss_second_campfire_tab_prompt() -> void:
 func _create_tab_prompt() -> void:
 	_tab_prompt = Label.new()
 	_tab_prompt.name = "CampfireTabPrompt"
-	_tab_prompt.text = "M to Teleport"
+	_tab_prompt.text = "M/TAB to Teleport"
 	_tab_prompt.position = Vector2(-24, -82)
 	_tab_prompt.size = Vector2(48, 28)
 	_tab_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

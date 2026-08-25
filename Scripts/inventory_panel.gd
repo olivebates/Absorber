@@ -1,7 +1,12 @@
 class_name InventoryPanel
 extends PanelContainer
 
+const SLOT_SIZE := 42.0
+const SLOT_SEPARATION := 5.0
+const MERGE_BUTTON_COLUMNS := 3
+
 var _player: FoxPlayer
+var _content: VBoxContainer
 var _items: HBoxContainer
 var _dragged_item: Dictionary = {}
 var _drag_source_storage := ""
@@ -18,28 +23,31 @@ func _ready() -> void:
 	offset_right = -14.0
 	offset_bottom = -126.0
 	_set_style()
-	var content := VBoxContainer.new()
-	add_child(content)
+	_content = VBoxContainer.new()
+	_content.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	add_child(_content)
 	var title := Label.new()
 	title.text = "Inventory"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_color_override("font_color", Color.WHITE)
-	content.add_child(title)
+	_content.add_child(title)
 	_items = HBoxContainer.new()
-	_items.alignment = BoxContainer.ALIGNMENT_CENTER
+	_items.alignment = BoxContainer.ALIGNMENT_BEGIN
+	_items.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_items.add_theme_constant_override("separation", 5)
-	content.add_child(_items)
+	_content.add_child(_items)
 	var trash_row := HBoxContainer.new()
 	trash_row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	trash_row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	trash_row.add_theme_constant_override("separation", 5)
-	content.add_child(trash_row)
+	_content.add_child(trash_row)
 	_trash_slot = ItemSlot.new()
 	_trash_slot.name = "TrashSlot"
 	trash_row.add_child(_trash_slot)
 	_trash_slot.mouse_entered.connect(func() -> void:
 		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
 		if tooltip:
-			tooltip.show_description(ItemSlot.TRASH_ICON, "Trash", "Throw unwanted in items here. They will remain until you drag the next item in here.")
+			tooltip.show_description(ItemSlot.TRASH_ICON, "Trash", "Throw multiple unwanted items\nhere to remove them.")
 	)
 	_trash_slot.mouse_exited.connect(func() -> void:
 		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
@@ -48,15 +56,19 @@ func _ready() -> void:
 	)
 	_auto_merge_button = Button.new()
 	_auto_merge_button.text = "Merge All"
-	_auto_merge_button.tooltip_text = "Merge all matching items in the inventory"
-	_auto_merge_button.custom_minimum_size = Vector2(136, 42)
-	_auto_merge_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_auto_merge_button.tooltip_text = "Merge all matching inventory and equipped items"
+	_auto_merge_button.custom_minimum_size = Vector2(
+		SLOT_SIZE * MERGE_BUTTON_COLUMNS + SLOT_SEPARATION * (MERGE_BUTTON_COLUMNS - 1),
+		SLOT_SIZE
+	)
+	_auto_merge_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_auto_merge_button.focus_mode = Control.FOCUS_NONE
 	_set_auto_merge_style(_auto_merge_button)
 	_auto_merge_button.pressed.connect(_on_auto_merge_pressed)
 	_auto_merge_button.visible = false
 	trash_row.add_child(_auto_merge_button)
 	call_deferred("_connect_player")
+	call_deferred("_fit_to_content")
 
 
 func _set_style() -> void:
@@ -65,10 +77,10 @@ func _set_style() -> void:
 	style.border_color = Color.BLACK
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(7)
-	style.content_margin_left = 7
-	style.content_margin_right = 7
-	style.content_margin_top = 4
-	style.content_margin_bottom = 5
+	style.content_margin_left = 8
+	style.content_margin_right = 8
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
 	add_theme_stylebox_override("panel", style)
 
 
@@ -100,6 +112,11 @@ func _refresh() -> void:
 	if _player == null:
 		return
 	for child in _items.get_children():
+		# Detach stale slots before queuing them for deletion. Otherwise they remain
+		# part of the HBoxContainer until the end of the frame, so consecutive
+		# refreshes temporarily measure eight slots and cache that doubled width as
+		# this panel's custom minimum size.
+		_items.remove_child(child)
 		child.queue_free()
 	for index in range(4):
 		var item := _player.get_slot_item("inventory", index)
@@ -113,6 +130,7 @@ func _refresh() -> void:
 	_trash_slot.tooltip_text = ""
 	_auto_merge_button.visible = _player.has_auto_mergeable_inventory_pair()
 	_auto_merge_button.disabled = _auto_merge_in_progress
+	call_deferred("_fit_to_content")
 
 
 func begin_slot_drag(slot: ItemSlot) -> void:
@@ -171,23 +189,42 @@ func _run_auto_merge_sequence() -> void:
 		var pair := _player.get_next_auto_merge_pair()
 		if pair.is_empty():
 			break
-		var source_slot := _get_inventory_slot(int(pair["source_index"]))
-		var target_slot := _get_inventory_slot(int(pair["target_index"]))
+		var source_storage := str(pair.get("source_storage", "inventory"))
+		var target_storage := str(pair.get("target_storage", "inventory"))
+		var source_slot := _get_item_slot(source_storage, int(pair["source_index"]))
+		var target_slot := _get_item_slot(target_storage, int(pair["target_index"]))
 		if source_slot == null or target_slot == null:
 			break
 		await _play_auto_merge_animation(source_slot, target_slot)
-		if not _player.merge_inventory_pair(int(pair["source_index"]), int(pair["target_index"])):
+		if not _player.merge_auto_pair(pair):
 			break
 		await get_tree().process_frame
 	_auto_merge_in_progress = false
 	_refresh()
 
 
-func _get_inventory_slot(index: int) -> ItemSlot:
-	for child in _items.get_children():
-		if child is ItemSlot and child.slot_index == index:
-			return child as ItemSlot
+func _get_item_slot(storage: String, index: int) -> ItemSlot:
+	for node in get_tree().get_nodes_in_group("item_slots"):
+		if node is ItemSlot and not node.is_queued_for_deletion() \
+			and node.storage == storage and node.slot_index == index:
+			return node as ItemSlot
 	return null
+
+
+func _fit_to_content() -> void:
+	if not is_instance_valid(_content):
+		return
+	var panel_style := get_theme_stylebox("panel")
+	var fitted_size := _content.get_combined_minimum_size() + panel_style.get_minimum_size()
+	custom_minimum_size = fitted_size
+	set_offset(SIDE_LEFT, -14.0 - fitted_size.x)
+	set_offset(SIDE_TOP, -126.0 - fitted_size.y)
+	set_offset(SIDE_RIGHT, -14.0)
+	set_offset(SIDE_BOTTOM, -126.0)
+	# PanelContainer can retain a previously allocated rectangle even after its
+	# minimum shrinks. Force the anchored control to the fitted rectangle so the
+	# panel background cannot extend into empty space on the right.
+	size = fitted_size
 
 
 func _play_auto_merge_animation(source_slot: ItemSlot, target_slot: ItemSlot) -> void:

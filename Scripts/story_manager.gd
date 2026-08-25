@@ -259,7 +259,7 @@ func interact_with(character_id: StringName) -> bool:
 					_line("Deru", "Saddly I have no fish to compensate you with. Perhaps there's something else you want?", DERU_HAPPY_PORTRAIT),
 					_line("Mira", "You could help me out by rounding up all the creatures in the desert?", PLAYER_PORTRAIT),
 					_line("Mira", "That would save me a ton of time.", PLAYER_PORTRAIT),
-					_line("Deru", "Alright, you got yourself a deal :)", DERU_HAPPY_PORTRAIT),
+					_line("Deru", "Oh, yeah, I'll help you out :)", DERU_HAPPY_PORTRAIT),
 				])
 			return _play_default_dialogue([
 				_line("Deru", "I think Asha in Tiny Woods have some spare parts for my cart.", DERU_PORTRAIT),
@@ -800,7 +800,7 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 		&"second_campfire":
 			return [
 				_line("Mira", "These campfires seem to be connected.", PLAYER_PORTRAIT),
-				_line("Mira", "I can get around quickly by pressing M and selecting a campfire.", PLAYER_PORTRAIT),
+				_line("Mira", "I can get around quickly by pressing M or TAB and selecting a campfire.", PLAYER_PORTRAIT),
 			]
 		&"luca_purchase":
 			return [_line("Luca", "Appreicate it.", LUCA_PORTRAIT)]

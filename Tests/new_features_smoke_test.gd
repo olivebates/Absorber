@@ -74,6 +74,8 @@ func _run() -> void:
 	weapon_slot._update_cooldown_overlay()
 	assert(weapon_slot._cooldown_overlay.visible, "The unarmed DamageIcon must show the normal attack cooldown")
 	assert(locked_armor_slot._empty_icon.z_index < locked_armor_slot._lock_icon.z_index, "Empty slot icons must render beneath locks")
+	assert(locked_armor_slot._lock_icon.size == ItemSlot.SPRITE_BASE_SIZE, "Equipment locks must retain their normal 32x32 size")
+	assert(locked_armor_slot._lock_icon.position == (locked_armor_slot.size - ItemSlot.SPRITE_BASE_SIZE) * 0.5, "Equipment locks must remain centered in their slots")
 	var item_tooltip := ItemTooltip.new()
 	root.add_child(item_tooltip)
 	await process_frame

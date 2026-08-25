@@ -31,9 +31,11 @@ var _hunt_attack_tween: Tween
 var _hunt_attack_visual_time_left := 0.0
 var _helper_tooltip_visible := false
 var _helper_tooltip_copy := ""
+var _original_position := Vector2.ZERO
 
 
 func _ready() -> void:
+	_original_position = global_position
 	super._ready()
 	stationary = _is_stationary_before_recruitment()
 	_build_collected_stats_display()
@@ -244,6 +246,14 @@ func load_save_data(data: Array) -> bool:
 	stationary = _hunter_recruited or _is_stationary_before_recruitment()
 	_hunt_target = null
 	_delivery_running = false
+	if not _hunter_recruited:
+		# A non-helper save represents the character before recruitment. Return to
+		# the location authored in the current scene instead of leaving them at a
+		# campfire or hunting position from the running session.
+		global_position = _original_position
+		_last_player_cell = INVALID_CELL
+		_follow_target_cell = INVALID_CELL
+		_stop_patrol()
 	call_deferred("_refresh_collected_stats_display")
 	return loaded
 

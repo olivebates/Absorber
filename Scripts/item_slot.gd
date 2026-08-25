@@ -92,8 +92,8 @@ func _update_cooldown_overlay() -> void:
 	_cooldown_overlay.size = Vector2(slot_size.x, slot_size.y * clampf(ratio, 0.0, 1.0))
 	_cooldown_overlay.visible = ratio > 0.0
 	if _lock_icon:
-		_lock_icon.position = Vector2.ZERO
-		_lock_icon.size = slot_size
+		_lock_icon.position = icon_position
+		_lock_icon.size = icon_size
 
 
 func _get_drag_data(_at_position: Vector2) -> Variant:
