@@ -3,6 +3,9 @@ extends Node2D
 
 const TILE_SIZE := 64
 const EXPLORATION_RADIUS_TILES := 6
+const COMBAT_TILE_LERP_DURATION := 0.20
+const COMBAT_ALIGNMENT_TWEEN_META := &"combat_alignment_tween"
+const COMBAT_ALIGNMENT_TARGET_META := &"combat_alignment_target"
 
 @export var version_number := 1
 
@@ -437,6 +440,85 @@ func world_to_cell(world_position: Vector2) -> Vector2i:
 
 func cell_to_world(cell: Vector2i) -> Vector2:
 	return floor_layer.to_global(floor_layer.map_to_local(cell))
+
+
+func center_stationary_combatants(first: Node2D, second: Node2D) -> bool:
+	var first_ready := _center_actor_if_stationary(first)
+	var second_ready := _center_actor_if_stationary(second)
+	return first_ready and second_ready
+
+
+func center_stationary_actor(actor: Node2D) -> bool:
+	return _center_actor_if_stationary(actor)
+
+
+func cancel_combatant_tile_lerps(first: Node2D, second: Node2D) -> void:
+	_cancel_actor_tile_lerp(first)
+	_cancel_actor_tile_lerp(second)
+
+
+func _center_actor_if_stationary(actor: Node2D) -> bool:
+	if not _is_actor_stationary(actor):
+		_cancel_actor_tile_lerp(actor)
+		return true
+	return _lerp_actor_to_intended_tile(actor)
+
+
+func _is_actor_stationary(actor: Node2D) -> bool:
+	if not is_instance_valid(actor):
+		return false
+	if actor.has_method("is_moving") and bool(actor.call("is_moving")):
+		return false
+	return not actor is CharacterBody2D or (actor as CharacterBody2D).velocity.length_squared() <= 1.0
+
+
+func _lerp_actor_to_intended_tile(actor: Node2D) -> bool:
+	if not is_instance_valid(actor):
+		return false
+	var intended_position := cell_to_world(world_to_cell(actor.global_position))
+	if actor.global_position.distance_squared_to(intended_position) <= 0.25:
+		actor.global_position = intended_position
+		_clear_combat_alignment(actor)
+		return true
+	if actor is CharacterBody2D:
+		(actor as CharacterBody2D).velocity = Vector2.ZERO
+	var existing_tween := actor.get_meta(COMBAT_ALIGNMENT_TWEEN_META) as Tween \
+		if actor.has_meta(COMBAT_ALIGNMENT_TWEEN_META) else null
+	var existing_target: Vector2 = actor.get_meta(COMBAT_ALIGNMENT_TARGET_META) \
+		if actor.has_meta(COMBAT_ALIGNMENT_TARGET_META) else Vector2(INF, INF)
+	if existing_tween and existing_tween.is_valid() and existing_tween.is_running() \
+		and existing_target.is_equal_approx(intended_position):
+		return false
+	if existing_tween and existing_tween.is_valid():
+		existing_tween.kill()
+	var alignment_tween := actor.create_tween()
+	alignment_tween.tween_property(actor, "global_position", intended_position, COMBAT_TILE_LERP_DURATION) \
+		.set_trans(Tween.TRANS_LINEAR).set_ease(Tween.EASE_IN_OUT)
+	actor.set_meta(COMBAT_ALIGNMENT_TWEEN_META, alignment_tween)
+	actor.set_meta(COMBAT_ALIGNMENT_TARGET_META, intended_position)
+	return false
+
+
+func _cancel_actor_tile_lerp(actor: Node2D) -> void:
+	if not is_instance_valid(actor) or not actor.has_meta(COMBAT_ALIGNMENT_TWEEN_META):
+		return
+	var existing_tween := actor.get_meta(COMBAT_ALIGNMENT_TWEEN_META) as Tween
+	if existing_tween and existing_tween.is_valid() and existing_tween.is_running():
+		existing_tween.kill()
+	actor.remove_meta(COMBAT_ALIGNMENT_TWEEN_META)
+	if actor.has_meta(COMBAT_ALIGNMENT_TARGET_META):
+		actor.remove_meta(COMBAT_ALIGNMENT_TARGET_META)
+
+
+func _clear_combat_alignment(actor: Node2D) -> void:
+	var existing_tween := actor.get_meta(COMBAT_ALIGNMENT_TWEEN_META) as Tween \
+		if actor.has_meta(COMBAT_ALIGNMENT_TWEEN_META) else null
+	if existing_tween and existing_tween.is_valid() and existing_tween.is_running():
+		existing_tween.kill()
+	if actor.has_meta(COMBAT_ALIGNMENT_TWEEN_META):
+		actor.remove_meta(COMBAT_ALIGNMENT_TWEEN_META)
+	if actor.has_meta(COMBAT_ALIGNMENT_TARGET_META):
+		actor.remove_meta(COMBAT_ALIGNMENT_TARGET_META)
 
 
 func _build_navigation_grid_from_tilemaps() -> void:

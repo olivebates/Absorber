@@ -39,9 +39,29 @@ func _run() -> void:
 	fox.global_position = world.cell_to_world(corridor_start + Vector2i(6, 0))
 	enemy._update_behavior_state(false)
 	assert(enemy._pursuit_is_limited and enemy._pursuit_tiles_left == 3, "Disengaging must begin a three-tile pursuit")
-	enemy.global_position = world.cell_to_world(corridor_start + Vector2i(4, 0))
+	var pursuit_end_position := world.cell_to_world(corridor_start + Vector2i(4, 0))
+	enemy.global_position = pursuit_end_position + Vector2(18.0, -11.0)
 	enemy._record_pursuit_progress(3.0 * WorldNavigation.TILE_SIZE)
-	assert(enemy._movement_mode == ChickenEnemy.MovementMode.RETURN_HOME, "The enemy must return home after following for three tiles")
+	assert(enemy._movement_mode == ChickenEnemy.MovementMode.CENTER_AFTER_PURSUIT, "The enemy must center itself after following for three tiles")
+	enemy._center_after_limited_pursuit()
+	assert(enemy.has_meta(WorldNavigation.COMBAT_ALIGNMENT_TWEEN_META), "The pursuit endpoint must start one centering lerp")
+	var pursuit_centering := enemy.get_meta(WorldNavigation.COMBAT_ALIGNMENT_TWEEN_META) as Tween
+	pursuit_centering.custom_step(WorldNavigation.COMBAT_TILE_LERP_DURATION + 0.01)
+	enemy._center_after_limited_pursuit()
+	assert(enemy.global_position.is_equal_approx(pursuit_end_position), "The enemy must finish centered on its pursuit-end tile")
+	assert(enemy._movement_mode == ChickenEnemy.MovementMode.RETURN_HOME, "The enemy must return home only after its pursuit-end centering finishes")
+
+	var return_end_position := world.cell_to_world(enemy.home_cell + Vector2i.RIGHT)
+	enemy.global_position = return_end_position + Vector2(21.0, 0.0)
+	enemy._return_to_spawn_area(0.016)
+	assert(enemy._movement_mode == ChickenEnemy.MovementMode.CENTER_AFTER_RETURN, "Entering the home radius mid-step must begin return centering")
+	enemy._center_after_return()
+	assert(enemy.has_meta(WorldNavigation.COMBAT_ALIGNMENT_TWEEN_META), "Finishing the return off-center must start one centering lerp")
+	var return_centering := enemy.get_meta(WorldNavigation.COMBAT_ALIGNMENT_TWEEN_META) as Tween
+	return_centering.custom_step(WorldNavigation.COMBAT_TILE_LERP_DURATION + 0.01)
+	enemy._center_after_return()
+	assert(enemy.global_position.is_equal_approx(return_end_position), "The enemy must finish centered on its return-end tile")
+	assert(enemy._movement_mode == ChickenEnemy.MovementMode.PATROL, "Patrol must resume only after return centering finishes")
 
 	enemy.aggressive = false
 	enemy._movement_mode = ChickenEnemy.MovementMode.PATROL

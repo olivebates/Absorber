@@ -27,6 +27,11 @@ func _run() -> void:
 		assert(fox.get_slot_item("weapon", index).is_empty() and fox.get_slot_item("armor", index).is_empty(), "Toolbar should begin empty")
 	var floor_cells: Array[Vector2i] = world.floor_layer.get_used_cells()
 	assert(floor_cells.size() > 1, "Manual floor tilemap must have walkable cells")
+	var floor_material := world.floor_layer.material as ShaderMaterial
+	assert(floor_material != null and floor_material.shader != null, "Floor tiles must use the tile-specific color-variation shader")
+	assert(floor_material.get_shader_parameter("color_grid_offset") == Vector2(-32.0, -32.0), "Both floor color-variation grids must be offset by negative thirty-two pixels")
+	assert(is_equal_approx(floor_material.get_shader_parameter("hue_shift_degrees"), 15.0), "Floor hue variation must be limited to fifteen degrees")
+	assert(is_equal_approx(floor_material.get_shader_parameter("brightness_shift_points"), 15.0), "Floor brightness variation must be limited to fifteen percentage points")
 	var target_cell: Vector2i = floor_cells[0]
 	for cell in floor_cells:
 		if world.is_walkable(cell) and cell != world.world_to_cell(fox.global_position):

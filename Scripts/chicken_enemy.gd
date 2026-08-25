@@ -17,7 +17,9 @@ const DISENGAGE_FOLLOW_TILES := 3
 enum MovementMode {
 	PATROL,
 	CHASE,
+	CENTER_AFTER_PURSUIT,
 	RETURN_HOME,
+	CENTER_AFTER_RETURN,
 }
 
 signal died(enemy: ChickenEnemy)
@@ -59,6 +61,8 @@ var spawn_point: EnemySpawnPoint
 var _suppress_reward_collection_sound := false
 var _movement_mode := MovementMode.PATROL
 var _was_in_combat := false
+var _combat_alignment_target: Node2D
+var _combat_entry_aligned := false
 var _pursuit_is_limited := false
 var _pursuit_tiles_left := 0
 var _pursuit_distance_left := 0.0
@@ -147,6 +151,13 @@ func take_hunter_damage(hunter: FoxLio) -> void:
 		queue_free()
 
 
+func prepare_for_hunter_combat(hunter: FoxLio) -> void:
+	if hunter == null or health <= 0:
+		return
+	_hunter_target = hunter
+	_clear_movement_path()
+
+
 func can_be_auto_fought() -> bool:
 	return is_instance_valid(spawn_point) and spawn_point.emptied_once
 
@@ -226,29 +237,55 @@ func _physics_process(delta: float) -> void:
 	var player_in_combat := _is_in_combat()
 	var hunter_in_combat := _is_hunter_in_combat()
 	var in_combat := player_in_combat or hunter_in_combat
+	var combatants_aligned := true
 	_update_behavior_state(player_in_combat)
 	if in_combat:
 		velocity = Vector2.ZERO
 		_path.clear()
 		_path_index = 0
+		var combat_target: Node2D = _hunter_target if hunter_in_combat else _player
+		if combat_target != _combat_alignment_target:
+			_combat_alignment_target = combat_target
+			_combat_entry_aligned = false
+		_combat_entry_aligned = _world.center_stationary_combatants(combat_target, self)
+		combatants_aligned = _combat_entry_aligned
 	elif _movement_mode == MovementMode.CHASE:
 		_chase_player(delta)
+	elif _movement_mode == MovementMode.CENTER_AFTER_PURSUIT:
+		_clear_combat_entry_alignment()
+		_center_after_limited_pursuit()
 	elif _movement_mode == MovementMode.RETURN_HOME:
+		_clear_combat_entry_alignment()
 		_return_to_spawn_area(delta)
+	elif _movement_mode == MovementMode.CENTER_AFTER_RETURN:
+		_clear_combat_entry_alignment()
+		_center_after_return()
 	elif _pause_time_left > 0.0:
+		_clear_combat_entry_alignment()
 		_pause_time_left -= delta
 		velocity = Vector2.ZERO
 	else:
+		_clear_combat_entry_alignment()
 		_patrol(delta)
-	if hunter_in_combat:
-		_attack_hunter()
-	else:
-		_attack_player(player_in_combat)
+	if combatants_aligned:
+		if hunter_in_combat:
+			_attack_hunter()
+		else:
+			_attack_player(player_in_combat)
 	_update_walk_animation(delta)
 	_update_combat_ring(in_combat)
 	_face_combat_target(player_in_combat, hunter_in_combat)
 	_update_health_regeneration(delta, in_combat)
 	_was_in_combat = player_in_combat
+
+
+func _clear_combat_entry_alignment() -> void:
+	_combat_alignment_target = null
+	_combat_entry_aligned = false
+
+
+func is_player_combat_sequence_active() -> bool:
+	return health > 0 and (_movement_mode == MovementMode.CHASE or _is_in_combat())
 
 
 func _dialogue_is_open() -> bool:
@@ -331,6 +368,18 @@ func _record_pursuit_progress(distance_traveled: float) -> void:
 	_pursuit_distance_left = maxf(0.0, _pursuit_distance_left - distance_traveled)
 	_pursuit_tiles_left = ceili(_pursuit_distance_left / WorldNavigation.TILE_SIZE)
 	if is_zero_approx(_pursuit_distance_left) and not _is_in_combat():
+		_begin_pursuit_centering()
+
+
+func _begin_pursuit_centering() -> void:
+	_movement_mode = MovementMode.CENTER_AFTER_PURSUIT
+	_pursuit_is_limited = false
+	_clear_movement_path()
+
+
+func _center_after_limited_pursuit() -> void:
+	velocity = Vector2.ZERO
+	if _world and _world.center_stationary_actor(self):
 		_begin_return_home()
 
 
@@ -356,9 +405,7 @@ func _choose_player_adjacent_path(player_cell: Vector2i) -> void:
 func _return_to_spawn_area(delta: float) -> void:
 	var current_cell := _world.world_to_cell(global_position)
 	if (current_cell - home_cell).length_squared() <= 4:
-		_movement_mode = MovementMode.PATROL
-		_pause_time_left = randf_range(1.0, 2.0)
-		_clear_movement_path()
+		_begin_return_centering()
 		return
 	if _path_index >= _path.size():
 		_path = _world.find_path(global_position, _world.cell_to_world(home_cell), self)
@@ -367,6 +414,20 @@ func _return_to_spawn_area(delta: float) -> void:
 		_follow_behavior_path(delta)
 	else:
 		velocity = Vector2.ZERO
+
+
+func _begin_return_centering() -> void:
+	_movement_mode = MovementMode.CENTER_AFTER_RETURN
+	_clear_movement_path()
+
+
+func _center_after_return() -> void:
+	velocity = Vector2.ZERO
+	if not _world or not _world.center_stationary_actor(self):
+		return
+	_movement_mode = MovementMode.PATROL
+	_pause_time_left = randf_range(1.0, 2.0)
+	_clear_movement_path()
 
 
 func _follow_behavior_path(delta: float) -> float:

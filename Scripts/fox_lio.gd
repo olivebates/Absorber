@@ -269,6 +269,9 @@ func _process_hunting(delta: float) -> void:
 		return
 	if _world.are_adjacent(self, _hunt_target):
 		_stop_patrol()
+		_hunt_target.prepare_for_hunter_combat(self)
+		if not _world.center_stationary_combatants(self, _hunt_target):
+			return
 		if _hunt_attack_left <= 0.0:
 			var attacked_enemy := _hunt_target
 			_face_hunt_target(attacked_enemy)

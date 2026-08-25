@@ -59,6 +59,8 @@ var _spawn_position := Vector2.ZERO
 var _beginning_position := Vector2.ZERO
 var _pending_item_collections := 0
 var _combat_ring: Line2D
+var _combat_alignment_enemy: ChickenEnemy
+var _combat_entry_aligned := false
 var _healing_particles: HealingParticles
 var _is_dying := false
 var _death_overlay: ColorRect
@@ -773,7 +775,9 @@ func _move_along_path(delta: float) -> void:
 	_advance_past_reached_points()
 	if not is_moving():
 		velocity = Vector2.ZERO
-		_snap_to_tile_center()
+		var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+		if world == null or _get_adjacent_enemy(world) == null:
+			_snap_to_tile_center()
 		return
 	var target := _path[_path_index]
 	var offset := target - global_position
@@ -800,17 +804,25 @@ func _move_along_path(delta: float) -> void:
 func _attack_nearby_enemy() -> void:
 	if _dialogue_is_open():
 		return
-	if _weapon_cooldowns[current_weapon_index] > 0.0:
-		return
 	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 	if world == null:
 		return
-	var target: ChickenEnemy
+	var target := _get_adjacent_enemy(world)
 	var automatic := false
-	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy is ChickenEnemy and world and world.are_adjacent(self, enemy):
-			target = enemy
-			break
+	if target:
+		if target != _combat_alignment_enemy:
+			_combat_alignment_enemy = target
+			_combat_entry_aligned = false
+		_combat_entry_aligned = world.center_stationary_combatants(self, target)
+		if not _combat_entry_aligned:
+			return
+	else:
+		if not is_instance_valid(_combat_alignment_enemy) \
+			or not _combat_alignment_enemy.is_player_combat_sequence_active():
+			_combat_alignment_enemy = null
+			_combat_entry_aligned = false
+	if _weapon_cooldowns[current_weapon_index] > 0.0:
+		return
 	if target == null and auto_fight_enabled and not is_moving() and _attack_target == null:
 		var closest_distance := INF
 		var player_cell := world.world_to_cell(global_position)
@@ -834,6 +846,19 @@ func _attack_nearby_enemy() -> void:
 		_weapon_cooldowns[current_weapon_index] = attack_cooldown
 
 
+func _get_adjacent_enemy(world: WorldNavigation) -> ChickenEnemy:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy is ChickenEnemy and is_instance_valid(enemy) and enemy.health > 0 and world.are_adjacent(self, enemy):
+			return enemy as ChickenEnemy
+	return null
+
+
+func _stop_for_combat() -> void:
+	_path.clear()
+	_path_index = 0
+	velocity = Vector2.ZERO
+
+
 func _collect_pickups_on_current_tile() -> void:
 	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 	if world == null:
@@ -849,20 +874,16 @@ func _update_combat_ring() -> void:
 	_combat_ring.visible = false
 	if world == null:
 		return
-	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy is ChickenEnemy and is_instance_valid(enemy) and enemy.health > 0 and world.are_adjacent(self, enemy):
-			_combat_ring.visible = true
-			return
+	_combat_ring.visible = _get_adjacent_enemy(world) != null
 
 
 func _face_combat_enemy() -> void:
 	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 	if world == null:
 		return
-	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy is ChickenEnemy and is_instance_valid(enemy) and enemy.health > 0 and world.are_adjacent(self, enemy):
-			_face_toward(enemy)
-			return
+	var enemy := _get_adjacent_enemy(world)
+	if enemy:
+		_face_toward(enemy)
 
 
 func _face_toward(target: Node2D) -> void:
@@ -969,7 +990,7 @@ func _update_enemy_chase() -> void:
 	if world == null:
 		return
 	if world.are_adjacent(self, _attack_target):
-		stop()
+		_stop_for_combat()
 		return
 	var enemy_cell := world.world_to_cell(_attack_target.global_position)
 	if enemy_cell == _target_cell:

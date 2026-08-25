@@ -77,6 +77,8 @@ Absorber/
 │   ├── reward_orb.gd                     Animated enemy-reward travel orb
 │   ├── damage_popup.gd                   Popup tween animation and cleanup
 │   └── *.gd.uid                          Godot-generated script UID metadata; do not hand-edit
+├── Shaders/
+│   └── floor_tile_variation.gdshader     World-locked per-cell hue and brightness variation
 ├── Sprites/
 │   ├── FloorTiles.webp                   4 × 3 floor atlas; every tile is 64 × 64
 │   ├── WallTiles.webp                    3 × 1 wall atlas; every tile is 64 × 64
@@ -122,6 +124,8 @@ World (Node2D, WorldNavigation)
 ```
 
 `world.tscn` owns the two `TileMapLayer` resources and their painted cell data. `FloorTerrain` is the source of truth for walkable cells. `WallTerrain` overrides walkability: any painted wall cell is solid even if there is also a floor tile beneath it.
+
+`FloorTerrain` uses `Shaders/floor_tile_variation.gdshader`. The shader first resolves the real world-locked 64-pixel TileMap cell, then applies a shared `(-32, -32)` sampling offset to two independently seeded, unbounded Perlin fields. Their sampling scales are 30% below the previous values. Applying the offset after cell selection keeps it from putting a color boundary through the middle of a tile. Every cell receives one whole hue offset of at most 15 degrees and one whole brightness offset of at most 15 percentage points. World coordinates prevent the fields from resetting or repeating at TileMap render-chunk and viewport boundaries.
 
 ### `Scenes/world.tscn`
 
@@ -235,6 +239,7 @@ Saved progression includes player position, health, recovery timing, hidden defe
 - `WallTiles.webp` has three atlas cells arranged 3 columns by 1 row.
 - Walls currently drive navigation by occupancy, not TileSet physics collision. If physics collisions are later added to the wall TileSet, retain the grid checks because they are the pathfinding authority.
 - Textures use nearest filtering for pixel-art presentation.
+- Floor art receives deterministic, tile-specific HSV variation from separate unbounded hue and brightness Perlin distributions. Every world-locked cell receives one whole value from each field, with no reset or repetition at TileMap render-chunk boundaries. Both patterns apply a `(-32, -32)` sampling offset after selecting the cell, use sampling scales reduced by 30%, and keep shifts within -15 to +15 (degrees and percentage points, respectively).
 
 ## Styling and feedback
 
@@ -301,6 +306,21 @@ When editing the project:
 
 ## Recent prompt log
 
+- 2026-08-25 - Added a return-finished centering phase so entering the enemy's home radius mid-step cannot leave it halfway between tiles before patrol resumes.
+- 2026-08-25 - Added a one-time tile-centering phase when an enemy exhausts its three-tile post-combat pursuit, before it begins returning home.
+- 2026-08-25 - Made combat centering independent per participant: stationary players, helpers, and enemies center themselves while any moving participant remains untouched.
+- 2026-08-25 - Revalidated combat alignment against current positions whenever both actors stop, fixing stale escape-pursuit state that could leave stationary enemies off-center.
+- 2026-08-25 - Gated combat centering until both participants are stationary and made new movement cancel an active centering tween, ensuring movement and escape paths always take priority.
+- 2026-08-25 - Preserved completed combat-entry alignment throughout the three-tile escape pursuit so an enemy catching up on later tiles cannot repeatedly lerp the fleeing player backward.
+- 2026-08-25 - Made combat tile-centering a one-time entry transition so the player can immediately path away afterward, while enemies retain their three-tile post-combat pursuit.
+- 2026-08-25 - Reduced both floor Perlin sampling scales by 30% and made players, hunter NPCs, and enemies lerp to their intended tile centers before combat attacks begin.
+- 2026-08-25 - Aligned floor-color quantization with the real 64-pixel TileMap boundaries and moved the Perlin sampling offset after cell selection, removing half-tile color splits and visible noise seams.
+- 2026-08-25 - Restored one whole hue and brightness value per floor cell while retaining world-locked Perlin coordinates to eliminate TileMap chunk seams and repetition.
+- 2026-08-25 - Replaced tile-quantized floor color sampling with unbounded continuous world-space Perlin fields, removing the long abrupt transition bands while keeping location-specific variation.
+- 2026-08-25 - Doubled the spatial scale of both floor Perlin patterns by halving their hue and brightness sampling frequencies.
+- 2026-08-25 - Offset both floor color-variation grids by `(-32, -32)` pixels while retaining tile-specific Perlin sampling.
+- 2026-08-25 - Widened both per-floor-tile Perlin color shifts from -5 through +5 to -15 through +15.
+- 2026-08-25 - Added deterministic per-floor-tile hue and brightness variation from two independent Perlin noise distributions, each constrained to -5 through +5.
 - 2026-08-25 - Renamed the forest music area to Whippersnapper Woods, raised Deru's hunter damage to 7, tightened Asha's banner around its title beneath her portrait, shortened reveal pauses to 0.25 seconds, replaced the gate sound with immediate `AshaJoins.mp3`, and ducked biome music until dismissal.
 - 2026-08-25 - Refined Asha's input-gated join celebration into a spaced sequence of a right-entering black banner, portrait reveal, persistent rotating sun-ray fade, and title pop with no explanatory lines; mapped the first three second-row floor tiles to the Forrest1/Forrest2 playlist; and added boss-marked spawners whose fights play `Boss.mp3` and slightly zoom the camera.
 - 2026-08-25 - Replaced Deru's repaired-cart shop with an AreaID 2 hunter/helper loop and supplied dialogue, gave him a 3-Gem large-handoff fee, added campfire helper reward/price hover cards, and permanently retired Asha's shop after recruitment.
