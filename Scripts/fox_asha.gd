@@ -28,6 +28,9 @@ var _last_player_cell := INVALID_CELL
 var _follow_target_cell := INVALID_CELL
 var _smooch_cooldown_left := 0.0
 var _smooch_in_progress := false
+var _join_celebration: RecruitmentCelebration
+var _join_previous_gameplay_paused := false
+var _join_previous_interaction_locked := false
 
 @onready var fox_sprite: Sprite2D = $Sprite2D
 
@@ -52,7 +55,8 @@ func _finish_setup() -> void:
 
 
 func _process(delta: float) -> void:
-	_highlight.visible = Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
+	_highlight.visible = is_story_interactable() \
+		and Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
 	_is_walking = false
 	if is_instance_valid(_world) and _world.gameplay_paused:
 		_stop_patrol()
@@ -91,14 +95,20 @@ func set_recruited(value: bool, celebrate := false) -> void:
 	if _recruited == value:
 		# Story-state refreshes may reapply the saved recruitment flag. Do not
 		# erase an active follow target when the state has not actually changed.
+		if value:
+			close_shop()
 		if value and celebrate:
 			_play_recruitment_celebration()
 		return
 	_recruited = value
 	if not value:
+		if not is_in_group("shopkeepers"):
+			add_to_group("shopkeepers")
 		_last_player_cell = INVALID_CELL
 		_follow_target_cell = INVALID_CELL
 		return
+	close_shop()
+	remove_from_group("shopkeepers")
 	if not is_instance_valid(_player):
 		_player = get_tree().get_first_node_in_group("player") as FoxPlayer
 	stationary = false
@@ -117,6 +127,13 @@ func is_recruited() -> bool:
 
 func can_overlap_navigation_actor(actor: Node2D) -> bool:
 	return _recruited and actor is FoxPlayer
+
+
+func is_story_interactable() -> bool:
+	if not _recruited:
+		return true
+	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+	return story != null and not story.has_seen_event(&"asha_post_recruitment")
 
 
 func reset_smooch_cooldown() -> void:
@@ -211,29 +228,136 @@ func _play_recruitment_celebration() -> void:
 	var hud := _world.get_node_or_null("HUD") as CanvasLayer if _world else null
 	if hud == null:
 		return
-	var banner := Label.new()
-	banner.name = "AshaJoinCelebration"
-	banner.text = "Asha joins the team!"
-	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	banner.position = Vector2(-190, 52)
-	banner.size = Vector2(380, 54)
-	banner.add_theme_font_size_override("font_size", 28)
-	banner.add_theme_color_override("font_color", Color("fff176"))
-	banner.add_theme_color_override("font_outline_color", Color.BLACK)
-	banner.add_theme_constant_override("outline_size", 6)
-	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(banner)
-	banner.scale = Vector2(0.35, 0.35)
-	banner.modulate.a = 0.0
-	banner.pivot_offset = banner.size * 0.5
-	var tween := banner.create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(banner, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(banner, "modulate:a", 1.0, 0.18)
-	tween.chain().tween_interval(1.6)
-	tween.chain().tween_property(banner, "modulate:a", 0.0, 0.35)
-	tween.chain().tween_callback(banner.queue_free)
+	if is_instance_valid(_join_celebration):
+		return
+	_join_previous_gameplay_paused = _world.gameplay_paused
+	_join_previous_interaction_locked = _world.interaction_locked
+	_world.gameplay_paused = true
+	_world.interaction_locked = true
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.set_recruitment_music_ducked(true)
+		audio.play_asha_joins()
+	var celebration := RecruitmentCelebration.new()
+	_join_celebration = celebration
+	celebration.name = "AshaJoinCelebration"
+	celebration.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	celebration.z_index = 500
+	hud.add_child(celebration)
+	var center := get_viewport_rect().size * Vector2(0.5, 0.38)
+	var ribbon := ColorRect.new()
+	ribbon.name = "JoinRibbon"
+	ribbon.color = Color(0.015, 0.012, 0.01, 0.94)
+	ribbon.position = Vector2(get_viewport_rect().size.x, center.y + 24.0)
+	ribbon.size = Vector2(get_viewport_rect().size.x, 72.0)
+	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	celebration.add_child(ribbon)
+	var ribbon_top := ColorRect.new()
+	ribbon_top.color = Color("e9c64d")
+	ribbon_top.position = Vector2(0, -2)
+	ribbon_top.size = Vector2(ribbon.size.x, 2)
+	ribbon.add_child(ribbon_top)
+	var ribbon_bottom := ColorRect.new()
+	ribbon_bottom.color = Color("e9c64d")
+	ribbon_bottom.position = Vector2(0, ribbon.size.y)
+	ribbon_bottom.size = Vector2(ribbon.size.x, 2)
+	ribbon.add_child(ribbon_bottom)
+	var burst := Node2D.new()
+	burst.name = "JoinBurst"
+	burst.position = center - Vector2(0, 36)
+	burst.modulate.a = 0.0
+	celebration.add_child(burst)
+	for ray_index in range(16):
+		var angle := TAU * float(ray_index) / 16.0
+		var ray := Line2D.new()
+		ray.width = 5.0 if ray_index % 2 == 0 else 3.0
+		ray.default_color = Color(1.0, 0.88, 0.30, 0.82)
+		ray.add_point(Vector2.from_angle(angle) * 72.0)
+		ray.add_point(Vector2.from_angle(angle) * (150.0 if ray_index % 2 == 0 else 120.0))
+		burst.add_child(ray)
+	var portrait := TextureRect.new()
+	portrait.name = "AshaJoinPortrait"
+	portrait.texture = fox_sprite.texture
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.position = center - Vector2(54, 92)
+	portrait.size = Vector2(108, 108)
+	portrait.pivot_offset = portrait.size * 0.5
+	portrait.scale = Vector2(0.58, 0.58)
+	portrait.modulate.a = 0.0
+	celebration.add_child(portrait)
+	var title := Label.new()
+	title.name = "JoinTitle"
+	title.text = "Asha joins the party!"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.position = Vector2(0, center.y + 34.0)
+	title.size = Vector2(get_viewport_rect().size.x, 52)
+	title.pivot_offset = Vector2(title.size.x * 0.5, title.size.y * 0.5)
+	title.scale = Vector2(0.20, 0.20)
+	title.modulate.a = 0.0
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", Color("fff176"))
+	title.add_theme_color_override("font_outline_color", Color.BLACK)
+	title.add_theme_constant_override("outline_size", 8)
+	celebration.add_child(title)
+	var continue_prompt := Label.new()
+	continue_prompt.name = "JoinContinuePrompt"
+	continue_prompt.text = "Click or press any key to continue"
+	continue_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	continue_prompt.position = Vector2(0, center.y + 104.0)
+	continue_prompt.size = Vector2(get_viewport_rect().size.x, 32)
+	continue_prompt.add_theme_font_size_override("font_size", 16)
+	continue_prompt.add_theme_color_override("font_color", Color.WHITE)
+	continue_prompt.add_theme_color_override("font_outline_color", Color.BLACK)
+	continue_prompt.add_theme_constant_override("outline_size", 4)
+	continue_prompt.hide()
+	celebration.add_child(continue_prompt)
+	var sequence := celebration.create_tween()
+	sequence.tween_property(ribbon, "position:x", 0.0, 0.45).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	sequence.tween_interval(0.25)
+	sequence.tween_property(portrait, "modulate:a", 1.0, 0.24)
+	sequence.parallel().tween_property(portrait, "scale", Vector2.ONE, 0.34).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	sequence.tween_interval(0.25)
+	sequence.tween_property(burst, "modulate:a", 1.0, 0.38)
+	sequence.tween_interval(0.25)
+	sequence.tween_callback(_play_join_impact)
+	sequence.tween_property(title, "modulate:a", 1.0, 0.16)
+	sequence.parallel().tween_property(title, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	var sun_rotation := burst.create_tween().set_loops()
+	sun_rotation.tween_property(burst, "rotation", TAU, 9.0).from(0.0).set_trans(Tween.TRANS_LINEAR)
+	celebration.dismissed.connect(_finish_recruitment_celebration.bind(celebration))
+	celebration.arm_after(3.05, continue_prompt)
+
+
+func _play_join_impact() -> void:
+	_play_join_camera_punch()
+
+
+func _finish_recruitment_celebration(celebration: RecruitmentCelebration) -> void:
+	if not is_instance_valid(celebration) or celebration != _join_celebration:
+		return
+	if is_instance_valid(_world):
+		_world.gameplay_paused = _join_previous_gameplay_paused
+		_world.interaction_locked = _join_previous_interaction_locked
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.set_recruitment_music_ducked(false)
+	_join_celebration = null
+	var tween := celebration.create_tween()
+	tween.tween_property(celebration, "modulate:a", 0.0, 0.28)
+	tween.tween_callback(celebration.queue_free)
+
+
+func _play_join_camera_punch() -> void:
+	var camera := _player.get_node_or_null("Camera2D") as Camera2D if is_instance_valid(_player) else null
+	if camera == null:
+		return
+	var origin := camera.position
+	var tween := camera.create_tween()
+	tween.tween_property(camera, "position", origin + Vector2(5, -3), 0.05)
+	tween.tween_property(camera, "position", origin + Vector2(-4, 3), 0.06)
+	tween.tween_property(camera, "position", origin + Vector2(2, -1), 0.06)
+	tween.tween_property(camera, "position", origin, 0.08)
 
 
 func request_interaction(player: FoxPlayer, world: WorldNavigation) -> bool:
@@ -271,6 +395,8 @@ func interact() -> void:
 
 
 func open_shop() -> void:
+	if _recruited:
+		return
 	var hud := _world.get_node_or_null("HUD") as CanvasLayer if _world else null
 	if hud == null:
 		return
@@ -310,10 +436,8 @@ func load_save_data(data: Array) -> bool:
 	purchase_counts = []
 	for index in range(4):
 		purchase_counts.append(maxi(0, int(data[index])) if index < data.size() else 0)
-	if data.size() >= 6 and _world:
-		var saved_position := Vector2(float(data[4]), float(data[5]))
-		if _world.is_walkable(_world.world_to_cell(saved_position)):
-			global_position = saved_position
+	# NPC placement belongs to the current scene. The trailing coordinates are
+	# retained in the format only so older saves remain compatible.
 	_stop_patrol()
 	close_shop()
 	return true

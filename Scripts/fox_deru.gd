@@ -1,18 +1,17 @@
 class_name FoxDeru
-extends FoxAsha
+extends FoxLio
 
-const DERU_SHOP_SCRIPT := preload("res://Scripts/fox_deru_shop.gd")
 const SAD_TEXTURE := preload("res://Sprites/FoxDeruSad.webp")
 const HAPPY_TEXTURE := preload("res://Sprites/FoxDeruHappy.webp")
 const BROKEN_CART_TEXTURE := preload("res://Sprites/BrokenCart.webp")
 const FIXED_CART_TEXTURE := preload("res://Sprites/FixedCart.webp")
+const DERU_REWARD_FEE := {&"jewels": 3}
+const DERU_HUNT_DAMAGE := 7
 
 var _repaired := false
 
 
 func _ready() -> void:
-	stationary = true
-	purchase_counts = [0, 0, 0, 0]
 	super._ready()
 
 
@@ -24,6 +23,7 @@ func _finish_setup() -> void:
 func set_repaired(value: bool) -> void:
 	_repaired = value
 	_apply_repair_visuals()
+	set_hunter_recruited(value)
 
 
 func is_repaired() -> bool:
@@ -41,18 +41,47 @@ func _apply_repair_visuals() -> void:
 
 func interact() -> void:
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
-	if story and story.interact_with(&"deru"):
-		return
-	if story and story.is_deru_quest_completed():
-		open_shop()
+	if story:
+		story.interact_with(&"deru")
 
 
 func open_shop() -> void:
-	var hud := _world.get_node_or_null("HUD") as CanvasLayer if _world else null
-	if hud == null:
-		return
-	if not is_instance_valid(_shop):
-		_shop = DERU_SHOP_SCRIPT.new()
-		hud.add_child(_shop)
-		_shop.setup(self)
-	_shop.open()
+	# Repairing the cart changes Deru into a field helper permanently; he never
+	# opens the former post-quest shop.
+	pass
+
+
+func load_save_data(data: Array) -> bool:
+	var loaded := super.load_save_data(data)
+	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+	if story and story.is_deru_quest_completed() and not is_hunter_recruited():
+		set_hunter_recruited(true)
+	return loaded
+
+
+func _get_hunt_area_id() -> int:
+	return 2
+
+
+func get_hunt_damage() -> int:
+	return DERU_HUNT_DAMAGE
+
+
+func get_reward_fee() -> Dictionary:
+	return DERU_REWARD_FEE
+
+
+func _get_reward_price_text() -> String:
+	return "Free" if is_reward_handoff_free() else "3 Gems"
+
+
+func _is_stationary_before_recruitment() -> bool:
+	return true
+
+
+func _get_helper_name() -> String:
+	return "Deru"
+
+
+func _notify_reward_delivery_finished(story: StoryManager) -> void:
+	story.on_deru_reward_delivery_finished()

@@ -133,9 +133,9 @@ func take_hunter_damage(hunter: FoxLio) -> void:
 	if health <= 0 or hunter == null:
 		return
 	_hunter_target = hunter
-	# Lio always lands a flat two-damage hit. His attacks deliberately skip
-	# the floating damage popup, since only the player needs that feedback.
-	health = max(0, health - FoxLio.HUNT_DAMAGE)
+	# Helper attacks deliberately skip the floating damage popup, since only
+	# the player's attacks need that feedback.
+	health = max(0, health - hunter.get_hunt_damage())
 	_health_regen_delay_left = HEALTH_REGEN_DELAY
 	_health_regen_tick_left = 0.0
 	health_bar.value = health

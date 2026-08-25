@@ -45,6 +45,17 @@ func _run() -> void:
 	world.map_show_enemies = true
 	world.map_show_buildings = true
 	assert(world.is_campfire_visited(campfire), "The save test must begin with a visited campfire")
+	var asha := world.get_node("FoxAsha") as FoxAsha
+	var saved_asha_position := asha.global_position
+	var location_spawn := world.get_node("ChickenSpawn2") as EnemySpawnPoint
+	var location_enemy := location_spawn.get_active_enemies()[0]
+	var saved_enemy_position := location_enemy.global_position
+	for candidate in world.floor_layer.get_used_cells():
+		if world.is_walkable(candidate) and not world.is_cell_occupied(candidate, location_enemy) \
+			and Vector2(candidate - world.world_to_cell(location_spawn.global_position)).length() > 8.0:
+			saved_enemy_position = world.cell_to_world(candidate)
+			break
+	location_enemy.global_position = saved_enemy_position
 
 	var raw_json := JSON.stringify(save_system._capture_state(1000))
 	var encoded := save_system.create_save_string(1000)
@@ -60,6 +71,8 @@ func _run() -> void:
 	world.map_show_enemies = false
 	world.map_show_buildings = false
 	gate.set_unlocked(true)
+	asha.global_position = saved_asha_position + Vector2.RIGHT * WorldNavigation.TILE_SIZE
+	var current_asha_position := asha.global_position
 	assert(save_system.load_save_string(encoded, 1600), "A compact save string must decompress and load")
 	await process_frame
 
@@ -75,6 +88,12 @@ func _run() -> void:
 	assert(not gate.unlocked and gate.visible and gate.is_in_group("gates"), "Loading an older slot must restore a locked gate")
 	assert(world.is_campfire_visited(campfire), "Explored areas and visited campfires must survive save/load")
 	assert(world.map_show_enemies and world.map_show_buildings, "Map overlay toggles must survive save/load")
+	assert(asha.global_position == current_asha_position, "NPCs must remain at their current scene locations instead of loading saved coordinates")
+	var loaded_location_enemies := location_spawn.get_active_enemies()
+	assert(not loaded_location_enemies.is_empty(), "The saved enemy must be rebuilt at its current spawn")
+	var loaded_enemy := loaded_location_enemies[0]
+	var loaded_offset := world.world_to_cell(loaded_enemy.global_position) - world.world_to_cell(location_spawn.global_position)
+	assert(loaded_enemy.global_position != saved_enemy_position and maxi(absi(loaded_offset.x), absi(loaded_offset.y)) <= EnemySpawnPoint.SPAWN_RADIUS_TILES, "Enemies must ignore saved coordinates and use the current spawn marker")
 	var captured_spawns := save_system._capture_state(1000)[4] as Array
 	assert(captured_spawns[0] is Array and captured_spawns[0][0] is String, "Enemy spawn saves must be keyed by stable spawn names")
 

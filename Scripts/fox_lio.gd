@@ -29,18 +29,21 @@ var _delivery_running := false
 var _reward_fee_paid := false
 var _hunt_attack_tween: Tween
 var _hunt_attack_visual_time_left := 0.0
+var _helper_tooltip_visible := false
+var _helper_tooltip_copy := ""
 
 
 func _ready() -> void:
 	super._ready()
-	stationary = false
+	stationary = _is_stationary_before_recruitment()
 	_build_collected_stats_display()
 
 
 func _process(delta: float) -> void:
 	_hunt_attack_visual_time_left = maxf(0.0, _hunt_attack_visual_time_left - delta)
-	stationary = _hunter_recruited
+	stationary = _hunter_recruited or _is_stationary_before_recruitment()
 	super._process(delta)
+	_update_helper_tooltip()
 	if not _hunter_recruited or not _initialized or not is_instance_valid(_world):
 		return
 	if _world.gameplay_paused or _dialogue_is_open() or _waiting_for_player or (is_instance_valid(_shop) and _shop.visible):
@@ -100,6 +103,7 @@ func set_hunter_recruited(value: bool, begin_hunting := true) -> void:
 		hunt_state = HuntState.INACTIVE
 		_hunt_target = null
 		_reward_fee_paid = false
+		stationary = _is_stationary_before_recruitment()
 		_stop_patrol()
 		return
 	if hunt_state == HuntState.INACTIVE and begin_hunting:
@@ -118,14 +122,14 @@ func can_pay_reward_fee() -> bool:
 	if _reward_fee_paid:
 		return true
 	var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
-	return resources != null and resources.can_afford(REWARD_FEE)
+	return resources != null and resources.can_afford(get_reward_fee())
 
 
 func pay_reward_fee() -> bool:
 	if _reward_fee_paid:
 		return true
 	var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
-	if resources == null or not resources.spend_resources(REWARD_FEE):
+	if resources == null or not resources.spend_resources(get_reward_fee()):
 		return false
 	_reward_fee_paid = true
 	return true
@@ -133,6 +137,10 @@ func pay_reward_fee() -> bool:
 
 func has_paid_reward_fee() -> bool:
 	return _reward_fee_paid
+
+
+func get_reward_fee() -> Dictionary:
+	return REWARD_FEE
 
 
 func authorize_free_reward_handoff() -> void:
@@ -233,7 +241,7 @@ func load_save_data(data: Array) -> bool:
 		_reward_fee_paid = bool(data[10]) if data.size() > 10 else false
 	if hunt_state != HuntState.WAITING_AT_CAMPFIRE:
 		_reward_fee_paid = false
-	stationary = _hunter_recruited
+	stationary = _hunter_recruited or _is_stationary_before_recruitment()
 	_hunt_target = null
 	_delivery_running = false
 	call_deferred("_refresh_collected_stats_display")
@@ -297,7 +305,7 @@ func _find_nearest_eligible_enemy() -> ChickenEnemy:
 		if not node is EnemySpawnPoint:
 			continue
 		var spawn := node as EnemySpawnPoint
-		if spawn.area_id != 1 or EXCLUDED_ENEMY_TYPES.has(spawn.enemy_type):
+		if spawn.area_id != _get_hunt_area_id() or EXCLUDED_ENEMY_TYPES.has(spawn.enemy_type):
 			continue
 		for enemy in spawn.get_active_enemies():
 			var distance := global_position.distance_squared_to(enemy.global_position)
@@ -313,7 +321,7 @@ func _count_eligible_enemies() -> int:
 		if not node is EnemySpawnPoint:
 			continue
 		var spawn := node as EnemySpawnPoint
-		if spawn.area_id != 1 or EXCLUDED_ENEMY_TYPES.has(spawn.enemy_type):
+		if spawn.area_id != _get_hunt_area_id() or EXCLUDED_ENEMY_TYPES.has(spawn.enemy_type):
 			continue
 		count += spawn.get_active_enemies().size()
 	return count
@@ -321,7 +329,7 @@ func _count_eligible_enemies() -> int:
 
 func _is_eligible_enemy(enemy: ChickenEnemy) -> bool:
 	return is_instance_valid(enemy) and enemy.health > 0 and is_instance_valid(enemy.spawn_point) \
-		and enemy.spawn_point.area_id == 1 and not EXCLUDED_ENEMY_TYPES.has(enemy.spawn_point.enemy_type)
+		and enemy.spawn_point.area_id == _get_hunt_area_id() and not EXCLUDED_ENEMY_TYPES.has(enemy.spawn_point.enemy_type)
 
 
 func _best_adjacent_path(enemy: ChickenEnemy) -> PackedVector2Array:
@@ -429,9 +437,89 @@ func _update_walk_animation(delta: float) -> void:
 
 func _get_area_campfire() -> Campfire:
 	for node in get_tree().get_nodes_in_group("campfires"):
-		if node is Campfire and (node as Campfire).area_id == 1:
+		if node is Campfire and (node as Campfire).area_id == _get_hunt_area_id():
 			return node as Campfire
 	return null
+
+
+func _get_hunt_area_id() -> int:
+	return 1
+
+
+func get_hunt_damage() -> int:
+	return HUNT_DAMAGE
+
+
+func _is_stationary_before_recruitment() -> bool:
+	return false
+
+
+func _get_helper_name() -> String:
+	return "Lio"
+
+
+func _get_reward_price_text() -> String:
+	if is_reward_handoff_free():
+		return "Free"
+	var fee := get_reward_fee()
+	var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+	var entries: Array[String] = []
+	for raw_resource_id in fee:
+		var resource_id := StringName(raw_resource_id)
+		var definition := resources.get_definition(resource_id) if resources else null
+		var display_name: String = definition.display_name if definition else str(resource_id).capitalize()
+		entries.append("%d %s" % [int(fee[raw_resource_id]), display_name])
+	return " + ".join(entries)
+
+
+func _update_helper_tooltip() -> void:
+	var hovering := Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
+	var should_show := hovering and is_waiting_at_campfire() and not _collected_rewards.is_empty() and not _dialogue_is_open()
+	var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+	if not should_show:
+		if _helper_tooltip_visible and tooltip:
+			tooltip.hide_item()
+		_helper_tooltip_visible = false
+		_helper_tooltip_copy = ""
+		return
+	if tooltip == null:
+		return
+	var copy := _get_reward_tooltip_copy()
+	if _helper_tooltip_visible and copy == _helper_tooltip_copy:
+		return
+	_helper_tooltip_visible = true
+	_helper_tooltip_copy = copy
+	tooltip.show_description(fox_sprite.texture, "%s's Rewards" % _get_helper_name(), copy)
+
+
+func _get_reward_tooltip_copy() -> String:
+	var totals := get_collected_reward_totals()
+	var keys := totals.keys()
+	keys.sort()
+	var lines: Array[String] = []
+	for key_variant in keys:
+		var key := str(key_variant)
+		lines.append("+%d %s" % [int(totals[key_variant]), _reward_name_for_key(key)])
+	lines.append("Price: %s" % _get_reward_price_text())
+	return "\n".join(lines)
+
+
+func _reward_name_for_key(key: String) -> String:
+	var colors := ["Red", "Yellow", "Blue"]
+	if key.begins_with("damage_"):
+		return "%s Damage" % colors[clampi(int(key.trim_prefix("damage_")), 0, 2)]
+	if key.begins_with("defense_"):
+		return "%s Defense" % colors[clampi(int(key.trim_prefix("defense_")), 0, 2)]
+	if key == "health":
+		return "Health"
+	if key == "regeneration":
+		return "Regeneration"
+	if key.begins_with("resource_"):
+		var resource_id := StringName(key.trim_prefix("resource_"))
+		var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+		var definition := resources.get_definition(resource_id) if resources else null
+		return definition.display_name if definition else str(resource_id).capitalize()
+	return "Reward"
 
 
 func _run_reward_delivery() -> void:
@@ -453,7 +541,11 @@ func _run_reward_delivery() -> void:
 	_delivery_running = false
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
 	if story:
-		story.on_lio_reward_delivery_finished()
+		_notify_reward_delivery_finished(story)
+
+
+func _notify_reward_delivery_finished(story: StoryManager) -> void:
+	story.on_lio_reward_delivery_finished()
 
 
 func _launch_collected_reward(reward: Dictionary) -> void:

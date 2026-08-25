@@ -31,7 +31,8 @@ func _run() -> void:
 	var game_audio := world.get_node("GameAudio") as GameAudio
 	var player_position := world.player.global_position
 	assert(is_equal_approx(game_audio.get_lio_fight_volume_scale(player_position), 1.0))
-	assert(is_equal_approx(game_audio.get_lio_fight_volume_scale(player_position + Vector2.RIGHT * WorldNavigation.TILE_SIZE * 4.0), 0.5))
+	assert(is_equal_approx(game_audio.get_lio_fight_volume_scale(player_position + Vector2.RIGHT * WorldNavigation.TILE_SIZE), 1.0))
+	assert(is_equal_approx(game_audio.get_lio_fight_volume_scale(player_position + Vector2.RIGHT * WorldNavigation.TILE_SIZE * 4.0), 4.0 / 7.0))
 	assert(is_zero_approx(game_audio.get_lio_fight_volume_scale(player_position + Vector2.RIGHT * WorldNavigation.TILE_SIZE * 8.0)))
 	assert(is_zero_approx(game_audio.get_lio_fight_volume_scale(player_position + Vector2.RIGHT * WorldNavigation.TILE_SIZE * 12.0)))
 

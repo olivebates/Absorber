@@ -40,11 +40,8 @@ func load_save_data(data: Array) -> bool:
 	var count_indices := [3, 5, 1, 2] if old_order else [0, 1, 2, 3]
 	for index in count_indices:
 		purchase_counts.append(maxi(0, int(data[index])) if index < data.size() else 0)
-	var position_index := 6 if old_order else 4
-	if data.size() >= position_index + 2 and _world:
-		var saved_position := Vector2(float(data[position_index]), float(data[position_index + 1]))
-		if _world.is_walkable(_world.world_to_cell(saved_position)):
-			global_position = saved_position
+	# Keep Luca at the position authored in the current scene. Saved coordinates
+	# are deliberately ignored so map edits take effect for existing saves.
 	_stop_patrol()
 	close_shop()
 	return true

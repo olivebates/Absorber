@@ -44,6 +44,7 @@ const SPAWN_RADIUS_TILES := 2
 @export_enum("Red", "Yellow", "Blue") var enemy_damage_color := FoxPlayer.COLOR_RED
 @export_range(0, 999, 1) var enemy_armor := 0
 @export var aggressive := false
+@export var boss := false
 @export_category("Spawning")
 @export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse", "Kangaroo Rat", "Mad Coyote", "Squirrel", "Deer", "Porcupine", "Bunny", "Evil Raccoon", "Evil Owl") var enemy_type := 0
 @export var enemy_scene: PackedScene
@@ -152,15 +153,13 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 		var enemy_data := raw_enemy_data as Array
 		if enemy_data.size() < 9:
 			continue
-		var saved_position := Vector2(float(enemy_data[0]), float(enemy_data[1]))
-		var saved_cell := world.world_to_cell(saved_position)
-		if not world.is_walkable(saved_cell) or world.is_cell_occupied(saved_cell) or world.is_gold_ore_cell(saved_cell):
-			saved_cell = _get_available_spawn_cell(world)
-			if saved_cell == Vector2i(-1, -1):
-				continue
-			saved_position = world.cell_to_world(saved_cell)
-		var home := Vector2i(int(enemy_data[2]), int(enemy_data[3]))
-		var enemy := _create_enemy(world, saved_position, home)
+		# Restore persistent combat state, but always place the enemy from this
+		# scene's current spawn marker. Saved position/home cells become stale when
+		# a map or spawn is moved between releases.
+		var spawn_cell := _get_available_spawn_cell(world)
+		if spawn_cell == Vector2i(-1, -1):
+			continue
+		var enemy := _create_enemy(world, world.cell_to_world(spawn_cell), spawn_cell)
 		if enemy:
 			enemy.load_save_data(enemy_data, offline_seconds)
 

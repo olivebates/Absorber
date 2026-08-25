@@ -21,7 +21,7 @@ var _asha: FoxAsha
 var _luca: FoxLuca
 var _lio: FoxLio
 var _nia: StoryFox
-var _deru: FoxAsha
+var _deru: FoxDeru
 var _first_gate: Gate
 var _bull_spawn: EnemySpawnPoint
 var _first_gate_cell := Vector2i.ZERO
@@ -107,6 +107,16 @@ func interact_with(character_id: StringName) -> bool:
 			_line("Nia", "That big angry bull is still blocking the way forward through the cave.", NIA_PORTRAIT),
 		])
 	if character_id == &"asha":
+		if is_asha_recruited():
+			if _has_seen(&"asha_post_recruitment"):
+				return false
+			_seen_events[&"asha_post_recruitment"] = true
+			if _play_default_dialogue([
+				_line("Asha", "It's fun being with you :)", ASHA_PORTRAIT),
+			]):
+				return true
+			_seen_events.erase(&"asha_post_recruitment")
+			return false
 		if is_deru_quest_started() and not _has_seen(&"asha_deru_parts_intro") and not are_spare_parts_purchased():
 			var had_seen_asha_intro := _has_seen(&"asha_intro")
 			_seen_events[&"asha_deru_parts_intro"] = true
@@ -241,23 +251,47 @@ func interact_with(character_id: StringName) -> bool:
 				_world.player.remove_quest_item("spare_cart_parts")
 				_seen_events[&"deru_parts_delivered"] = true
 				_apply_deru_repaired_state()
+				_active_event = &"deru_recruitment"
 				return _play_default_dialogue([
-					_line("Deru", "Oh my gosh, thank you so much!", DERU_HAPPY_PORTRAIT),
-					_line("Deru", "I was heading to the Mushroom Forrest, but these big angry beasts have taken over the connecting tunnles.", DERU_HAPPY_PORTRAIT),
-					_line("Deru", "Once they get cleared up, I'll head straight to the Mushroom Forrest.", DERU_HAPPY_PORTRAIT),
-					_line("Mira", "I'll try to clear them as fast as I can!", PLAYER_PORTRAIT),
+					_line("Mira", "One spare part for deru! Here you go :)", PLAYER_PORTRAIT),
+					_line("Deru", "Oh wow, thank you so much!", DERU_HAPPY_PORTRAIT),
+					_line("Deru", "I am truly indebted to you, that had to have been expensive.", DERU_HAPPY_PORTRAIT),
+					_line("Deru", "Saddly I have no fish to compensate you with. Perhaps there's something else you want?", DERU_HAPPY_PORTRAIT),
+					_line("Mira", "You could help me out by rounding up all the creatures in the desert?", PLAYER_PORTRAIT),
+					_line("Mira", "That would save me a ton of time.", PLAYER_PORTRAIT),
+					_line("Deru", "Alright, you got yourself a deal :)", DERU_HAPPY_PORTRAIT),
 				])
 			return _play_default_dialogue([
 				_line("Deru", "I think Asha in Tiny Woods have some spare parts for my cart.", DERU_PORTRAIT),
 				_line("Deru", "It's an expensive brand though, sorry!", DERU_PORTRAIT),
 			])
-		if not _has_seen(&"deru_shop_intro"):
-			_seen_events[&"deru_shop_intro"] = true
-			_reopen_shop_after_dialogue = true
-			_shop_to_reopen = _deru
+		if is_instance_valid(_deru) and _deru.is_hunter_recruited():
+			if _deru.is_waiting_at_campfire():
+				if _deru.is_reward_handoff_free():
+					_active_event = &"deru_reward_intro"
+					if _play_default_dialogue([
+						_line("Deru", "This one's for free! Enjoy :)", DERU_HAPPY_PORTRAIT),
+					]):
+						_deru.authorize_free_reward_handoff()
+						return true
+					_active_event = &""
+					return false
+				if not _deru.has_paid_reward_fee() and not _deru.can_pay_reward_fee():
+					return _play_default_dialogue([
+						_line("Deru", "I need a little bit of comensation, this was quite a lot of work.", DERU_HAPPY_PORTRAIT),
+						_line("Mira", "I'll come back when I have some more gems :)", PLAYER_PORTRAIT),
+					])
+				_active_event = &"deru_reward_intro"
+				if _play_default_dialogue([
+					_line("Deru", "Here you go, friend :)", DERU_HAPPY_PORTRAIT),
+				]):
+					if not _deru.has_paid_reward_fee():
+						_deru.pay_reward_fee()
+					return true
+				_active_event = &""
+				return false
 			return _play_default_dialogue([
-				_line("Deru", "Once the connecting caves clear out, I'm headed straight to Mushroom Forrest.", DERU_HAPPY_PORTRAIT),
-				_line("Deru", "Hopefully I'll see you there?", DERU_HAPPY_PORTRAIT),
+				_line("Deru", "I'll be with you in a moment, meet me at the campfire when I'm done <3", DERU_HAPPY_PORTRAIT),
 			])
 		return false
 	return false
@@ -340,7 +374,7 @@ func load_save_data(data: Array) -> void:
 
 func _find_characters() -> void:
 	_asha = _world.get_node_or_null("FoxAsha") as FoxAsha
-	_deru = _world.get_node_or_null("FoxDeru") as FoxAsha
+	_deru = _world.get_node_or_null("FoxDeru") as FoxDeru
 	_luca = _world.get_node_or_null("FoxLuca") as FoxLuca
 	_lio = _world.get_node_or_null("FoxLio") as FoxLio
 	for node in get_tree().get_nodes_in_group("story_characters"):
@@ -356,8 +390,8 @@ func _find_characters() -> void:
 
 
 func _apply_deru_repaired_state() -> void:
-	if is_instance_valid(_deru) and _deru.has_method("set_repaired"):
-		_deru.call("set_repaired", is_deru_quest_completed())
+	if is_instance_valid(_deru):
+		_deru.set_repaired(is_deru_quest_completed())
 
 
 func _start_dialogue(dialogue_number: int) -> bool:
@@ -469,6 +503,16 @@ func on_lio_reward_delivery_finished() -> void:
 		_lio.start_hunting_after_handoff()
 
 
+func on_deru_reward_delivery_finished() -> void:
+	if not is_instance_valid(_dialogue_box):
+		return
+	if _dialogue_box.is_open() or _active_event != &"":
+		_queued_events.append(&"deru_hunt_departure")
+		return
+	if not _begin_event_dialogue(&"deru_hunt_departure") and is_instance_valid(_deru):
+		_deru.start_hunting_after_handoff()
+
+
 func _is_nearest_gold_ore_to_lio(deposit: GoldOre) -> bool:
 	if not is_instance_valid(deposit) or not is_instance_valid(_lio):
 		return false
@@ -532,6 +576,10 @@ func _on_dialogue_finished() -> void:
 	if finished_event == &"asha_recruitment":
 		if is_instance_valid(_asha):
 			_asha.set_recruited(true, true)
+		return
+	if finished_event == &"deru_recruitment":
+		if is_instance_valid(_deru):
+			_deru.set_repaired(true)
 	if finished_event == &"asha_first_smooch":
 		_finish_first_smooch()
 		return
@@ -542,9 +590,16 @@ func _on_dialogue_finished() -> void:
 		if is_instance_valid(_lio):
 			_lio.begin_reward_delivery()
 		return
+	if finished_event == &"deru_reward_intro":
+		if is_instance_valid(_deru):
+			_deru.begin_reward_delivery()
+		return
 	if finished_event == &"lio_hunt_departure":
 		if is_instance_valid(_lio):
 			_lio.start_hunting_after_handoff()
+	if finished_event == &"deru_hunt_departure":
+		if is_instance_valid(_deru):
+			_deru.start_hunting_after_handoff()
 	if not _queued_events.is_empty():
 		_begin_event_dialogue(_queued_events.pop_front())
 		return
@@ -753,6 +808,8 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			return [_line("Lio", "Oh man, I'm so hungry, thank you!", LIO_PORTRAIT)]
 		&"lio_hunt_departure":
 			return [_line("Lio", "Once those critters return, I'll head out again! :)", LIO_PORTRAIT)]
+		&"deru_hunt_departure":
+			return [_line("Deru", "I'll be heading out once the creatures start comming back.", DERU_HAPPY_PORTRAIT)]
 		&"campfire_teleport":
 			return [_line("Mira", "Convenient.", PLAYER_PORTRAIT)]
 		&"evil_goat_killed":

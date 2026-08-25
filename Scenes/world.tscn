@@ -345,6 +345,7 @@ stat_reward_amount = 2
 reward_resource_id = &"jewels"
 enemy_health = 90
 enemy_damage = 4
+boss = true
 enemy_type = 6
 drop_table = Array[Dictionary]([{
 "chance": 1.0,
@@ -493,6 +494,7 @@ reward_type = 1
 reward_resource_id = &"jewels"
 enemy_health = 500
 enemy_damage = 13
+boss = true
 enemy_type = 13
 
 [node name="ChickenSpawn34" parent="." unique_id=587052680 instance=ExtResource("4_spawn")]
@@ -700,6 +702,7 @@ reward_type = 1
 reward_resource_id = &"jewels"
 enemy_health = 300
 enemy_damage = 4
+boss = true
 enemy_type = 2
 drop_table = Array[Dictionary]([{
 "chance": 1.0,

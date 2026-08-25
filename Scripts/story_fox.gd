@@ -101,12 +101,8 @@ func get_save_data() -> Array:
 
 
 func load_save_data(data: Array) -> bool:
-	if data.size() < 2 or _world == null:
-		return false
-	var saved_position := Vector2(float(data[0]), float(data[1]))
-	if not _world.is_walkable(_world.world_to_cell(saved_position)):
-		return false
-	global_position = saved_position
+	# Story NPC positions are scene-authored, not save-owned. Accept the legacy
+	# coordinate payload without applying it so moved NPCs use their new location.
 	_stop_patrol()
 	return true
 

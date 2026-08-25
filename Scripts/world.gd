@@ -183,7 +183,9 @@ func _get_shopkeeper_at_position(world_position: Vector2) -> FoxAsha:
 
 func _get_story_character_at_position(world_position: Vector2) -> Node2D:
 	for character in get_tree().get_nodes_in_group("story_characters"):
-		if character is Node2D and is_instance_valid(character) and character.global_position.distance_to(world_position) <= 32.0:
+		if character is Node2D and is_instance_valid(character) \
+			and (not character.has_method("is_story_interactable") or bool(character.call("is_story_interactable"))) \
+			and character.global_position.distance_to(world_position) <= 32.0:
 			return character
 	return null
 

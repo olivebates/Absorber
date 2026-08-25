@@ -32,7 +32,7 @@ func _run() -> void:
 	assert(world.floor_layer.get_cell_source_id(world.world_to_cell(deru.global_position)) != -1, "Deru must stand on authored floor")
 	assert(story.interact_with(&"deru"))
 	var intro := _finish_dialogue(box)
-	assert(intro.contains("my cart gave out on me") and intro.contains("I’ll be in your debt") and story.is_deru_quest_started())
+	assert(intro.contains("my cart gave out on me") and intro.contains("in your debt") and story.is_deru_quest_started())
 
 	assert(story.interact_with(&"deru"))
 	var reminder := _finish_dialogue(box)
@@ -64,7 +64,52 @@ func _run() -> void:
 	await create_timer(0.35).timeout
 	var recruitment := _finish_dialogue(box)
 	await process_frame
-	assert(recruitment.contains("Maybe you shouldn’t have to do it alone?") and recruitment.contains("I’d like that") and asha.is_recruited())
+	assert(recruitment.contains("do it alone"), "Asha's recruitment invitation must play")
+	assert(recruitment.contains("like that"), "Mira must accept Asha's recruitment")
+	assert(asha.is_recruited(), "Asha must become a companion when the recruitment dialogue finishes")
+	assert(not asha.is_in_group("shopkeepers") and not asha._shop.visible, "A recruited Asha must permanently stop being a shopkeeper")
+	asha.open_shop()
+	assert(not asha._shop.visible, "Asha's store must not reopen after she joins")
+	var celebration := world.get_node_or_null("HUD/AshaJoinCelebration") as Control
+	assert(celebration != null and celebration.get_node_or_null("JoinRibbon") != null and celebration.get_node_or_null("AshaJoinPortrait") != null and celebration.get_node_or_null("JoinBurst") != null, "Asha's recruitment must build the banner, portrait, and sun-ray fanfare")
+	assert((celebration.get_node("JoinTitle") as Label).text == "Asha joins the party!", "Asha's fanfare must use the requested party text")
+	assert(celebration.get_node_or_null("JoinSubtitle") == null and celebration.get_node_or_null("JoinAbilityFollow") == null and celebration.get_node_or_null("JoinAbilityHeal") == null, "The three extra lines beneath Asha's join title must be removed")
+	assert(world.gameplay_paused and world.interaction_locked and not (celebration as RecruitmentCelebration).can_continue, "Asha's fanfare must hold gameplay and reject input during its first three seconds")
+	assert(not (celebration as RecruitmentCelebration).try_dismiss(), "Asha's fanfare must not dismiss early")
+	var join_ribbon := celebration.get_node("JoinRibbon") as ColorRect
+	var join_portrait := celebration.get_node("AshaJoinPortrait") as TextureRect
+	var join_burst := celebration.get_node("JoinBurst") as Node2D
+	var join_title := celebration.get_node("JoinTitle") as Label
+	var world_audio := world.get_node("GameAudio") as GameAudio
+	assert(join_ribbon.position.x > 0.0 and is_zero_approx(join_portrait.modulate.a) and is_zero_approx(join_burst.modulate.a) and is_zero_approx(join_title.modulate.a), "The black banner must enter before every other fanfare element")
+	assert(is_equal_approx(join_ribbon.size.y, 72.0) and join_portrait.position.y + join_portrait.size.y < join_ribbon.position.y, "The black banner must fit only the title while Asha stays above it")
+	assert(world_audio._recruitment_music_ducked, "Biome music must begin fading out with Asha's black banner")
+	var asha_join_sound_playing := false
+	for audio_child in world_audio.get_children():
+		if audio_child is AudioStreamPlayer and (audio_child as AudioStreamPlayer).stream == GameAudio.ASHA_JOINS_SFX:
+			asha_join_sound_playing = true
+	assert(asha_join_sound_playing, "AshaJoins must start with the black banner")
+	await create_timer(0.55).timeout
+	assert(is_zero_approx(join_ribbon.position.x) and is_zero_approx(join_portrait.modulate.a), "Asha's portrait must wait a quarter-second after the banner")
+	assert(world_audio._grass_player.volume_db <= GameAudio.SILENT_DB + 0.1 and world_audio._forest_player.volume_db <= GameAudio.SILENT_DB + 0.1 and world_audio._desert_player.volume_db <= GameAudio.SILENT_DB + 0.1, "Biome music must fade out quickly during Asha's fanfare")
+	await create_timer(0.45).timeout
+	assert(join_portrait.modulate.a > 0.95 and is_zero_approx(join_burst.modulate.a), "The sun rays must wait a quarter-second after Asha's portrait")
+	await create_timer(0.70).timeout
+	assert(join_burst.modulate.a > 0.90 and is_zero_approx(join_title.modulate.a), "The title must wait a quarter-second after the sun rays")
+	await create_timer(0.50).timeout
+	assert(join_title.modulate.a > 0.95, "Asha's party title must pop in last")
+	var sun_rotation_before := join_burst.rotation
+	await create_timer(0.50).timeout
+	assert(not is_equal_approx(join_burst.rotation, sun_rotation_before), "Asha's sun rays must keep rotating until dismissal")
+	await create_timer(0.45).timeout
+	assert((celebration as RecruitmentCelebration).can_continue and (celebration.get_node("JoinContinuePrompt") as Label).visible, "The continue prompt must appear after three seconds")
+	var continue_key := InputEventKey.new()
+	continue_key.pressed = true
+	continue_key.keycode = KEY_A
+	(celebration as RecruitmentCelebration)._input(continue_key)
+	await create_timer(0.30).timeout
+	assert(not world.gameplay_paused and not world.interaction_locked and not is_instance_valid(celebration), "Any key must dismiss the completed fanfare and resume gameplay")
+	assert(not world_audio._recruitment_music_ducked and world_audio._grass_player.volume_db > GameAudio.SILENT_DB + 1.0, "Biome music must return after the player dismisses Asha's fanfare")
 	var follow_start := Vector2i.ZERO
 	var follow_target := Vector2i.ZERO
 	var player_next := Vector2i.ZERO
@@ -113,20 +158,55 @@ func _run() -> void:
 	assert(parts_index >= 0 and not player.move_or_merge("inventory", parts_index, "trash", 0), "Spare Parts must not be removable")
 	assert(story.interact_with(&"deru"))
 	var dialogue_portrait := box.find_child("Portrait", true, false) as TextureRect
+	var deru_recruitment := " " + box.get_current_text()
+	assert(box.get_current_speaker() == "Mira" and dialogue_portrait.texture.resource_path == "res://Sprites/Fox.webp", "Mira must offer Deru the Spare Part first")
+	box.finish_typing()
+	box.advance()
 	assert(dialogue_portrait.texture.resource_path == "res://Sprites/FoxDeruHappy.webp", "Deru's dialogue portrait must become happy when his repaired sprite does")
-	assert(_finish_dialogue(box).contains("thank you so much") and story.is_deru_quest_completed() and not player.has_inventory_item("spare_cart_parts"))
+	deru_recruitment += _finish_dialogue(box)
+	assert(deru_recruitment.contains("One spare part for deru!") and deru_recruitment.contains("truly indebted") and deru_recruitment.contains("rounding up all the creatures") and deru_recruitment.contains("got yourself a deal") and story.is_deru_quest_completed() and not player.has_inventory_item("spare_cart_parts"))
 	assert((deru.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/FoxDeruHappy.webp", "Deru must permanently look happy after receiving the parts")
 	assert((cart.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/FixedCart.webp", "The broken cart must permanently use its repaired sprite")
+	assert((deru as FoxDeru).is_hunter_recruited(), "Giving Deru the parts must recruit him as a hunter")
+	assert((deru as FoxDeru)._get_area_campfire() != null and (deru as FoxDeru)._get_area_campfire().area_id == 2, "Deru must hunt in and return to AreaID 2")
+	var area_two_spawn: EnemySpawnPoint
+	for spawn_node in get_nodes_in_group("enemy_spawns"):
+		var candidate_spawn := spawn_node as EnemySpawnPoint
+		if candidate_spawn.area_id == 2 and not FoxLio.EXCLUDED_ENEMY_TYPES.has(candidate_spawn.enemy_type):
+			area_two_spawn = candidate_spawn
+			break
+	assert(area_two_spawn != null, "Deru needs an eligible AreaID 2 enemy spawn")
+	var deru_target := (load("res://Scenes/chicken_enemy.tscn") as PackedScene).instantiate() as ChickenEnemy
+	deru_target.setup(Vector2i.ZERO, 2, ChickenEnemy.REWARD_DAMAGE, [], &"gold_ore", FoxPlayer.COLOR_RED, 15, 1)
+	deru_target.spawn_point = area_two_spawn
+	world.add_child(deru_target)
+	await process_frame
+	deru_target.take_hunter_damage(deru as FoxDeru)
+	assert(deru_target.health == 8 and deru_target._hunter_target == deru, "Deru must deal seven damage per hit to AreaID 2 enemies")
+	deru_target.take_hunter_damage(deru as FoxDeru)
+	assert(deru_target.health == 1, "Deru's second hit must deal another seven damage")
+	deru_target.take_hunter_damage(deru as FoxDeru)
+	assert((deru as FoxDeru)._get_reward_tooltip_copy().contains("+2 Red Damage") and (deru as FoxDeru)._get_reward_tooltip_copy().ends_with("Price: Free"), "A campfire helper tooltip must list rewards followed by the free price")
+	for reward_index in range(13):
+		var extra_reward := (load("res://Scenes/chicken_enemy.tscn") as PackedScene).instantiate() as ChickenEnemy
+		extra_reward.setup(Vector2i.ZERO, 1, ChickenEnemy.REWARD_DAMAGE)
+		(deru as FoxDeru).collect_enemy_reward(extra_reward)
+		extra_reward.free()
+	assert((deru as FoxDeru)._get_reward_tooltip_copy().ends_with("Price: 3 Gems"), "Deru's paid reward tooltip must show his three-Gem fee")
+	resources._amounts[&"jewels"] = 3.0
+	assert((deru as FoxDeru).can_pay_reward_fee() and (deru as FoxDeru).pay_reward_fee() and resources.get_amount(&"jewels") == 0, "Deru's paid handoff must cost exactly three Gems")
+	(deru as FoxDeru).open_shop()
+	assert(deru._shop == null, "Deru must not become a shop after the repair")
 	var saved_story := story.get_save_data()
 	(deru as FoxDeru).set_repaired(false)
 	story.load_save_data(saved_story)
 	assert((deru.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/FoxDeruHappy.webp" and (cart.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/FixedCart.webp", "Reloading saved story state must restore both repaired sprites")
-	assert(story.interact_with(&"deru"))
-	_finish_dialogue(box)
-	await process_frame
-	assert(deru._shop != null and deru._shop.get_script().resource_path == "res://Scripts/fox_deru_shop.gd" and deru._shop.visible)
-	assert(deru._shop._get_resource_offer(&"jewels")["price"] == 4)
-	assert(deru._shop.get_upgrade_price(0) == 5 and deru._shop.get_upgrade_price(1) == 5)
+	assert((deru as FoxDeru).is_hunter_recruited(), "Reloading completed story state must restore Deru's helper role")
+	(deru as FoxDeru).hunt_state = FoxLio.HuntState.WAITING_AT_CAMPFIRE
+	var saved_deru := (deru as FoxDeru).get_save_data()
+	(deru as FoxDeru).set_hunter_recruited(false)
+	(deru as FoxDeru).load_save_data(saved_deru)
+	assert((deru as FoxDeru).is_hunter_recruited() and (deru as FoxDeru).is_waiting_at_campfire(), "Deru's hunter and campfire state must persist in saves")
 
 	player.inventory_slots[0] = ItemPickup.make_item("potion_basic")
 	player.inventory_changed.emit()
@@ -135,7 +215,6 @@ func _run() -> void:
 	assert(player.move_or_merge("inventory", 0, "trash", 0) and str(player.trash_slots[0].get("item_id", "")) == "potion_rope")
 	assert(player.move_or_merge("trash", 0, "inventory", 0) and player.trash_slots[0].is_empty())
 
-	deru.close_shop()
 	story._seen_events.erase(&"asha_first_smooch")
 	if box.is_open():
 		_finish_dialogue(box)

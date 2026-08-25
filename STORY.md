@@ -20,6 +20,12 @@ Lio remains silent when approached. On the first interaction he talks about the 
 
 After the bull falls and the gate opens, the player celebrates the victory.
 
+## Companion recruitment
+
+Buying Deru's Spare Cart Parts starts Asha's recruitment conversation. When Mira accepts, Asha's Store closes permanently and a full-screen celebration identifies her as the newly unlocked healing companion. `AshaJoins.mp3` starts immediately as the biome music quickly fades out. A text-height black banner enters from the right beneath Asha, followed at quarter-second intervals by her portrait, fading rotating sun rays, and the popping `Asha joins the party!` title. There are no explanatory lines beneath the title. The fanfare holds gameplay for at least three seconds, keeps the rays rotating, and then waits for any key or mouse click before returning control and restoring the biome music.
+
+Giving the parts to Deru repairs his cart and recruits him instead of turning him into a shopkeeper. Deru deals 7 damage per hit while hunting eligible enemies throughout AreaID 2, carries their rewards, and returns to the AreaID 2 campfire for the same reward-handoff loop used by Lio. Small deliveries are free and large deliveries cost 3 Gems. Hovering either waiting helper at a campfire shows their carried rewards and price in an equipment-style popup.
+
 ## One-time remarks
 
 Mira comments once upon coming within seven tiles of the cave bull, building each producer type, standing directly beside a campfire, crossing the former gate tile, reaching the second campfire, teleporting to a different campfire, and killing the Evil Goat at ChickenSpawn12. Building a mine on the gold rock nearest Lio prompts his two-line reaction. Each shopkeeper's first successful purchase temporarily closes their shop for a one-time response, then reopens it.
