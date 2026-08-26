@@ -4,6 +4,7 @@ uniform float tile_size = 64.0;
 uniform vec2 color_grid_offset = vec2(-32.0, -32.0);
 uniform float hue_shift_degrees = 15.0;
 uniform float brightness_shift_points = 15.0;
+uniform float seam_blend_pixels : hint_range(1.0, 31.0, 1.0) = 8.0;
 
 varying vec2 world_position;
 
@@ -33,6 +34,15 @@ float perlin_noise(vec2 position, vec2 seed) {
 }
 
 
+float tile_interior_weight(vec2 world_cell_position) {
+	vec2 position_in_tile = fract(world_cell_position);
+	vec2 distance_to_edge = min(position_in_tile, vec2(1.0) - position_in_tile);
+	float blend_width = clamp(seam_blend_pixels / tile_size, 0.001, 0.499);
+	vec2 interior_fade = smoothstep(vec2(0.0), vec2(blend_width), distance_to_edge);
+	return interior_fade.x * interior_fade.y;
+}
+
+
 vec3 rgb_to_hsv(vec3 color) {
 	vec4 k = vec4(0.0, -0.33333333333, 0.66666666667, -1.0);
 	vec4 p = mix(vec4(color.bg, k.wz), vec4(color.gb, k.xy), step(color.b, color.g));
@@ -56,15 +66,30 @@ void vertex() {
 
 void fragment() {
 	vec4 base_color = COLOR;
+	vec2 world_cell_position = world_position / tile_size;
 	// Quantize against the real TileMap boundaries first. Applying the half-tile
 	// noise offset before floor() would put a color boundary through every tile.
-	vec2 tile_cell = floor(world_position / tile_size);
+	vec2 tile_cell = floor(world_cell_position);
 	vec2 noise_cell = tile_cell + vec2(0.5) + color_grid_offset / tile_size;
 
 	// Both fields share one continuous world grid, while their scales, offsets,
 	// and seeds keep the hue and brightness distributions independent.
-	float hue_noise = perlin_noise(noise_cell * 0.06055 + vec2(13.7, -8.2), vec2(19.1, 73.4));
-	float brightness_noise = perlin_noise(noise_cell * 0.04095 + vec2(-21.6, 5.9), vec2(101.3, 37.8));
+	float tile_hue_noise = perlin_noise(noise_cell * 0.06055 + vec2(13.7, -8.2), vec2(19.1, 73.4));
+	float tile_brightness_noise = perlin_noise(noise_cell * 0.04095 + vec2(-21.6, 5.9), vec2(101.3, 37.8));
+
+	// Keep the center of each tile flat, but return to the continuous fields near
+	// its edges. Adjacent tiles therefore meet at the same value instead of
+	// turning a gentle Perlin slope into a long staircase seam.
+	float interior_weight = tile_interior_weight(world_cell_position);
+	float hue_noise = tile_hue_noise;
+	float brightness_noise = tile_brightness_noise;
+	if (interior_weight < 1.0) {
+		vec2 continuous_noise_position = world_cell_position + color_grid_offset / tile_size;
+		float continuous_hue_noise = perlin_noise(continuous_noise_position * 0.06055 + vec2(13.7, -8.2), vec2(19.1, 73.4));
+		float continuous_brightness_noise = perlin_noise(continuous_noise_position * 0.04095 + vec2(-21.6, 5.9), vec2(101.3, 37.8));
+		hue_noise = mix(continuous_hue_noise, tile_hue_noise, interior_weight);
+		brightness_noise = mix(continuous_brightness_noise, tile_brightness_noise, interior_weight);
+	}
 	float hue_shift = clamp(hue_noise * hue_shift_degrees, -15.0, 15.0) / 360.0;
 	float brightness_shift = clamp(brightness_noise * brightness_shift_points, -15.0, 15.0) / 100.0;
 

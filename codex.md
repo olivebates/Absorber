@@ -125,7 +125,7 @@ World (Node2D, WorldNavigation)
 
 `world.tscn` owns the two `TileMapLayer` resources and their painted cell data. `FloorTerrain` is the source of truth for walkable cells. `WallTerrain` overrides walkability: any painted wall cell is solid even if there is also a floor tile beneath it.
 
-`FloorTerrain` uses `Shaders/floor_tile_variation.gdshader`. The shader first resolves the real world-locked 64-pixel TileMap cell, then applies a shared `(-32, -32)` sampling offset to two independently seeded, unbounded Perlin fields. Their sampling scales are 30% below the previous values. Applying the offset after cell selection keeps it from putting a color boundary through the middle of a tile. Every cell receives one whole hue offset of at most 15 degrees and one whole brightness offset of at most 15 percentage points. World coordinates prevent the fields from resetting or repeating at TileMap render-chunk and viewport boundaries.
+`FloorTerrain` uses `Shaders/floor_tile_variation.gdshader`. The shader first resolves the real world-locked 64-pixel TileMap cell, then applies a shared `(-32, -32)` sampling offset to two independently seeded, unbounded Perlin fields. Their sampling scales are 30% below the previous values. Each tile keeps one stable hue/brightness sample through its center, while an eight-pixel edge band smoothly rejoins the corresponding continuous world-space fields so neighboring samples cannot form long color seams. Hue remains limited to 15 degrees and brightness to 15 percentage points. World coordinates prevent the fields from resetting or repeating at TileMap render-chunk and viewport boundaries.
 
 ### `Scenes/world.tscn`
 
@@ -239,7 +239,7 @@ Saved progression includes player position, health, recovery timing, hidden defe
 - `WallTiles.webp` has three atlas cells arranged 3 columns by 1 row.
 - Walls currently drive navigation by occupancy, not TileSet physics collision. If physics collisions are later added to the wall TileSet, retain the grid checks because they are the pathfinding authority.
 - Textures use nearest filtering for pixel-art presentation.
-- Floor art receives deterministic, tile-specific HSV variation from separate unbounded hue and brightness Perlin distributions. Every world-locked cell receives one whole value from each field, with no reset or repetition at TileMap render-chunk boundaries. Both patterns apply a `(-32, -32)` sampling offset after selecting the cell, use sampling scales reduced by 30%, and keep shifts within -15 to +15 (degrees and percentage points, respectively).
+- Floor art receives deterministic, tile-specific HSV variation from separate unbounded hue and brightness Perlin distributions. Every world-locked cell keeps one stable value across its center, then blends back to the continuous fields within eight pixels of each edge; both sides therefore meet at the same color without a multi-tile staircase seam. The fields do not reset or repeat at TileMap render-chunk boundaries. Both patterns use a `(-32, -32)` sampling offset, scales reduced by 30%, and shifts within -15 to +15 (degrees and percentage points, respectively).
 
 ## Styling and feedback
 
@@ -306,6 +306,7 @@ When editing the project:
 
 ## Recent prompt log
 
+- 2026-08-26 - Removed long floor-color seams by retaining flat Perlin variation in tile interiors while feathering the tint into the continuous world-space fields across each eight-pixel tile edge.
 - 2026-08-25 - Added a return-finished centering phase so entering the enemy's home radius mid-step cannot leave it halfway between tiles before patrol resumes.
 - 2026-08-25 - Added a one-time tile-centering phase when an enemy exhausts its three-tile post-combat pursuit, before it begins returning home.
 - 2026-08-25 - Made combat centering independent per participant: stationary players, helpers, and enemies center themselves while any moving participant remains untouched.
