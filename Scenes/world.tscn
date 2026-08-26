@@ -45,6 +45,11 @@
 [ext_resource type="PackedScene" path="res://Scenes/fox_deru.tscn" id="43_deru"]
 [ext_resource type="PackedScene" path="res://Scenes/obstacle_broken_cart.tscn" id="44_cart"]
 [ext_resource type="Shader" uid="uid://dgrn08ls231kw" path="res://Shaders/floor_tile_variation.gdshader" id="45_floor_variation"]
+[ext_resource type="Script" uid="uid://d23m6aoeysroy" path="res://Scripts/dungeon_manager.gd" id="46_dungeon_manager"]
+[ext_resource type="PackedScene" path="res://Scenes/dungeon_entrance.tscn" id="47_dungeon_entrance"]
+[ext_resource type="PackedScene" uid="uid://cys01071b585x" path="res://Scenes/dungeon_template.tscn" id="48_test_dungeon_one"]
+[ext_resource type="PackedScene" uid="uid://cqxxmegf8w75f" path="res://Scenes/test_dungeon_two.tscn" id="49_test_dungeon_two"]
+[ext_resource type="PackedScene" uid="uid://cy2w0af4uuhto" path="res://Scenes/dungeon1_Snakemouth.tscn" id="53_g44x5"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_floor_variation"]
 shader = ExtResource("45_floor_variation")
@@ -323,8 +328,25 @@ tile_set = SubResource("TileSet_ew1vx")
 [node name="ResourceManager" type="Node" parent="." unique_id=2039827809]
 script = ExtResource("10_resources")
 
+[node name="DungeonManager" type="Node" parent="." unique_id=1534528382]
+script = ExtResource("46_dungeon_manager")
+
 [node name="Fox" parent="." unique_id=1957597493 instance=ExtResource("2_fox")]
 position = Vector2(32, 32)
+
+[node name="MossrootGrottoEntrance" parent="." unique_id=1871588460 instance=ExtResource("47_dungeon_entrance")]
+position = Vector2(224, 32)
+dungeon_id = &"mossroot_grotto"
+dungeon_scene = ExtResource("48_test_dungeon_one")
+difficulty = 2
+dungeon_name = "Mossroot Grotto"
+
+[node name="SunkenBurrowEntrance" parent="." unique_id=676016858 instance=ExtResource("47_dungeon_entrance")]
+position = Vector2(288, 32)
+dungeon_id = &"sunken_burrow"
+dungeon_scene = ExtResource("49_test_dungeon_two")
+difficulty = 4
+dungeon_name = "Sunken Burrow"
 
 [node name="GoldOre" parent="." unique_id=1480738923 instance=ExtResource("11_gold_ore")]
 position = Vector2(-224, 928)
@@ -970,3 +992,8 @@ position = Vector2(2272, 3040)
 
 [node name="ObstacleSkull" parent="." unique_id=528765952 instance=ExtResource("42_jwdyn")]
 position = Vector2(2400, 2976)
+
+[node name="DungeonEntrance" parent="." unique_id=221272411 instance=ExtResource("47_dungeon_entrance")]
+position = Vector2(2666, 1761)
+dungeon_scene = ExtResource("53_g44x5")
+dungeon_name = "Snakemouth Dungeon"

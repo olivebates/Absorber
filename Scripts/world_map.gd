@@ -3,6 +3,8 @@ extends Control
 
 var _world: WorldNavigation
 var _canvas: WorldMapCanvas
+var _title: Label
+var _leave_button: Button
 
 
 func _ready() -> void:
@@ -19,12 +21,18 @@ func _connect_world() -> void:
 
 
 func open() -> void:
+	var manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	_world = manager.get_active_level() if manager and manager.is_dungeon_active() else get_tree().current_scene as WorldNavigation
 	if _world == null:
 		_connect_world()
+	_canvas.setup(_world)
+	if is_instance_valid(_title):
+		_title.text = "%s Map" % (_world.display_name if _world is DungeonLevel else "World")
+	if is_instance_valid(_leave_button):
+		_leave_button.visible = _world is DungeonLevel
 	var shopkeeper := get_tree().get_first_node_in_group("shopkeepers") as FoxAsha
 	if shopkeeper:
 		shopkeeper.close_shop()
-	_canvas.refresh_markers()
 	show()
 	move_to_front()
 
@@ -38,7 +46,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	var key_event := event as InputEventKey
 	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
-	if key == KEY_M:
+	if key == KEY_M or key == KEY_TAB:
 		if _world:
 			_world.dismiss_second_campfire_tab_prompt()
 		if visible:
@@ -78,11 +86,12 @@ func _build_interface() -> void:
 	panel.add_child(content)
 	var title_row := HBoxContainer.new()
 	content.add_child(title_row)
-	var title := Label.new()
+	_title = Label.new()
+	var title := _title
 	title.text = "World Map — Select a Campfire"
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_color_override("font_color", Color("ffe082"))
-	title_row.add_child(title)
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title.add_theme_color_override("font_color", Color("ffe082"))
+	title_row.add_child(_title)
 	var close_button := Button.new()
 	close_button.text = "X"
 	close_button.custom_minimum_size = Vector2(28, 26)
@@ -91,3 +100,18 @@ func _build_interface() -> void:
 	title_row.add_child(close_button)
 	_canvas = WorldMapCanvas.new()
 	content.add_child(_canvas)
+	_leave_button = Button.new()
+	_leave_button.name = "LeaveDungeonButton"
+	_leave_button.text = "Leave Dungeon"
+	_leave_button.custom_minimum_size = Vector2(190, 38)
+	_leave_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_leave_button.focus_mode = Control.FOCUS_NONE
+	_leave_button.visible = false
+	_leave_button.pressed.connect(_leave_active_dungeon)
+	content.add_child(_leave_button)
+
+
+func _leave_active_dungeon() -> void:
+	var manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	if manager:
+		manager.leave_dungeon()

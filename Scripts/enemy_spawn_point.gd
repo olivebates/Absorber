@@ -45,6 +45,7 @@ const SPAWN_RADIUS_TILES := 2
 @export_range(0, 999, 1) var enemy_armor := 0
 @export var aggressive := false
 @export var boss := false
+@export var dungeon_once := false
 @export_category("Spawning")
 @export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse", "Kangaroo Rat", "Mad Coyote", "Squirrel", "Deer", "Porcupine", "Bunny", "Evil Raccoon", "Evil Owl") var enemy_type := 0
 @export var enemy_scene: PackedScene
@@ -72,6 +73,10 @@ func _physics_process(delta: float) -> void:
 		if is_instance_valid(enemy):
 			active_enemies.append(enemy)
 	_spawned_enemies = active_enemies
+	if dungeon_once and emptied_once and _spawned_enemies.is_empty():
+		_respawn_time_left = 0.0
+		_update_respawn_indicator()
+		return
 	if _spawned_enemies.size() < max_enemies and _was_full:
 		_respawn_time_left = respawn_time
 	_was_empty = _spawned_enemies.is_empty()
@@ -87,7 +92,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _spawn_enemy() -> bool:
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world == null:
 		return false
 	var spawn_cell := _get_available_spawn_cell(world)
@@ -142,7 +147,7 @@ func clear_for_load() -> void:
 func load_save_data(data: Array, offline_seconds: int) -> bool:
 	if data.size() < 2:
 		return false
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world == null:
 		return false
 	emptied_once = bool(data[2]) if data.size() > 2 else false
@@ -165,7 +170,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 
 	var interval_milliseconds := maxi(1, roundi(respawn_time * 1000.0))
 	var time_left_milliseconds := maxi(0, int(data[0]))
-	if _spawned_enemies.size() < max_enemies:
+	if _spawned_enemies.size() < max_enemies and not (dungeon_once and emptied_once):
 		time_left_milliseconds -= maxi(0, offline_seconds) * 1000
 		while _spawned_enemies.size() < max_enemies and time_left_milliseconds <= 0:
 			if not _spawn_enemy():
@@ -235,6 +240,15 @@ func _get_enemy_scene() -> PackedScene:
 	if enemy_scene:
 		return enemy_scene
 	return load(ENEMY_SCENES[clampi(enemy_type, 0, ENEMY_SCENES.size() - 1)]) as PackedScene
+
+
+func _get_navigation_world() -> WorldNavigation:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			return cursor as WorldNavigation
+		cursor = cursor.get_parent()
+	return get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 
 
 func _on_spawned_enemy_died(enemy: ChickenEnemy) -> void:

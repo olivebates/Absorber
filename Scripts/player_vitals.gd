@@ -9,6 +9,9 @@ var _damage_grid: DamageGrid
 var _armor_grid: Control
 var _health_label: Label
 var _regen_label: Label
+var _regen_cell: PanelContainer
+var _regen_icon: TextureRect
+var _regen_block_line: ColorRect
 
 
 func _ready() -> void:
@@ -16,6 +19,9 @@ func _ready() -> void:
 	add_theme_constant_override("separation", 4)
 	_health_label = _add_stat_cell("Health", HEART_ICON)
 	_regen_label = _add_stat_cell("Regeneration", REGEN_ICON)
+	_regen_cell = get_node_or_null("RegenerationCell") as PanelContainer
+	_regen_icon = find_child("RegenerationIcon", true, false) as TextureRect
+	_build_regeneration_block_line()
 	call_deferred("_connect_player")
 
 
@@ -44,7 +50,16 @@ func _refresh() -> void:
 func _refresh_regeneration() -> void:
 	if is_instance_valid(_player) and is_instance_valid(_regen_label):
 		_regen_label.text = FoxPlayer.format_health_per_second(_player.get_effective_passive_healing_per_second())
-		_regen_label.add_theme_color_override("font_color", Color("65d76e") if _player.is_near_campfire() else Color.WHITE)
+		var blocked := false
+		var manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+		if manager and manager.is_dungeon_active():
+			var level := manager.get_active_level()
+			blocked = level != null and level.has_current_room_enemies()
+		_regen_label.add_theme_color_override("font_color", Color("777982") if blocked else Color("65d76e") if _player.is_near_campfire() else Color.WHITE)
+		if is_instance_valid(_regen_icon):
+			_regen_icon.modulate = Color("777982") if blocked else Color.WHITE
+		if is_instance_valid(_regen_block_line):
+			_regen_block_line.visible = blocked
 
 
 func get_stat_target_screen_position(stat: StringName) -> Vector2:
@@ -103,3 +118,19 @@ func _make_cell_style() -> StyleBoxFlat:
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(2)
 	return style
+
+
+func _build_regeneration_block_line() -> void:
+	if not is_instance_valid(_regen_cell):
+		return
+	_regen_block_line = ColorRect.new()
+	_regen_block_line.name = "DungeonRegenerationBlocked"
+	_regen_block_line.position = Vector2(7, 13)
+	_regen_block_line.size = Vector2(60, 3)
+	_regen_block_line.pivot_offset = _regen_block_line.size * 0.5
+	_regen_block_line.rotation = -0.22
+	_regen_block_line.color = Color("dc2626")
+	_regen_block_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_regen_block_line.z_index = 5
+	_regen_block_line.hide()
+	_regen_cell.add_child(_regen_block_line)

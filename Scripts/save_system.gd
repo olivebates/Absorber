@@ -43,6 +43,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not _automatic_saves_enabled:
 		return
+	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	if dungeon_manager and dungeon_manager.is_dungeon_active():
+		return
 	_auto_save_time_left -= delta
 	if _auto_save_time_left <= 0.0:
 		_auto_save_time_left = AUTO_SAVE_INTERVAL
@@ -206,6 +209,9 @@ func _write_backup_state(state: Dictionary) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	if dungeon_manager and dungeon_manager.is_dungeon_active():
+		return
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key_event := event as InputEventKey
@@ -297,6 +303,7 @@ func _capture_state(timestamp: int) -> Array:
 		_get_luca().get_save_data() if _get_luca() else [],
 		_get_deru().get_save_data() if _get_deru() else [],
 		_world.version_number,
+		_get_dungeon_manager().get_save_data() if _get_dungeon_manager() else [],
 	]
 
 
@@ -358,6 +365,9 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 	var deru: FoxAsha = _get_deru()
 	if deru:
 		deru.load_save_data(state[13] as Array if state.size() > 13 and state[13] is Array else [])
+	var dungeon_manager := _get_dungeon_manager()
+	if dungeon_manager:
+		dungeon_manager.load_save_data(state[15] as Array if state.size() > 15 and state[15] is Array else [], offline_seconds)
 	var spawn_data := state[4] as Array
 	var saved_spawns_by_name: Dictionary = {}
 	var uses_named_spawns := false
@@ -459,3 +469,7 @@ func _get_deru() -> FoxAsha:
 
 func _get_story_manager() -> StoryManager:
 	return get_tree().get_first_node_in_group("story_manager") as StoryManager
+
+
+func _get_dungeon_manager() -> DungeonManager:
+	return get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager

@@ -13,6 +13,10 @@ const FOREST_TRACKS: Array[AudioStream] = [
 	preload("res://Music/Forrest1.mp3"),
 	preload("res://Music/Forrest2.mp3"),
 ]
+const DUNGEON_TRACKS: Array[AudioStream] = [
+	preload("res://Music/Dungeon1.mp3"),
+	preload("res://Music/Dungeon2.mp3"),
+]
 const BOSS_TRACK: AudioStream = preload("res://Music/Boss.mp3")
 const PURCHASE_SFX: AudioStream = preload("res://Music/sfxPurchase.ogg")
 const UPGRADE_SFX: AudioStream = preload("res://Music/sfxUpgrade.ogg")
@@ -40,12 +44,13 @@ const MUSIC_BUS := &"Music"
 const SFX_BUS := &"SFX"
 const AUDIO_SETTINGS_PATH := "user://audio_settings.json"
 
-enum Biome { NONE, GRASS, FOREST, DESERT, BOSS }
+enum Biome { NONE, GRASS, FOREST, DESERT, DUNGEON, BOSS }
 
 var _world: WorldNavigation
 var _grass_player: AudioStreamPlayer
 var _forest_player: AudioStreamPlayer
 var _desert_player: AudioStreamPlayer
+var _dungeon_player: AudioStreamPlayer
 var _boss_player: AudioStreamPlayer
 var _walking_player: AudioStreamPlayer
 var _area_label: Label
@@ -53,6 +58,7 @@ var _area_title_tween: Tween
 var _grass_track_index := 0
 var _forest_track_index := 0
 var _desert_track_index := 0
+var _dungeon_track_index := 0
 var _desert_tracks: Array[AudioStream] = []
 var _active_biome := Biome.NONE
 var _check_time_left := 0.0
@@ -61,6 +67,7 @@ var _music_enabled := false
 var _grass_heard := false
 var _forest_heard := false
 var _desert_heard := false
+var _dungeon_heard := false
 var _boss_heard := false
 var _boss_zoom_active := false
 var _normal_camera_zoom := Vector2.ONE
@@ -83,6 +90,7 @@ func _ready() -> void:
 	_grass_player = _make_music_player("GrassMusic")
 	_forest_player = _make_music_player("ForestMusic")
 	_desert_player = _make_music_player("DesertMusic")
+	_dungeon_player = _make_music_player("DungeonMusic")
 	_boss_player = _make_music_player("BossMusic")
 	_walking_player = AudioStreamPlayer.new()
 	_walking_player.name = "WalkingSfx"
@@ -93,14 +101,17 @@ func _ready() -> void:
 	_grass_player.finished.connect(_on_grass_finished)
 	_forest_player.finished.connect(_on_forest_finished)
 	_desert_player.finished.connect(_on_desert_finished)
+	_dungeon_player.finished.connect(_on_dungeon_finished)
 	_boss_player.finished.connect(_on_boss_finished)
 	_start_current_track(Biome.GRASS)
 	_start_current_track(Biome.FOREST)
 	_start_current_track(Biome.DESERT)
+	_start_current_track(Biome.DUNGEON)
 	_start_current_track(Biome.BOSS)
 	_grass_player.stream_paused = true
 	_forest_player.stream_paused = true
 	_desert_player.stream_paused = true
+	_dungeon_player.stream_paused = true
 	_boss_player.stream_paused = true
 	_create_area_label()
 
@@ -167,6 +178,11 @@ func play_asha_joins() -> void:
 	_play_sfx(ASHA_JOINS_SFX, false)
 
 
+func show_area_name(area_name: String) -> void:
+	if not area_name.is_empty():
+		_show_area_name(area_name)
+
+
 func set_recruitment_music_ducked(ducked: bool) -> void:
 	if ducked == _recruitment_music_ducked:
 		return
@@ -175,6 +191,7 @@ func set_recruitment_music_ducked(ducked: bool) -> void:
 		Biome.GRASS: _grass_player,
 		Biome.FOREST: _forest_player,
 		Biome.DESERT: _desert_player,
+		Biome.DUNGEON: _dungeon_player,
 		Biome.BOSS: _boss_player,
 	}
 	for biome in players:
@@ -214,6 +231,12 @@ func _update_biome_music() -> void:
 		_set_boss_camera_zoom(false)
 		_set_active_biome(Biome.NONE)
 		return
+	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager")
+	if dungeon_manager and dungeon_manager.has_method("is_dungeon_active") \
+		and bool(dungeon_manager.call("is_dungeon_active")):
+		_set_boss_camera_zoom(false)
+		_set_active_biome(Biome.DUNGEON)
+		return
 	var fighting_boss := _is_player_fighting_boss()
 	_set_boss_camera_zoom(fighting_boss)
 	if fighting_boss:
@@ -251,12 +274,14 @@ func _set_active_biome(biome: Biome) -> void:
 	_fade_music(_grass_player, biome == Biome.GRASS, Biome.GRASS)
 	_fade_music(_forest_player, biome == Biome.FOREST, Biome.FOREST)
 	_fade_music(_desert_player, biome == Biome.DESERT, Biome.DESERT)
+	_fade_music(_dungeon_player, biome == Biome.DUNGEON, Biome.DUNGEON)
 	_fade_music(_boss_player, biome == Biome.BOSS, Biome.BOSS)
 	if biome == Biome.BOSS:
 		_boss_player.play(0.0)
 	elif biome != Biome.NONE:
-		var area_name := GRASS_AREA_NAME if biome == Biome.GRASS else FOREST_AREA_NAME if biome == Biome.FOREST else DESERT_AREA_NAME
-		_show_area_name(area_name)
+		if biome != Biome.DUNGEON:
+			var area_name := GRASS_AREA_NAME if biome == Biome.GRASS else FOREST_AREA_NAME if biome == Biome.FOREST else DESERT_AREA_NAME
+			_show_area_name(area_name)
 
 
 func _fade_music(player: AudioStreamPlayer, fade_in: bool, biome: Biome) -> void:
@@ -291,6 +316,9 @@ func _start_current_track(biome: Biome) -> void:
 	elif biome == Biome.DESERT and not _desert_tracks.is_empty():
 		_desert_player.stream = _desert_tracks[_desert_track_index]
 		_desert_player.play()
+	elif biome == Biome.DUNGEON:
+		_dungeon_player.stream = DUNGEON_TRACKS[_dungeon_track_index]
+		_dungeon_player.play()
 	elif biome == Biome.BOSS:
 		_boss_player.stream = BOSS_TRACK
 		_boss_player.play()
@@ -311,6 +339,11 @@ func _on_desert_finished() -> void:
 	_start_current_track(Biome.DESERT)
 
 
+func _on_dungeon_finished() -> void:
+	_dungeon_track_index = (_dungeon_track_index + 1) % DUNGEON_TRACKS.size()
+	_start_current_track(Biome.DUNGEON)
+
+
 func _on_boss_finished() -> void:
 	if _active_biome == Biome.BOSS:
 		_start_current_track(Biome.BOSS)
@@ -324,6 +357,8 @@ func _has_heard_biome(biome: Biome) -> bool:
 			return _forest_heard
 		Biome.DESERT:
 			return _desert_heard
+		Biome.DUNGEON:
+			return _dungeon_heard
 		Biome.BOSS:
 			return _boss_heard
 	return false
@@ -337,6 +372,8 @@ func _mark_biome_heard(biome: Biome) -> void:
 			_forest_heard = true
 		Biome.DESERT:
 			_desert_heard = true
+		Biome.DUNGEON:
+			_dungeon_heard = true
 		Biome.BOSS:
 			_boss_heard = true
 

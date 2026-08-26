@@ -9,9 +9,9 @@ const COMBAT_ALIGNMENT_TARGET_META := &"combat_alignment_target"
 
 @export var version_number := 1
 
-@onready var floor_layer: TileMapLayer = $FloorTerrain
-@onready var wall_layer: TileMapLayer = $WallTerrain
-@onready var player: FoxPlayer = $Fox
+@onready var floor_layer: TileMapLayer = get_node_or_null("FloorTerrain") as TileMapLayer
+@onready var wall_layer: TileMapLayer = get_node_or_null("WallTerrain") as TileMapLayer
+@onready var player: FoxPlayer = get_node_or_null("Fox") as FoxPlayer
 
 var _pathfinder := AStarGrid2D.new()
 var _walkable_cells: Dictionary = {}
@@ -59,7 +59,6 @@ func _consume_tab_navigation(event: InputEvent) -> void:
 		var focus_owner := get_viewport().gui_get_focus_owner()
 		if focus_owner:
 			focus_owner.release_focus()
-		get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
@@ -72,6 +71,9 @@ func _physics_process(_delta: float) -> void:
 
 func _update_exploration() -> void:
 	if not is_instance_valid(player):
+		return
+	var dungeon_manager := get_node_or_null("DungeonManager") as DungeonManager
+	if dungeon_manager and dungeon_manager.is_dungeon_active():
 		return
 	var player_cell := world_to_cell(player.global_position)
 	for y in range(player_cell.y - EXPLORATION_RADIUS_TILES, player_cell.y + EXPLORATION_RADIUS_TILES + 1):
@@ -153,10 +155,18 @@ func _create_tab_prompt() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	var dungeon_manager := get_node_or_null("DungeonManager") as DungeonManager
+	if dungeon_manager and dungeon_manager.is_dungeon_active():
+		return
 	if interaction_locked:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var clicked_interactable := _get_world_interactable_at(get_global_mouse_position())
+		if clicked_interactable:
+			_hide_ore_build_buttons()
+			clicked_interactable.call("request_interaction", player, self)
+			return
 		var clicked_character := _get_story_character_at_position(get_global_mouse_position())
 		if clicked_character:
 			_hide_ore_build_buttons()
@@ -175,6 +185,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		var target_cell := world_to_cell(get_global_mouse_position())
 		if is_walkable(target_cell) and not is_cell_occupied(target_cell, player):
 			player.follow_path(find_path(player.global_position, cell_to_world(target_cell), player))
+
+
+func _get_world_interactable_at(world_position: Vector2) -> Node2D:
+	var closest: Node2D
+	var closest_distance := 38.0
+	for node in get_tree().get_nodes_in_group("world_interactables"):
+		if not node is Node2D or not is_instance_valid(node) or not belongs_to_world(node):
+			continue
+		var distance := (node as Node2D).global_position.distance_to(world_position)
+		if distance <= closest_distance:
+			closest = node as Node2D
+			closest_distance = distance
+	return closest
 
 
 func _get_shopkeeper_at_position(world_position: Vector2) -> FoxAsha:
@@ -209,7 +232,7 @@ func _get_gold_ore_at_position(world_position: Vector2) -> GoldOre:
 
 func _show_ore_build_button(selected_ore: GoldOre) -> void:
 	for ore in get_tree().get_nodes_in_group("gold_ores"):
-		if ore is GoldOre and is_instance_valid(ore):
+		if ore is GoldOre and is_instance_valid(ore) and belongs_to_world(ore):
 			if ore == selected_ore:
 				ore.show_build_button()
 			else:
@@ -229,7 +252,7 @@ func find_path(from_world: Vector2, to_world: Vector2, moving_actor: Node2D = nu
 		return PackedVector2Array()
 	var occupied := get_occupied_cells(moving_actor)
 	for ore in get_tree().get_nodes_in_group("gold_ores"):
-		if ore is GoldOre and is_instance_valid(ore):
+		if ore is GoldOre and is_instance_valid(ore) and belongs_to_world(ore):
 			var ore_cell := world_to_cell(ore.global_position)
 			if ore_cell != start:
 				occupied[ore_cell] = true
@@ -286,7 +309,7 @@ func get_occupied_cells(except_actor: Node2D = null) -> Dictionary:
 	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
 	for actor in actors:
 		if actor != except_actor and actor is Node2D and is_instance_valid(actor) \
-			and not _actors_can_overlap(except_actor, actor):
+			and belongs_to_world(actor) and not _actors_can_overlap(except_actor, actor):
 			for actor_cell in _get_actor_cells(actor):
 				occupied[actor_cell] = true
 	return occupied
@@ -322,7 +345,7 @@ func _is_actor_cell_occupied(cell: Vector2i, moving_actor: Node2D) -> bool:
 	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
 	for other in actors:
 		if other == moving_actor or not other is Node2D or not is_instance_valid(other) \
-			or _actors_can_overlap(moving_actor, other):
+			or not belongs_to_world(other) or _actors_can_overlap(moving_actor, other):
 			continue
 		if cell in _get_actor_cells(other):
 			return true
@@ -340,14 +363,14 @@ func _actors_can_overlap(first: Node2D, second: Node2D) -> bool:
 
 func is_gold_ore_cell(cell: Vector2i) -> bool:
 	for ore in get_tree().get_nodes_in_group("gold_ores"):
-		if ore is GoldOre and is_instance_valid(ore) and world_to_cell(ore.global_position) == cell:
+		if ore is GoldOre and is_instance_valid(ore) and belongs_to_world(ore) and world_to_cell(ore.global_position) == cell:
 			return true
 	return false
 
 
 func is_building_cell(cell: Vector2i) -> bool:
 	for building in get_tree().get_nodes_in_group("buildings"):
-		if building is Node2D and is_instance_valid(building) and world_to_cell(building.global_position) == cell:
+		if building is Node2D and is_instance_valid(building) and belongs_to_world(building) and world_to_cell(building.global_position) == cell:
 			return true
 	return false
 
@@ -368,14 +391,14 @@ func is_permanently_buildable_cell(cell: Vector2i) -> bool:
 
 func is_npc_cell(cell: Vector2i) -> bool:
 	for npc in get_tree().get_nodes_in_group("npcs"):
-		if npc is Node2D and is_instance_valid(npc) and world_to_cell(npc.global_position) == cell:
+		if npc is Node2D and is_instance_valid(npc) and belongs_to_world(npc) and world_to_cell(npc.global_position) == cell:
 			return true
 	return false
 
 
 func is_gate_cell(cell: Vector2i) -> bool:
 	for gate in get_tree().get_nodes_in_group("gates"):
-		if gate is Node2D and is_instance_valid(gate) and world_to_cell(gate.global_position) == cell:
+		if gate is Node2D and is_instance_valid(gate) and belongs_to_world(gate) and world_to_cell(gate.global_position) == cell:
 			return true
 	return false
 
@@ -416,7 +439,7 @@ func _refresh_actor_cache() -> void:
 	actors.append_array(get_tree().get_nodes_in_group("npcs"))
 	actors.append_array(get_tree().get_nodes_in_group("solid_walls"))
 	for actor in actors:
-		if not actor is Node2D or not is_instance_valid(actor):
+		if not actor is Node2D or not is_instance_valid(actor) or not belongs_to_world(actor):
 			continue
 		var actor_id := actor.get_instance_id()
 		for cell in _get_actor_cells(actor):
@@ -432,6 +455,17 @@ func _refresh_actor_cache() -> void:
 func are_adjacent(first: Node2D, second: Node2D) -> bool:
 	var offset := world_to_cell(first.global_position) - world_to_cell(second.global_position)
 	return absi(offset.x) + absi(offset.y) == 1
+
+
+func belongs_to_world(actor: Node) -> bool:
+	if actor == null:
+		return false
+	var cursor := actor.get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			return cursor == self
+		cursor = cursor.get_parent()
+	return self == get_tree().current_scene
 
 
 func world_to_cell(world_position: Vector2) -> Vector2i:

@@ -12,6 +12,8 @@ const BROWN_FLOOR := Color("795638")
 const OBSTACLE_COLOR := Color("303238")
 const WATER_COLOR := Color("2d7fc4")
 const PATH_COLOR := Color("42a5f5")
+const DUNGEON_WALL_COLOR := Color.BLACK
+const REDRAW_INTERVAL := 0.1
 
 var _world: WorldNavigation
 var _campfires: Array[Campfire] = []
@@ -20,29 +22,51 @@ var _show_enemies := false
 var _show_buildings := true
 var _enemies_toggle: CheckButton
 var _buildings_toggle: CheckButton
+var _floor_cells_cache: Array[Vector2i] = []
+var _wall_cells_cache: Array[Vector2i] = []
+var _terrain_world_id := 0
+var _terrain_revision := -1
+var _terrain_cache_rebuild_count := 0
+var _terrain_caches: Dictionary = {}
+var _map_region_cache := Rect2i()
+var _cell_size_cache := 1.0
+var _map_offset_cache := Vector2.ZERO
+var _map_transform_ready := false
+var _redraw_time_left := 0.0
 
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(900, 540)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	resized.connect(_position_campfire_buttons)
+	resized.connect(_on_resized)
 	_build_layer_toggles()
 
 
 func setup(world: WorldNavigation) -> void:
+	var world_changed := world != _world
 	_world = world
+	_refresh_terrain_cache(world_changed)
+	_update_map_transform()
 	apply_saved_preferences()
 	refresh_markers()
 	queue_redraw()
 
 
 func refresh_markers() -> void:
+	_refresh_terrain_cache()
+	_update_map_transform()
 	_rebuild_campfire_buttons()
 	queue_redraw()
 
 
-func _process(_delta: float) -> void:
-	if visible:
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	_redraw_time_left -= delta
+	if _redraw_time_left <= 0.0:
+		_redraw_time_left = REDRAW_INTERVAL
+		_refresh_terrain_cache()
+		_update_map_transform()
 		queue_redraw()
 
 
@@ -50,39 +74,41 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.025, 0.035, 0.055, 1.0), true)
 	if _world == null:
 		return
-	var cell_size := _get_cell_size()
-	for cell in _world.floor_layer.get_used_cells():
+	_refresh_terrain_cache()
+	_update_map_transform()
+	var cell_size := _cell_size_cache
+	for cell in _floor_cells_cache:
 		if not _world.is_cell_explored(cell):
 			continue
 		var center := _cell_to_map(cell)
 		draw_rect(Rect2(center - Vector2.ONE * cell_size * 0.5, Vector2.ONE * maxf(1.0, cell_size)), _get_floor_color(cell), true)
-	for cell in _world.wall_layer.get_used_cells():
+	for cell in _wall_cells_cache:
 		if _world.is_cell_explored(cell):
 			_draw_wall_cell(cell, cell_size)
 	for group_name in [&"gates"]:
 		for node in get_tree().get_nodes_in_group(group_name):
-			if node is Node2D and is_instance_valid(node):
+			if node is Node2D and is_instance_valid(node) and _world.belongs_to_world(node):
 				var cell := _world.world_to_cell(node.global_position)
 				if _world.is_cell_explored(cell):
 					_draw_obstacle_cell(cell, cell_size)
 	if _show_buildings:
 		for node in get_tree().get_nodes_in_group("buildings"):
-			if node is Node2D and is_instance_valid(node):
+			if node is Node2D and is_instance_valid(node) and _world.belongs_to_world(node):
 				_draw_discovered_node_marker(node)
 		for node in get_tree().get_nodes_in_group("gold_ores"):
-			if node is GoldOre and is_instance_valid(node) and is_instance_valid(node._mine):
+			if node is GoldOre and is_instance_valid(node) and _world.belongs_to_world(node) and is_instance_valid(node._mine):
 				_draw_discovered_node_marker(node._mine)
 	if _show_enemies:
 		for node in get_tree().get_nodes_in_group("enemies"):
-			if node is Node2D and is_instance_valid(node):
+			if node is Node2D and is_instance_valid(node) and _world.belongs_to_world(node):
 				_draw_discovered_node_marker(node)
 	for node in get_tree().get_nodes_in_group("gold_ores"):
-		if node is Node2D and is_instance_valid(node):
+		if node is Node2D and is_instance_valid(node) and _world.belongs_to_world(node):
 			if _show_buildings and node is GoldOre and is_instance_valid(node._mine):
 				continue
 			_draw_discovered_node_marker(node)
 	for shopkeeper in get_tree().get_nodes_in_group("shopkeepers"):
-		if shopkeeper is Node2D and is_instance_valid(shopkeeper):
+		if shopkeeper is Node2D and is_instance_valid(shopkeeper) and _world.belongs_to_world(shopkeeper):
 			_draw_discovered_node_marker(shopkeeper)
 	if is_instance_valid(_world.player):
 		_draw_player_path()
@@ -93,6 +119,8 @@ func _draw() -> void:
 
 
 func _get_floor_color(cell: Vector2i) -> Color:
+	if _world is DungeonLevel:
+		return (_world as DungeonLevel).get_map_floor_color(cell)
 	var atlas := _world.floor_layer.get_cell_atlas_coords(cell)
 	if atlas.x >= 0 and atlas.x < 3:
 		if atlas.y == 0:
@@ -112,6 +140,10 @@ func _draw_obstacle_cell(cell: Vector2i, cell_size: float) -> void:
 
 
 func _draw_wall_cell(cell: Vector2i, cell_size: float) -> void:
+	if _world is DungeonLevel:
+		var dungeon_center := _cell_to_map(cell)
+		draw_rect(Rect2(dungeon_center - Vector2.ONE * cell_size * 0.5, Vector2.ONE * maxf(1.0, cell_size)), DUNGEON_WALL_COLOR, true)
+		return
 	var atlas := _world.wall_layer.get_cell_atlas_coords(cell)
 	var source := _world.wall_layer.get_cell_source_id(cell)
 	var color := WATER_COLOR if source == 3 and atlas.y == 1 and atlas.x >= 3 else OBSTACLE_COLOR
@@ -216,7 +248,7 @@ func _rebuild_campfire_buttons() -> void:
 	if _world == null:
 		return
 	for node in get_tree().get_nodes_in_group("campfires"):
-		if not node is Campfire or not is_instance_valid(node):
+		if not node is Campfire or not is_instance_valid(node) or not _world.belongs_to_world(node):
 			continue
 		var campfire := node as Campfire
 		if not _world.is_campfire_visited(campfire):
@@ -237,6 +269,7 @@ func _rebuild_campfire_buttons() -> void:
 func _position_campfire_buttons() -> void:
 	if _world == null:
 		return
+	_update_map_transform()
 	for index in range(_campfire_buttons.size()):
 		if is_instance_valid(_campfires[index]):
 			_campfire_buttons[index].position = _cell_to_map(_world.world_to_cell(_campfires[index].global_position)) - _campfire_buttons[index].size * 0.5
@@ -262,12 +295,73 @@ func _teleport_to_campfire(campfire: Campfire) -> void:
 func _get_cell_size() -> float:
 	if _world == null:
 		return 1.0
-	var region_size := Vector2(_world._navigation_region.size)
-	return maxf(1.0, minf((size.x - 20.0) / maxf(1.0, region_size.x), (size.y - 20.0) / maxf(1.0, region_size.y)))
+	if not _map_transform_ready:
+		_update_map_transform()
+	return _cell_size_cache
 
 
 func _cell_to_map(cell: Vector2i) -> Vector2:
-	var cell_size := _get_cell_size()
-	var region_size := Vector2(_world._navigation_region.size) * cell_size
-	var offset := (size - region_size) * 0.5
-	return offset + Vector2(cell - _world._navigation_region.position) * cell_size + Vector2.ONE * cell_size * 0.5
+	if not _map_transform_ready:
+		_update_map_transform()
+	return _map_offset_cache + Vector2(cell - _map_region_cache.position) * _cell_size_cache + Vector2.ONE * _cell_size_cache * 0.5
+
+
+func _get_map_region() -> Rect2i:
+	if _world != null and _world.has_method("get_map_region"):
+		return _world.call("get_map_region") as Rect2i
+	return _world._navigation_region if _world != null else Rect2i()
+
+
+func _refresh_terrain_cache(force := false) -> void:
+	if _world == null:
+		_floor_cells_cache.clear()
+		_wall_cells_cache.clear()
+		return
+	var world_id := _world.get_instance_id()
+	var revision := int(_world.call("get_map_revision")) if _world.has_method("get_map_revision") else 0
+	if not force and world_id == _terrain_world_id and revision == _terrain_revision:
+		return
+	if _terrain_caches.has(world_id):
+		var cached := _terrain_caches[world_id] as Dictionary
+		if int(cached.get("revision", -1)) == revision:
+			_floor_cells_cache = cached.get("floor", []) as Array[Vector2i]
+			_wall_cells_cache = cached.get("walls", []) as Array[Vector2i]
+			_terrain_world_id = world_id
+			_terrain_revision = revision
+			_map_transform_ready = false
+			return
+	_terrain_world_id = world_id
+	_terrain_revision = revision
+	_terrain_cache_rebuild_count += 1
+	if _world.has_method("get_map_cells"):
+		_floor_cells_cache = _world.call("get_map_cells") as Array[Vector2i]
+	else:
+		_floor_cells_cache = _world.floor_layer.get_used_cells()
+	if _world.has_method("get_map_wall_cells"):
+		_wall_cells_cache = _world.call("get_map_wall_cells") as Array[Vector2i]
+	else:
+		_wall_cells_cache = _world.wall_layer.get_used_cells()
+	_terrain_caches[world_id] = {
+		"revision": revision,
+		"floor": _floor_cells_cache,
+		"walls": _wall_cells_cache,
+	}
+	_map_transform_ready = false
+
+
+func _update_map_transform() -> void:
+	if _world == null:
+		_map_transform_ready = false
+		return
+	_map_region_cache = _get_map_region()
+	var region_size := Vector2(_map_region_cache.size)
+	_cell_size_cache = maxf(1.0, minf((size.x - 20.0) / maxf(1.0, region_size.x), (size.y - 20.0) / maxf(1.0, region_size.y)))
+	_map_offset_cache = (size - region_size * _cell_size_cache) * 0.5
+	_map_transform_ready = true
+
+
+func _on_resized() -> void:
+	_map_transform_ready = false
+	_update_map_transform()
+	_position_campfire_buttons()
+	queue_redraw()

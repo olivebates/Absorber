@@ -10,6 +10,7 @@ signal production_changed(resource_id: StringName, production_speed: float)
 	preload("res://Resources/jewels.tres"),
 	preload("res://Resources/fish.tres"),
 	preload("res://Resources/wood.tres"),
+	preload("res://Resources/cave_moss.tres"),
 ]
 
 var _definitions: Dictionary = {}
@@ -192,7 +193,9 @@ func load_save_data(data: Array) -> bool:
 	if data.is_empty():
 		return false
 	var discovery_mask := int(data[0])
-	var production_marker_index := resources.size() + 1
+	var production_marker_index := data.find("production_v1")
+	if production_marker_index < 0:
+		production_marker_index = resources.size() + 1
 	var saved_production_speeds: Array = []
 	if data.size() > production_marker_index + 1 and str(data[production_marker_index]) == "production_v1" and data[production_marker_index + 1] is Array:
 		saved_production_speeds = data[production_marker_index + 1] as Array
@@ -200,7 +203,7 @@ func load_save_data(data: Array) -> bool:
 		var definition := resources[index]
 		if definition == null:
 			continue
-		var amount_milliseconds := int(data[index + 1]) if index + 1 < data.size() else 0
+		var amount_milliseconds := int(data[index + 1]) if index + 1 < mini(data.size(), production_marker_index) else 0
 		if index < saved_production_speeds.size():
 			definition.production_speed = maxf(0.0, float(saved_production_speeds[index]) / 1000000000.0)
 		var maximum_amount := get_maximum_amount(definition.resource_id)

@@ -20,6 +20,7 @@ This document is the working index for future Codex changes. **Read it in full a
 - Combat: actors automatically attack enemies on a directly adjacent tile. Enemies stop patrolling when engaged. Enemy rewards are Damage, Health, or Resource and are granted only when their flying orb reaches its destination. Damage is stored in a four-weapon by three-enemy-color matrix, while collectible weapons add their grade-scaled bonus.
 - HUD: the top-left panel is a filtered color-by-weapon damage table. It shows only weapon columns and color rows that contain a summed damage value above one. Compact resources appear bottom-left after discovery, and the minimap is top-right. The inventory is bottom-right with the toolbar directly below it.
 - Terrain is editor-authored. Do not generate, replace, or clear the tilemap layers in code.
+- Dungeons are isolated `DungeonLevel` scenes rendered through `DungeonManager` in a full-screen sub-viewport. The shared player is temporarily reparented into the active dungeon, while the overworld keeps processing without receiving dungeon input. M or Tab opens the active dungeon's independent fog-of-war map and its bottom-center Leave Dungeon button.
 
 ## Resource tree
 
@@ -151,6 +152,14 @@ A `Marker2D` with `EnemySpawnPoint`. It is deliberately small so level designers
 
 A world-space `Label` for hit feedback. It displays a red outlined negative number, starts above the damaged actor, rises 30 pixels, eases into full size, fades, and removes itself. Its high z-index keeps it in front of wall tiles.
 
+### Dungeon scenes and objects
+
+`Scenes/dungeon_entrance.tscn` is the reusable overworld entrance. It exports a stable dungeon id, a separate `DungeonLevel` scene, a display/area name, and difficulty 1-6. Its hover card draws the six-dot difficulty meter, the named/color-coded difficulty, and Cave Moss production status. The exported name appears once when entering its dungeon, while cleared entrances show a rectangular `Cleared` label above the cave.
+
+`Scenes/dungeon_door.tscn`, `dungeon_door_locked.tscn`, `dungeon_chest.tscn`, and `dungeon_stairs.tscn` are reusable room objects. Room doors stop blocking and disappear after their camera room has no living enemies. Locked doors consume the active dungeon's own key or show Mira's key-required dialogue. Chests export item/stat/key/resource rewards, use the closed/open sprites and purchase sound, use Mira's player sprite in the dialogue, and show an upright reward above her inside independently rotating light rays for the dialogue duration. Opened state persists. Stairs use `Stairs.webp`, route Mira to an adjacent tile when clicked, then animate her from the sprite's bottom-right to its top-left over 1.2 seconds along a path shifted 20 pixels upward. The dungeon exit transition begins 0.8 seconds into that walk and holds the dungeon long enough for the traversal to complete before using the same snapshot/stat-transfer flow as the map button.
+
+`Scenes/dungeon_template.tscn` (Mossroot Grotto template) and `Scenes/test_dungeon_two.tscn` (Sunken Burrow) are attachable examples with dungeon room objects and enemies. Dungeons have no predefined room list: navigation begins in the room containing `entry_cell` and expands into adjacent room coordinates only as needed, while every painted `WallTerrain` cell is solid.
+
 ## Scripts and public behavior
 
 ### `Scripts/world.gd` — `WorldNavigation`
@@ -231,6 +240,8 @@ Provides slots 0-9 at `user://s0` through `user://s9`. Shift plus a number saves
 
 Saved progression includes player position, health, recovery timing, hidden defense, stats, damage matrix, inventory/equipment, weapon cooldowns, resources/discovery, built producers and production progress, typed Gold/Gem/Fish/Wood capacity-building positions, FoxAsha purchases and position, FoxLio/FoxNia positions, dialogue progress and one-time event flags, map overlay preferences, gate unlocks, ground pickups, spawn timers, and live enemy position/health. Spawn state is keyed by stable marker name so scene child ordering cannot mix enemies between spawns; legacy positional saves and former story formats still migrate on load. The wall-clock timestamp advances player/enemy recovery, weapon cooldowns, all mine/lodge production, and every elapsed spawn interval. Offline spawn attempts stop at each marker's `max_enemies`.
 
+Dungeon save data is appended compatibly to the existing save array. It stores the one-time centered entry tutorial, one-time first-exit reaction, per-dungeon temporary stats and transferred baseline, separate key counts, explored cells, remaining enemy snapshots, opened chests/locked doors, and cleared state. Auto/manual overworld saves pause while inside a dungeon; leaving restores overworld stats, snaps the camera to Mira, captures the dungeon, transfers newly gained dungeon stat deltas at ten-frame intervals, and writes the auto-save. Cleared dungeon count drives Cave Moss at one per 600 seconds each, including offline catch-up.
+
 ## Art and tile conventions
 
 - All navigation tiles are 64 × 64 pixels; maintain this size when adding art or update `WorldNavigation.TILE_SIZE` and both TileSet region sizes together.
@@ -254,7 +265,9 @@ Saved progression includes player position, health, recovery timing, hidden defe
 ## Current additions: enemies, resources, and UI
 
 - `EnemySpawnPoint` exports rewards, health, damage, one shared red/yellow/blue combat color, flat armor, a typed drop list, an Enemy Type selector, and a `boss` checkbox. Fighting an adjacent living enemy from a marked spawner overrides biome music with `Boss.mp3` and smoothly zooms the camera to 1.12x; leaving combat restores the prior zoom. The placed Bull, Evil Goat, and Mad Coyote encounters are marked as bosses. Its sprite variants are Chicken, Cow, Bull, Mole, Mole 2, Goat, Evil Goat, Crab, Snake, Camel, Crocodile, Mouse, Kangaroo Rat, and Mad Coyote.
-- `ResourceManager` is a scalable resource economy backed by `GameResourceDefinition`. Each definition has an id, name, icon, display color, maximum amount, starting amount, and base production speed. Gold Ore, Jewels, Fish, and Wood are current definitions.
+- `ResourceManager` is a scalable resource economy backed by `GameResourceDefinition`. Each definition has an id, name, icon, display color, maximum amount, starting amount, and base production speed. Gold Ore, Jewels, Fish, Wood, and Cave Moss are current definitions.
+- Cave Moss is the fifth resource (`Resources/cave_moss.tres`, `IconCaveMoss.webp`). Every cleared dungeon contributes `1 / 600` Cave Moss per second and advertises that production on its entrance tooltip.
+- `DungeonManager` owns the centered first-entry warning, entry/exit presentation, entry-only exported area title, one-time first-exit line, isolated dungeon viewport, temporary stat snapshots, ten-frame reward transfers, per-dungeon keys, persistence, and Cave Moss production. While any dungeon is active, `GameAudio` crossfades to the alternating `Dungeon1.mp3` / `Dungeon2.mp3` playlist using the same continuous playlist and volume behavior as overworld biome music, then restores location-appropriate overworld music on exit. The original Camera2D remains frozen at its current overworld screen center while a separate fixed camera serves the dungeon viewport. On exit, the overworld camera is positioned and flushed at the entrance while still covered by the dungeon view, preventing a one-frame camera jump; the dungeon view then closes, the camera reattaches, and Mira emerges from the entrance to her saved adjacent overworld tile with a one-second reverse entry animation. `DungeonLevel` dynamically expands its navigation grid into any adjacent signed room coordinate, with no predefined room data, declared-layout boundary, or code-drawn room walls; only manually painted `WallTerrain` tiles block movement. Fixed whole-room camera transitions work anywhere along their directional threshold: right triggers three tiles from its edge and lands three tiles into the next room, left triggers two and lands four, while vertical transitions trigger one tile from the edge and land two tiles in. Merely standing at a threshold does nothing; an outward movement path or outward click performs the transfer automatically. Its full map and minimap derive their visible cells and bounds only from explicitly visited rooms; saved visited-room data restores those dynamic navigation rooms on re-entry. Authored dungeon walls overlay the visited floor as black on both maps. Map terrain, wall lists, bounds, and transforms are revision-cached, the full map redraw is throttled to 10 Hz, and opening no longer repeats marker rebuilding. It also provides room-local fog, a seed reset to `1` on every new room, room-clear rapid healing, previous-room full-health death respawns, and off-camera enemy freezing. Player regeneration is disabled during dungeon combat; its HUD cell is gray with a red strike while the current room contains enemies.
 - Resource rewards launch an orb to the resource HUD before adding their amount. The bottom-left resource panel begins explicitly hidden and appears as soon as the first resource is acquired; it uses an exact 8px outer margin and displays only `amount/max +speed/m` beside the icon.
 - The GoldOre scene uses `Gold Ore.webp`. Hovering an empty ore or built mine outlines its tile in yellow. Clicking an empty ore reveals a centered Build Mine button without moving the fox. Its hover card is content-fitted with an 8px margin, places `Costs:` and resource rows on the left, shows the full-size building sprite on the right, and stays above the button. Its default build cost is 5 Gold Ore and 2 Jewels. Each MinerStructure registers 1 Gold Ore per 60 seconds and displays a green floating `+1` when it produces on screen.
 - Clicking a built mine shows capacity-building buttons on valid cardinally adjacent floor tiles without walls, ores, actors, gates, or buildings. Every capacity building starts at 10 of the resource it stores. Producer and capacity-building prices increase by 25%, rounded up after each prior building of the same resource type. Capacity bonuses stack and their tiles become navigation/placement blockers.
@@ -272,6 +285,8 @@ $env:LOCALAPPDATA = (Resolve-Path .\.godot).Path
 ```
 
 The world test verifies map routing and fox flipping, occupied-tile avoidance, cow/bull spawn selection, delayed Gold Ore and Jewel rewards, selectable damage reward color, compact resource HUD text, the Gold mine cost, mine production feedback, HUD progression, auto merging, and respawn. `save_system_smoke_test.gd` verifies compressed strings, physical number-key bindings, state restoration, and ten minutes of offline health, spawn, and mine progression. `building_smoke_test.gd` verifies visible damage dots, tooltip layout, hover outlines, valid shack placement, stacked capacity, save restoration, and Shift+P.
+
+`dungeon_system_smoke_test.gd` verifies both attached test scenes, the centered first-entry popup, authored-wall path rejection and safe entry placement, unrestricted dynamic room expansion at arbitrary coordinates, wall-free generated room edges, movement-gated directional thresholds and landing offsets, fixed one-length camera movement, off-camera enemy freezing, dungeon fog, temporary stat reset/restoration, static chest reward icons, separate keys, chests, locked doors, clear snapshots, first-exit behavior, safe snapshot re-entry, save inclusion, and one-Cave-Moss-per-ten-minute production. `dungeon_music_smoke_test.gd` verifies dungeon entry selects the dungeon playlist and exit restores location-appropriate overworld music. `dungeon_map_smoke_test.gd` verifies the absence of a predefined-room export and that only dynamically visited rooms control cached map cells, black walls, bounds, and restored navigation. `dungeon_stairs_camera_smoke_test.gd` verifies the separate frozen overworld camera, one-second diagonal stairs traversal, and reverse entrance emergence ending at the saved overworld position.
 
 When editing the project:
 
@@ -305,6 +320,28 @@ When editing the project:
 - Enemy reward icons are 16px. Resource reward icons above enemy health bars retain their original texture colors, while their numbers are always gold. All enemy reward text is 22px.
 
 ## Recent prompt log
+
+- 2026-08-26 - Extended the dungeon-stairs upward walk to 1.2 seconds and made its exit transition begin after 0.8 seconds while allowing the traversal to finish behind it.
+
+- 2026-08-26 - Added an alternating `Dungeon1.mp3` / `Dungeon2.mp3` background playlist that crossfades on dungeon entry and restores overworld music on exit.
+
+- 2026-08-26 - Raised the one-second stairs traversal by 20 pixels and pre-positioned/flushed the overworld camera beneath the dungeon transition to eliminate its one-frame exit jump.
+
+- 2026-08-26 - Removed predefined dungeon-room data and legacy layout-room state, added a one-second diagonal stairs traversal, and returned Mira beside the same overworld entrance with a one-second reverse emergence after the screen transition.
+
+- 2026-08-26 - Added reusable dungeon exit stairs, preserved the overworld camera with a separate dungeon camera, made visited rooms the sole map/minimap visibility source, drew dungeon walls black, and removed map-opening spikes with revision caches and throttled redraws.
+
+- 2026-08-26 - Made dungeon maps and minimaps display and scale only to visited rooms, including dynamically explored rooms beyond the predefined layout and their restoration from snapshots.
+
+- 2026-08-26 - Moved every dungeon room-transition trigger one tile closer to its camera boundary while preserving the existing arrival depths and manual wall blocking.
+
+- 2026-08-26 - Removed coded dungeon border walls and declared-room movement gates; navigation now expands indefinitely in every direction, with only manually painted wall tiles blocking movement.
+- 2026-08-26 - Added left, upper, and lower room markers to Test Dungeon 1 so its starting room supports all four transition directions without modifying its existing exported room layout.
+- 2026-08-26 - Made authored dungeon wall tiles solid for navigation, safely relocates a wall-authored entry point without changing its export, and requires outward movement intent at each camera margin before automatically transferring rooms.
+- 2026-08-26 - Added the centered dungeon tutorial popup, corrected chest portrait/static reward presentation, implemented directional room thresholds and landing depths, made entrance names entry-only area titles, snapped the exit camera, added Mira's saved first-exit reaction, and fixed freed-node snapshot scans during dungeon re-entry.
+- 2026-08-26 - Changed dungeon room transitions to trigger on connecting edge tiles and move Mira onto the next tile inside the adjacent room, with doorway re-arming that prevents immediate bounce-back.
+- 2026-08-26 - Fixed standalone Dungeon Entrance placement failing to parse by removing its circular compile-time dependency on `DungeonManager`; added regression coverage for loading and instantiating the entrance without a manager.
+- 2026-08-26 - Added the reusable isolated dungeon system with animated entrances, fixed room cameras, off-camera enemy freezing, independent maps/fog, temporary/persistent dungeon stats, map exits, per-dungeon snapshots and keys, clear/locked doors, reward chests, clear labels, Cave Moss production, difficulty tooltips, death/room healing rules, and two attached test dungeon scenes.
 
 - 2026-08-26 - Removed long floor-color seams by retaining flat Perlin variation in tile interiors while feathering the tint into the continuous world-space fields across each eight-pixel tile edge.
 - 2026-08-25 - Added a return-finished centering phase so entering the enemy's home radius mid-step cannot leave it halfway between tiles before patrol resumes.

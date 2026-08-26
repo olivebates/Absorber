@@ -63,6 +63,7 @@ var _combat_alignment_enemy: ChickenEnemy
 var _combat_entry_aligned := false
 var _healing_particles: HealingParticles
 var _is_dying := false
+var _scripted_movement := false
 var _death_overlay: ColorRect
 var _auto_fight_range_fill: Polygon2D
 var _auto_fight_range_border: Line2D
@@ -102,6 +103,19 @@ func stop() -> void:
 	_path_index = 0
 	velocity = Vector2.ZERO
 	_snap_to_tile_center()
+
+
+func begin_scripted_movement() -> void:
+	_path.clear()
+	_path_index = 0
+	velocity = Vector2.ZERO
+	clear_attack_target()
+	_scripted_movement = true
+
+
+func end_scripted_movement() -> void:
+	_scripted_movement = false
+	velocity = Vector2.ZERO
 
 
 func follow_enemy(enemy: ChickenEnemy) -> void:
@@ -742,7 +756,10 @@ func _physics_process(delta: float) -> void:
 	if _is_dying:
 		velocity = Vector2.ZERO
 		return
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	if _scripted_movement:
+		velocity = Vector2.ZERO
+		return
+	var world := _get_navigation_world()
 	if world and world.gameplay_paused:
 		velocity = Vector2.ZERO
 		_update_walk_animation(0.0)
@@ -752,10 +769,19 @@ func _physics_process(delta: float) -> void:
 			_weapon_cooldowns[index] = maxf(0.0, _weapon_cooldowns[index] - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
-	_heal_time_left -= delta * _get_healing_speed_multiplier()
-	while _heal_time_left <= 0.0:
-		heal(1)
-		_heal_time_left += _get_passive_heal_interval()
+	if world is DungeonLevel:
+		if (world as DungeonLevel).is_current_room_clear() and health < max_health:
+			_heal_time_left -= delta
+			while _heal_time_left <= 0.0 and health < max_health:
+				heal(maxi(1, ceili(float(max_health) * 0.2)))
+				_heal_time_left += 0.10
+		else:
+			_heal_time_left = 0.10
+	else:
+		_heal_time_left -= delta * _get_healing_speed_multiplier()
+		while _heal_time_left <= 0.0:
+			heal(1)
+			_heal_time_left += _get_passive_heal_interval()
 	_update_campfire_healing_visual()
 	_update_enemy_chase()
 	_move_along_path(delta)
@@ -775,7 +801,7 @@ func _move_along_path(delta: float) -> void:
 	_advance_past_reached_points()
 	if not is_moving():
 		velocity = Vector2.ZERO
-		var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+		var world := _get_navigation_world()
 		if world == null or _get_adjacent_enemy(world) == null:
 			_snap_to_tile_center()
 		return
@@ -790,7 +816,7 @@ func _move_along_path(delta: float) -> void:
 		fox_sprite.flip_h = true
 	elif velocity.x < -0.1:
 		fox_sprite.flip_h = false
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world and not world.can_enter_position(self, global_position + velocity * delta):
 		velocity = Vector2.ZERO
 		var detour := world.find_path(global_position, _destination, self)
@@ -804,7 +830,7 @@ func _move_along_path(delta: float) -> void:
 func _attack_nearby_enemy() -> void:
 	if _dialogue_is_open():
 		return
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world == null:
 		return
 	var target := _get_adjacent_enemy(world)
@@ -827,7 +853,7 @@ func _attack_nearby_enemy() -> void:
 		var closest_distance := INF
 		var player_cell := world.world_to_cell(global_position)
 		for enemy in get_tree().get_nodes_in_group("enemies"):
-			if not enemy is ChickenEnemy or not is_instance_valid(enemy) or enemy.health <= 0 or not enemy.can_be_auto_fought():
+			if not enemy is ChickenEnemy or not is_instance_valid(enemy) or not world.belongs_to_world(enemy) or enemy.health <= 0 or not enemy.can_be_auto_fought():
 				continue
 			var offset := world.world_to_cell(enemy.global_position) - player_cell
 			var distance := Vector2(offset).length_squared()
@@ -848,7 +874,7 @@ func _attack_nearby_enemy() -> void:
 
 func _get_adjacent_enemy(world: WorldNavigation) -> ChickenEnemy:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy is ChickenEnemy and is_instance_valid(enemy) and enemy.health > 0 and world.are_adjacent(self, enemy):
+		if enemy is ChickenEnemy and is_instance_valid(enemy) and world.belongs_to_world(enemy) and enemy.health > 0 and world.are_adjacent(self, enemy):
 			return enemy as ChickenEnemy
 	return null
 
@@ -860,17 +886,18 @@ func _stop_for_combat() -> void:
 
 
 func _collect_pickups_on_current_tile() -> void:
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world == null:
 		return
 	var player_cell := world.world_to_cell(global_position)
 	for pickup in get_tree().get_nodes_in_group("item_pickups"):
-		if pickup is ItemPickup and is_instance_valid(pickup) and world.world_to_cell(pickup.global_position) == player_cell:
+		if pickup is ItemPickup and is_instance_valid(pickup) and world.belongs_to_world(pickup) \
+			and world.world_to_cell(pickup.global_position) == player_cell:
 			pickup.begin_collect(self)
 
 
 func _update_combat_ring() -> void:
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	_combat_ring.visible = false
 	if world == null:
 		return
@@ -878,7 +905,7 @@ func _update_combat_ring() -> void:
 
 
 func _face_combat_enemy() -> void:
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world == null:
 		return
 	var enemy := _get_adjacent_enemy(world)
@@ -930,6 +957,8 @@ static func _format_decimal(value: float) -> String:
 
 
 func is_near_campfire() -> bool:
+	if _get_navigation_world() is DungeonLevel:
+		return false
 	for campfire in get_tree().get_nodes_in_group("campfires"):
 		if campfire is Campfire and is_instance_valid(campfire) and campfire.is_player_in_range(self):
 			return true
@@ -986,7 +1015,7 @@ func _update_enemy_chase() -> void:
 	if not is_instance_valid(_attack_target) or _attack_target.health <= 0:
 		_attack_target = null
 		return
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world == null:
 		return
 	if world.are_adjacent(self, _attack_target):
@@ -1029,7 +1058,7 @@ func _advance_past_reached_points() -> void:
 
 
 func _snap_to_tile_center() -> void:
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	if world and world.is_walkable(world.world_to_cell(global_position)):
 		global_position = world.cell_to_world(world.world_to_cell(global_position))
 
@@ -1040,7 +1069,7 @@ func _begin_death_sequence() -> void:
 	_is_dying = true
 	stop()
 	clear_attack_target()
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := _get_navigation_world()
 	var interaction_was_locked := world.interaction_locked if world else false
 	if world:
 		world.interaction_locked = true
@@ -1059,12 +1088,12 @@ func _begin_death_sequence() -> void:
 	await death_tween.finished
 	_show_death_overlay()
 	await get_tree().create_timer(0.5).timeout
-	global_position = _spawn_position
+	global_position = world.get_death_respawn_position() if world is DungeonLevel else _spawn_position
 	if world:
 		var asha := world.get_node_or_null("FoxAsha") as FoxAsha
 		if asha and asha.is_recruited():
 			asha.place_left_of_player_after_respawn()
-	health = 1
+	health = max_health if world is DungeonLevel else 1
 	health_bar.value = health
 	_update_health_label()
 	_heal_time_left = 3.0
@@ -1076,6 +1105,15 @@ func _begin_death_sequence() -> void:
 	if world:
 		world.interaction_locked = interaction_was_locked
 	vitals_changed.emit()
+
+
+func _get_navigation_world() -> WorldNavigation:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			return cursor as WorldNavigation
+		cursor = cursor.get_parent()
+	return get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
 
 
 func _show_death_overlay() -> void:

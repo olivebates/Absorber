@@ -12,6 +12,7 @@ const YELLOW_FLOOR := Color("a69a3f")
 const BROWN_FLOOR := Color("795638")
 const OBSTACLE_COLOR := Color("303238")
 const WATER_COLOR := Color("2d7fc4")
+const DUNGEON_WALL_COLOR := Color.BLACK
 const FLOOR_COLORS := [
 	Color("527f46"), Color("3e716b"), Color("516d91"), Color("795f91"),
 	Color("94754d"), Color("6f7945"), Color("7d5252"), Color("4c7280"),
@@ -37,6 +38,10 @@ func _connect_world() -> void:
 
 
 func _process(delta: float) -> void:
+	var manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	var desired_world := manager.get_active_level() if manager and manager.is_dungeon_active() else get_tree().current_scene as WorldNavigation
+	if desired_world and desired_world != _world:
+		_world = desired_world
 	_redraw_time_left -= delta
 	if _redraw_time_left <= 0.0:
 		_redraw_time_left = REDRAW_INTERVAL
@@ -59,12 +64,12 @@ func _draw() -> void:
 	_draw_player_path(map_rect)
 	draw_rect(map_rect, Color(0.0, 0.0, 0.0, 1.0), false, 1.0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy is ChickenEnemy and is_instance_valid(enemy) and _is_visible_marker(enemy, player_cell):
+		if enemy is ChickenEnemy and is_instance_valid(enemy) and _world.belongs_to_world(enemy) and _is_visible_marker(enemy, player_cell):
 			var dot_position := _world_to_minimap(enemy.global_position, map_rect)
 			draw_circle(dot_position, 4.0, Color.BLACK)
 			draw_circle(dot_position, 2.5, ENEMY_COLORS[clampi(enemy.enemy_color, 0, ENEMY_COLORS.size() - 1)])
 	for npc in get_tree().get_nodes_in_group("npcs"):
-		if npc is Node2D and is_instance_valid(npc) and _is_visible_marker(npc, player_cell):
+		if npc is Node2D and is_instance_valid(npc) and _world.belongs_to_world(npc) and _is_visible_marker(npc, player_cell):
 			var npc_position := _world_to_minimap(npc.global_position, map_rect)
 			draw_circle(npc_position, 4.0, Color.BLACK)
 			draw_circle(npc_position, 2.5, NPC_COLOR)
@@ -78,18 +83,22 @@ func _draw_terrain(map_rect: Rect2, player_cell: Vector2i, tile_scale: Vector2) 
 	for y in range(player_cell.y - radius, player_cell.y + radius + 1):
 		for x in range(player_cell.x - radius, player_cell.x + radius + 1):
 			var cell := Vector2i(x, y)
-			if not _world._navigation_region.has_point(cell) or not _world.is_cell_explored(cell):
+			if not _world.is_cell_explored(cell):
+				continue
+			if not _world is DungeonLevel and not _world._navigation_region.has_point(cell):
 				continue
 			var center := map_rect.get_center() + Vector2(cell - player_cell) * tile_scale
 			var drawn_size := Vector2(maxf(1.0, tile_scale.x), maxf(1.0, tile_scale.y))
 			var cell_rect := Rect2(center - tile_scale * 0.5, drawn_size)
-			if _world.floor_layer.get_cell_source_id(cell) != -1:
+			if _world is DungeonLevel or _world.floor_layer.get_cell_source_id(cell) != -1:
 				draw_rect(cell_rect, _get_floor_color(cell), true)
 			if _world.wall_layer.get_cell_source_id(cell) != -1:
-				draw_rect(cell_rect, _get_wall_color(cell), true)
+				draw_rect(cell_rect, DUNGEON_WALL_COLOR if _world is DungeonLevel else _get_wall_color(cell), true)
 
 
 func _get_floor_color(cell: Vector2i) -> Color:
+	if _world is DungeonLevel:
+		return (_world as DungeonLevel).get_map_floor_color(cell)
 	var atlas := _world.floor_layer.get_cell_atlas_coords(cell)
 	if atlas.x >= 0 and atlas.x < 3:
 		if atlas.y == 0:

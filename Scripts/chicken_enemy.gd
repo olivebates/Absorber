@@ -97,8 +97,7 @@ func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_ta
 
 func _ready() -> void:
 	add_to_group("enemies")
-	_world = get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
-	_player = get_tree().get_first_node_in_group("player") as FoxPlayer
+	_resolve_gameplay_context()
 	_pause_time_left = randf_range(0.0, 1.5)
 	health = max_health
 	health_bar.max_value = max_health
@@ -218,9 +217,16 @@ func _drop_items() -> void:
 
 func _physics_process(delta: float) -> void:
 	if _world == null:
-		_world = get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+		_resolve_gameplay_context()
 	if _player == null:
-		_player = get_tree().get_first_node_in_group("player") as FoxPlayer
+		_resolve_gameplay_context()
+	if is_instance_valid(_world) and is_instance_valid(_player) and not _world.belongs_to_world(_player):
+		_player = null
+	if _world is DungeonLevel and not (_world as DungeonLevel).is_actor_in_active_room(self):
+		velocity = Vector2.ZERO
+		_update_walk_animation(0.0)
+		_update_combat_ring(false)
+		return
 	if is_instance_valid(_world) and _world.gameplay_paused:
 		velocity = Vector2.ZERO
 		_update_walk_animation(0.0)
@@ -729,7 +735,7 @@ func _add_slash_line(parent: Node2D, from: Vector2, to: Vector2, color: Color, w
 
 
 func _grant_kill_reward() -> void:
-	var fox := get_tree().get_first_node_in_group("player") as FoxPlayer
+	var fox := _player
 	if fox == null:
 		return
 	match reward_type:
@@ -764,8 +770,21 @@ func _grant_kill_reward() -> void:
 
 
 func _get_hud_control(node_name: String) -> Control:
-	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var world := get_tree().current_scene as WorldNavigation
 	return world.get_node_or_null("HUD/" + node_name) as Control if world else null
+
+
+func _resolve_gameplay_context() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			_world = cursor as WorldNavigation
+			break
+		cursor = cursor.get_parent()
+	if _world and is_instance_valid(_world.player):
+		_player = _world.player
+	else:
+		_player = get_tree().get_first_node_in_group("player") as FoxPlayer
 
 
 func _launch_reward_orb(target_screen_position: Vector2, color: Color, on_arrive: Callable) -> void:
