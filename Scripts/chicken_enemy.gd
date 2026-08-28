@@ -8,11 +8,30 @@ const REWARD_HEALTH := 1
 const REWARD_RESOURCE := 2
 const REWARD_REGENERATE := 3
 const REWARD_DEFENSE := 4
+const REWARD_MANA := 5
+const REWARD_MANA_REGENERATE := 6
 const HEALTH_REGEN_DELAY := 3.0
 const HEALTH_REGEN_INTERVAL := 1.0
 const REWARD_ICON_SIZE := 16.0
 const AGGRO_RADIUS_TILES := 3.0
 const DISENGAGE_FOLLOW_TILES := 3
+const SKILL_NONE := 0
+const SKILL_CRUSHING_BLOW := 1
+const SKILL_CASCADING_SWEEP := 2
+const SKILL_CASCADING_SURROUND := 3
+const SKILL_FAN_STRIKE_QUICK := 4
+const SKILL_FAN_STRIKE_CHARGED := 5
+const SKILL_DRIVING_STRIKE_QUICK := 6
+const SKILL_DRIVING_STRIKE_CHARGED := 7
+const SKILL_DEFAULT_COOLDOWNS := [0.0, 6.0, 8.0, 10.0, 6.0, 9.0, 6.0, 9.0]
+const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
+const ENEMY_SKILL_MOVE_TUTORIAL_DELAY := 0.4
+const SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_DELAY := 0.2
+const CASCADING_SWEEP_TUTORIAL_DELAY := 0.4
+const ENEMY_SKILL_MOVE_TUTORIAL_TEXT := "He's about to unleash a powerful attack, I should step out of the way."
+const SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_TEXT := "Oh no, I'm snared, I can't move!"
+const CASCADING_SWEEP_TUTORIAL_TEXT := "I'm snared, I can't move! I have to use my skill by pressing Q to get out of it."
 
 enum MovementMode {
 	PATROL,
@@ -40,6 +59,7 @@ var damage_reward_color := FoxPlayer.COLOR_RED
 var defense_reward_color := FoxPlayer.COLOR_RED
 var reward_resource_id: StringName = &"gold_ore"
 var drop_table: Array[Dictionary] = []
+var rewards_enabled := true
 var health: int
 var home_cell := Vector2i.ZERO
 var _path := PackedVector2Array()
@@ -67,6 +87,28 @@ var _pursuit_is_limited := false
 var _pursuit_tiles_left := 0
 var _pursuit_distance_left := 0.0
 var _chased_player_cell := Vector2i(-999999, -999999)
+var enemy_skills: Array[Dictionary] = []
+var _skill_cooldowns: Array[float] = []
+var _combat_skills_initialized := false
+var _active_skill_slot := -1
+var _active_skill_elapsed := 0.0
+var _active_skill_windup := 0.0
+var _active_skill_damage := 0
+var _active_skill_damage_type := FoxPlayer.COLOR_RED
+var _active_skill_direction := Vector2i.RIGHT
+var _active_skill_targets: Array[Dictionary] = []
+var _active_skill_id := SKILL_NONE
+var _active_skill_released := false
+var _active_skill_impact_count := 0
+var _skill_visual_tween: Tween
+var _skill_camera_tween: Tween
+var _skill_camera: Camera2D
+var _skill_camera_origin := Vector2.ZERO
+var _skill_name_label: Label
+var _last_skill_resolution_feedback: Array[String] = []
+var _skill_tutorial_paused := false
+var _skip_cascade_tutorial_for_current_cast := false
+var _flip_sprite_orientation := false
 
 @onready var chicken_sprite: Sprite2D = $ChickenSprite
 @onready var health_bar: ProgressBar = $HealthBar
@@ -79,7 +121,7 @@ var _chased_player_cell := Vector2i(-999999, -999999)
 @onready var reward_dot_outline: Polygon2D = $RewardDotOutline
 
 
-func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1, new_damage_color := FoxPlayer.COLOR_RED, new_armor := 0, new_defense_reward_color := FoxPlayer.COLOR_RED, new_aggressive: Variant = null) -> void:
+func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1, new_damage_color := FoxPlayer.COLOR_RED, new_armor := 0, new_defense_reward_color := FoxPlayer.COLOR_RED, new_aggressive: Variant = null, new_enemy_skills: Array[Dictionary] = [], flip_sprite_orientation := false) -> void:
 	home_cell = spawn_cell
 	damage_reward = reward
 	reward_type = type
@@ -93,6 +135,10 @@ func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_ta
 	enemy_color = clampi(new_damage_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
 	if new_aggressive != null:
 		aggressive = bool(new_aggressive)
+	enemy_skills = new_enemy_skills.slice(0, 3).duplicate(true)
+	_flip_sprite_orientation = flip_sprite_orientation
+	_skill_cooldowns.resize(enemy_skills.size())
+	_skill_cooldowns.fill(0.0)
 
 
 func _ready() -> void:
@@ -110,6 +156,7 @@ func _ready() -> void:
 	_update_reward_visual()
 	_combat_ring = _create_combat_ring()
 	add_child(_combat_ring)
+	_set_facing_left(false)
 
 
 func take_damage(amount: int, automatic := false) -> void:
@@ -127,8 +174,9 @@ func take_damage(amount: int, automatic := false) -> void:
 	_show_damage_popup(amount, enemy_color, blocked_damage)
 	if health == 0:
 		died.emit(self)
-		_grant_kill_reward()
-		_drop_items()
+		if rewards_enabled:
+			_grant_kill_reward()
+			_drop_items()
 		queue_free()
 
 
@@ -145,7 +193,8 @@ func take_hunter_damage(hunter: FoxLio) -> void:
 	_update_health_label()
 	_play_hit_animation()
 	if health == 0:
-		hunter.collect_enemy_reward(self)
+		if rewards_enabled:
+			hunter.collect_enemy_reward(self)
 		died.emit(self)
 		queue_free()
 
@@ -166,6 +215,7 @@ func get_save_data() -> Array:
 		roundi(global_position.x), roundi(global_position.y), home_cell.x, home_cell.y, health,
 		maxi(0, roundi(_health_regen_delay_left * 1000.0)), maxi(0, roundi(_health_regen_tick_left * 1000.0)),
 		maxi(0, roundi(_attack_time_left * 1000.0)), maxi(0, roundi(_pause_time_left * 1000.0)),
+		rewards_enabled,
 	]
 
 
@@ -191,7 +241,9 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	_health_regen_tick_left = float(regeneration_tick) / 1000.0
 	_attack_time_left = maxf(0.0, float(int(data[7]) - offline_milliseconds) / 1000.0)
 	_pause_time_left = maxf(0.0, float(int(data[8]) - offline_milliseconds) / 1000.0)
+	rewards_enabled = bool(data[9]) if data.size() > 9 else true
 	_update_health_bar()
+	_update_reward_visual()
 	return true
 
 
@@ -223,6 +275,7 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(_world) and is_instance_valid(_player) and not _world.belongs_to_world(_player):
 		_player = null
 	if _world is DungeonLevel and not (_world as DungeonLevel).is_actor_in_active_room(self):
+		_reset_enemy_skills()
 		velocity = Vector2.ZERO
 		_update_walk_animation(0.0)
 		_update_combat_ring(false)
@@ -237,6 +290,8 @@ func _physics_process(delta: float) -> void:
 		_update_walk_animation(0.0)
 		_update_combat_ring(false)
 		return
+	if _skill_tutorial_paused:
+		_resume_skill_telegraph_tweens()
 	_attack_time_left = maxf(0.0, _attack_time_left - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
@@ -245,7 +300,15 @@ func _physics_process(delta: float) -> void:
 	var in_combat := player_in_combat or hunter_in_combat
 	var combatants_aligned := true
 	_update_behavior_state(player_in_combat)
-	if in_combat:
+	var player_combat_sequence_active := player_in_combat or _movement_mode == MovementMode.CHASE
+	_update_enemy_skill_cooldowns(delta, player_combat_sequence_active)
+	if _active_skill_slot >= 0:
+		velocity = Vector2.ZERO
+		_path.clear()
+		_path_index = 0
+		_update_active_enemy_skill(delta)
+		combatants_aligned = false
+	elif in_combat:
 		velocity = Vector2.ZERO
 		_path.clear()
 		_path_index = 0
@@ -276,7 +339,7 @@ func _physics_process(delta: float) -> void:
 	if combatants_aligned:
 		if hunter_in_combat:
 			_attack_hunter()
-		else:
+		elif not _try_begin_enemy_skill(player_in_combat):
 			_attack_player(player_in_combat)
 	_update_walk_animation(delta)
 	_update_combat_ring(in_combat)
@@ -290,8 +353,545 @@ func _clear_combat_entry_alignment() -> void:
 	_combat_entry_aligned = false
 
 
+func _update_enemy_skill_cooldowns(delta: float, combat_sequence_active: bool) -> void:
+	if enemy_skills.is_empty():
+		return
+	if not combat_sequence_active:
+		if _active_skill_slot >= 0:
+			return
+		_reset_enemy_skills()
+		return
+	if not _combat_skills_initialized:
+		_skill_cooldowns.resize(enemy_skills.size())
+		for index in range(enemy_skills.size()):
+			var skill := enemy_skills[index]
+			_skill_cooldowns[index] = maxf(0.0, float(skill.get("initial_offset", 0.0)))
+		_combat_skills_initialized = true
+		return
+	if _active_skill_slot >= 0:
+		return
+	for index in range(_skill_cooldowns.size()):
+		_skill_cooldowns[index] = maxf(0.0, _skill_cooldowns[index] - delta)
+
+
+func _try_begin_enemy_skill(player_in_combat: bool) -> bool:
+	if not player_in_combat or _active_skill_slot >= 0 or not _combat_skills_initialized:
+		return false
+	for index in range(enemy_skills.size()):
+		if index < _skill_cooldowns.size() and _skill_cooldowns[index] <= 0.0:
+			_begin_enemy_skill(index)
+			return true
+	return false
+
+
+func _begin_enemy_skill(slot_index: int) -> void:
+	if slot_index < 0 or slot_index >= enemy_skills.size() or not is_instance_valid(_player) or not is_instance_valid(_world):
+		return
+	var skill := enemy_skills[slot_index]
+	var skill_id := int(skill.get("skill_id", SKILL_NONE))
+	if skill_id == SKILL_NONE:
+		return
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	if _attack_tween and _attack_tween.is_valid():
+		_attack_tween.kill()
+	chicken_sprite.position = Vector2.ZERO
+	chicken_sprite.scale = Vector2.ONE
+	chicken_sprite.rotation = 0.0
+	var enemy_cell := _world.world_to_cell(global_position)
+	var player_cell := _world.world_to_cell(_player.global_position)
+	_active_skill_direction = _cardinal_direction(player_cell - enemy_cell)
+	_active_skill_slot = slot_index
+	_active_skill_elapsed = 0.0
+	_active_skill_windup = _get_enemy_skill_windup(skill_id)
+	_active_skill_damage = int(skill.get("damage", 0))
+	if _active_skill_damage <= 0:
+		_active_skill_damage = attack_damage * 5
+	_active_skill_damage_type = clampi(int(skill.get("damage_type", enemy_color)), FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
+	_active_skill_id = skill_id
+	_active_skill_released = false
+	_active_skill_impact_count = 0
+	_skip_cascade_tutorial_for_current_cast = false
+	_last_skill_resolution_feedback.clear()
+	_active_skill_targets.clear()
+	_show_enemy_skill_name(skill_id)
+	chicken_sprite.modulate = Color.WHITE.lerp(DAMAGE_COLORS[_active_skill_damage_type], 0.25)
+	_play_enemy_charge_sfx()
+	var front := enemy_cell + _active_skill_direction
+	_add_enemy_skill_target(front, 0.0)
+	if skill_id == SKILL_CASCADING_SWEEP or skill_id == SKILL_CASCADING_SURROUND:
+		_player.set_snared_by(self, true)
+		var side := Vector2i(-_active_skill_direction.y, _active_skill_direction.x)
+		_add_enemy_skill_target(front + _active_skill_direction, 0.08)
+		_add_enemy_skill_target(front + side, 0.16)
+		_add_enemy_skill_target(front - side, 0.24)
+		if skill_id == SKILL_CASCADING_SURROUND:
+			_add_enemy_skill_target(enemy_cell + side, 0.4)
+			_add_enemy_skill_target(enemy_cell - side, 0.4)
+	elif skill_id == SKILL_FAN_STRIKE_QUICK or skill_id == SKILL_FAN_STRIKE_CHARGED:
+		var side := Vector2i(-_active_skill_direction.y, _active_skill_direction.x)
+		_add_enemy_skill_target(front + side, 0.2)
+		_add_enemy_skill_target(front - side, 0.2)
+	elif skill_id == SKILL_DRIVING_STRIKE_QUICK or skill_id == SKILL_DRIVING_STRIKE_CHARGED:
+		_add_enemy_skill_target(front + _active_skill_direction, 0.2)
+	velocity = Vector2.ZERO
+	_path.clear()
+	_path_index = 0
+	_attack_time_left = maxf(_attack_time_left, _active_skill_windup)
+
+
+func _add_enemy_skill_target(cell: Vector2i, delay: float) -> void:
+	var telegraph := Node2D.new()
+	telegraph.name = "EnemySkillTelegraph"
+	telegraph.global_position = _world.cell_to_world(cell)
+	telegraph.z_index = 2
+	telegraph.show_behind_parent = true
+	_world.add_child(telegraph)
+	var tile_points := PackedVector2Array([
+		Vector2(-31, -31), Vector2(31, -31), Vector2(31, 31), Vector2(-31, 31),
+	])
+	var fill := Polygon2D.new()
+	fill.name = "Fill"
+	fill.polygon = tile_points
+	fill.color = DAMAGE_COLORS[_active_skill_damage_type]
+	fill.modulate.a = 0.65
+	fill.scale = Vector2.ZERO
+	telegraph.add_child(fill)
+	var outline := Line2D.new()
+	outline.name = "FlashingOutline"
+	outline.points = PackedVector2Array([tile_points[0], tile_points[1], tile_points[2], tile_points[3], tile_points[0]])
+	outline.default_color = DAMAGE_COLORS[_active_skill_damage_type]
+	outline.modulate.a = 0.75
+	outline.width = 3.0
+	outline.antialiased = true
+	telegraph.add_child(outline)
+	var warning_duration := maxf(0.01, _active_skill_windup + delay)
+	var growth := fill.create_tween()
+	growth.tween_property(fill, "scale", Vector2.ONE, warning_duration).set_trans(Tween.TRANS_LINEAR)
+	_active_skill_targets.append({
+		"cell": cell, "delay": delay, "resolved": false, "telegraph": telegraph,
+		"warning_duration": warning_duration, "growth_tween": growth,
+	})
+
+
+func _get_enemy_skill_windup(skill_id: int) -> float:
+	if skill_id == SKILL_CRUSHING_BLOW:
+		return 2.0
+	if skill_id == SKILL_FAN_STRIKE_QUICK or skill_id == SKILL_DRIVING_STRIKE_QUICK:
+		return 0.8
+	if skill_id == SKILL_FAN_STRIKE_CHARGED or skill_id == SKILL_DRIVING_STRIKE_CHARGED:
+		return 1.5
+	return 1.0
+
+
+func _update_active_enemy_skill(delta: float) -> void:
+	if _active_skill_slot < 0:
+		return
+	_active_skill_elapsed += delta
+	if _try_show_enemy_skill_tutorial():
+		return
+	var pullback_progress := clampf(_active_skill_elapsed / maxf(_active_skill_windup, 0.01), 0.0, 1.0)
+	if not _active_skill_released:
+		_update_enemy_skill_anticipation(pullback_progress)
+	var all_resolved := true
+	for target in _active_skill_targets:
+		if bool(target.get("resolved", false)):
+			continue
+		all_resolved = false
+		_update_enemy_skill_telegraph_warning(target)
+		if _active_skill_elapsed < _active_skill_windup + float(target.get("delay", 0.0)):
+			continue
+		_resolve_enemy_skill_target(target)
+	all_resolved = true
+	for target in _active_skill_targets:
+		if not bool(target.get("resolved", false)):
+			all_resolved = false
+			break
+	if all_resolved:
+		_finish_enemy_skill()
+
+
+func _try_show_enemy_skill_tutorial() -> bool:
+	if not is_instance_valid(_player) or not is_instance_valid(_world):
+		return false
+	var dialogue := get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
+	if dialogue == null or dialogue.is_open():
+		return false
+	var is_snaring_skill := _active_skill_id == SKILL_CASCADING_SWEEP or _active_skill_id == SKILL_CASCADING_SURROUND
+	if is_snaring_skill and _active_skill_elapsed >= SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_DELAY \
+			and not _player.unlocked_player_skills.has(FoxPlayer.SKILL_ROLL_CLOCKWISE) \
+			and not _player.snare_without_quick_roll_tutorial_seen:
+		if dialogue.play([_tutorial_line(SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_TEXT)]):
+			_player.snare_without_quick_roll_tutorial_seen = true
+			_pause_skill_telegraph_tweens()
+			return true
+	if not _player.enemy_skill_move_tutorial_seen and _active_skill_elapsed >= ENEMY_SKILL_MOVE_TUTORIAL_DELAY \
+			and not is_snaring_skill:
+		var player_cell := _world.world_to_cell(_player.global_position)
+		var side := Vector2i(-_active_skill_direction.y, _active_skill_direction.x)
+		var side_cells: Array[Vector2i] = [player_cell + side, player_cell - side]
+		for cell in side_cells:
+			if not _world.is_walkable(cell) or _world.is_cell_occupied(cell, _player):
+				return false
+		if dialogue.play_tile_choice([_tutorial_line(ENEMY_SKILL_MOVE_TUTORIAL_TEXT)], _world, side_cells, _step_to_tutorial_tile):
+			_player.enemy_skill_move_tutorial_seen = true
+			_skip_cascade_tutorial_for_current_cast = true
+			_pause_skill_telegraph_tweens()
+			return true
+	if _active_skill_elapsed >= CASCADING_SWEEP_TUTORIAL_DELAY \
+			and is_snaring_skill and _player.unlocked_player_skills.has(FoxPlayer.SKILL_ROLL_CLOCKWISE) \
+			and not _player.cascading_sweep_skill_tutorial_seen and not _skip_cascade_tutorial_for_current_cast \
+			and not _player.is_moving():
+		if not _player.prepare_player_skill_slot_for_tutorial(0):
+			return false
+		if dialogue.play_key_action([_tutorial_line(CASCADING_SWEEP_TUTORIAL_TEXT)], KEY_Q, _cast_tutorial_skill):
+			_player.cascading_sweep_skill_tutorial_seen = true
+			_pause_skill_telegraph_tweens()
+			return true
+	return false
+
+
+func _tutorial_line(text: String) -> Dictionary:
+	return {"speaker": "Mira", "text": text, "portrait": PLAYER_PORTRAIT}
+
+
+func _step_to_tutorial_tile(cell: Vector2i) -> bool:
+	if not is_instance_valid(_player) or not is_instance_valid(_world) or not _world.is_walkable(cell) \
+			or _world.is_cell_occupied(cell, _player):
+		return false
+	# Entering combat by clicking the enemy leaves a chase target active. Clear it
+	# before starting this forced step so the next physics frame cannot replace
+	# the tutorial path with another route toward the enemy.
+	_player.clear_attack_target()
+	_player.follow_path(PackedVector2Array([_world.cell_to_world(cell)]))
+	return _player.is_moving()
+
+
+func _cast_tutorial_skill() -> bool:
+	if not is_instance_valid(_player):
+		return false
+	var toolbar := get_tree().get_first_node_in_group("skill_toolbar") as SkillToolbar
+	if is_instance_valid(toolbar):
+		return toolbar._try_cast_player_skill(0)
+	return _player.cast_player_skill_slot(0)
+
+
+func consume_pending_cascading_sweep_tutorial(skill_id: StringName) -> void:
+	if skill_id != FoxPlayer.SKILL_ROLL_CLOCKWISE or _active_skill_slot < 0 \
+			or (_active_skill_id != SKILL_CASCADING_SWEEP and _active_skill_id != SKILL_CASCADING_SURROUND) \
+			or not is_instance_valid(_player) or _player.cascading_sweep_skill_tutorial_seen:
+		return
+	_player.cascading_sweep_skill_tutorial_seen = true
+	_skip_cascade_tutorial_for_current_cast = true
+
+
+func _pause_skill_telegraph_tweens() -> void:
+	_skill_tutorial_paused = true
+	for target in _active_skill_targets:
+		var growth := target.get("growth_tween") as Tween
+		if growth and growth.is_valid():
+			growth.pause()
+
+
+func _resume_skill_telegraph_tweens() -> void:
+	_skill_tutorial_paused = false
+	for target in _active_skill_targets:
+		var growth := target.get("growth_tween") as Tween
+		if growth and growth.is_valid():
+			growth.play()
+
+
+func _update_enemy_skill_anticipation(progress: float) -> void:
+	var direction := Vector2(_active_skill_direction)
+	var turn_sign := signf(direction.x if absf(direction.x) > 0.01 else direction.y)
+	if _active_skill_id == SKILL_CRUSHING_BLOW or _active_skill_id >= SKILL_FAN_STRIKE_QUICK:
+		chicken_sprite.position = -direction * (10.0 * progress)
+		chicken_sprite.scale = Vector2.ONE.lerp(Vector2(1.20, 0.72), progress)
+		chicken_sprite.rotation = -0.20 * turn_sign * progress
+	elif _active_skill_id == SKILL_CASCADING_SWEEP or _active_skill_id == SKILL_CASCADING_SURROUND:
+		chicken_sprite.position = -direction * (5.0 * progress)
+		chicken_sprite.scale = Vector2.ONE.lerp(Vector2(0.84, 1.18), progress)
+		chicken_sprite.rotation = turn_sign * (0.18 * progress + sin(progress * PI * 3.0) * 0.08)
+
+
+func _update_enemy_skill_telegraph_warning(target: Dictionary) -> void:
+	var telegraph := target.get("telegraph") as Node2D
+	if not is_instance_valid(telegraph):
+		return
+	var outline := telegraph.get_node_or_null("FlashingOutline") as Line2D
+	if not is_instance_valid(outline):
+		return
+	var warning_duration := maxf(0.01, float(target.get("warning_duration", _active_skill_windup)))
+	var progress := clampf(_active_skill_elapsed / warning_duration, 0.0, 1.0)
+	var urgency := clampf((progress - 0.75) / 0.25, 0.0, 1.0)
+	var flashes_per_second := lerpf(2.2, 10.0, urgency)
+	var pulse := (sin(_active_skill_elapsed * flashes_per_second * TAU) + 1.0) * 0.5
+	outline.modulate.a = lerpf(0.20, 0.75, pulse)
+
+
+func _resolve_enemy_skill_target(target: Dictionary) -> void:
+	target["resolved"] = true
+	_play_enemy_skill_impact_sfx()
+	var target_cell: Vector2i = target.get("cell", Vector2i.ZERO)
+	var hit := false
+	if is_instance_valid(_player) and _world.world_to_cell(_player.global_position) == target_cell:
+		hit = _player.take_skill_damage(_active_skill_damage, _active_skill_damage_type, Vector2(_active_skill_direction))
+	_active_skill_impact_count += 1
+	_last_skill_resolution_feedback.append("hit" if hit else "dodged")
+	_play_enemy_skill_release(target_cell)
+	_resolve_enemy_skill_telegraph(target, hit)
+
+
+func _resolve_enemy_skill_telegraph(target: Dictionary, hit: bool) -> void:
+	var telegraph := target.get("telegraph") as Node2D
+	if not is_instance_valid(telegraph):
+		return
+	var growth := target.get("growth_tween") as Tween
+	if growth and growth.is_valid():
+		growth.kill()
+	var fill := telegraph.get_node_or_null("Fill") as Polygon2D
+	var outline := telegraph.get_node_or_null("FlashingOutline") as Line2D
+	if is_instance_valid(fill):
+		fill.scale = Vector2.ONE
+		fill.modulate.a = 0.86 if hit else 0.78
+	if is_instance_valid(outline):
+		outline.default_color = Color.RED if hit else Color.WHITE
+		outline.modulate.a = 1.0
+	telegraph.modulate.a = 1.0
+	var feedback := telegraph.create_tween()
+	if hit:
+		telegraph.scale = Vector2(0.86, 0.86)
+		feedback.tween_property(telegraph, "scale", Vector2(1.16, 1.16), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		feedback.parallel().tween_property(telegraph, "modulate:a", 0.0, 0.16).set_delay(0.04)
+	else:
+		if is_instance_valid(fill):
+			fill.color = Color.WHITE
+		feedback.tween_interval(0.05)
+		feedback.tween_property(telegraph, "scale", Vector2(0.06, 0.06), 0.13).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		feedback.parallel().tween_property(telegraph, "modulate:a", 0.0, 0.13)
+	feedback.finished.connect(telegraph.queue_free)
+
+
+func _play_enemy_skill_release(target_cell: Vector2i) -> void:
+	chicken_sprite.modulate = Color.WHITE
+	var enemy_cell := _world.world_to_cell(global_position)
+	var strike_direction := _cardinal_direction(target_cell - enemy_cell)
+	var direction := Vector2(strike_direction)
+	var turn_sign := signf(direction.x if absf(direction.x) > 0.01 else direction.y)
+	_active_skill_released = true
+	if _active_skill_id == SKILL_CRUSHING_BLOW:
+		chicken_sprite.position = Vector2(_active_skill_direction) * 18.0
+		chicken_sprite.scale = Vector2(1.38, 0.66)
+		chicken_sprite.rotation = 0.18 * turn_sign
+		_play_enemy_skill_camera_feedback(direction, 5.0)
+	else:
+		var forward := Vector2(_active_skill_direction)
+		var side_amount := forward.cross(direction)
+		chicken_sprite.position = direction * 8.0
+		chicken_sprite.scale = Vector2(1.16, 0.82)
+		chicken_sprite.rotation = side_amount * 0.32 + turn_sign * 0.12
+		_play_enemy_skill_camera_feedback(direction, 1.5 + float(_active_skill_impact_count) * 0.7)
+
+
+func _begin_enemy_skill_recovery(skill_id: int) -> void:
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	_attack_visual_time_left = 0.34
+	_attack_time_left = maxf(_attack_time_left, 0.34)
+	var direction := Vector2(_active_skill_direction)
+	var turn_sign := signf(direction.x if absf(direction.x) > 0.01 else direction.y)
+	_skill_visual_tween = create_tween()
+	_skill_visual_tween.tween_interval(0.08)
+	if skill_id == SKILL_CRUSHING_BLOW:
+		_skill_visual_tween.tween_property(chicken_sprite, "position", -direction * 4.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_skill_visual_tween.parallel().tween_property(chicken_sprite, "scale", Vector2(0.86, 1.14), 0.09)
+		_skill_visual_tween.parallel().tween_property(chicken_sprite, "rotation", -0.12 * turn_sign, 0.09)
+	else:
+		_skill_visual_tween.tween_property(chicken_sprite, "position", -direction * 2.0, 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		_skill_visual_tween.parallel().tween_property(chicken_sprite, "scale", Vector2(0.90, 1.10), 0.08)
+		_skill_visual_tween.parallel().tween_property(chicken_sprite, "rotation", -0.18 * turn_sign, 0.08)
+	_skill_visual_tween.tween_property(chicken_sprite, "position", Vector2.ZERO, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.parallel().tween_property(chicken_sprite, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.parallel().tween_property(chicken_sprite, "rotation", 0.0, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.parallel().tween_property(chicken_sprite, "modulate", Color.WHITE, 0.16)
+
+
+func _play_enemy_charge_sfx() -> void:
+	if not _can_emit_combat_feedback():
+		return
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_enemy_charge()
+
+
+func _play_enemy_skill_impact_sfx() -> void:
+	if not _can_emit_combat_feedback():
+		return
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_big_attack()
+
+
+func _show_enemy_skill_name(skill_id: int) -> void:
+	_clear_enemy_skill_name()
+	if skill_id <= SKILL_NONE:
+		return
+	_skill_name_label = Label.new()
+	_skill_name_label.name = "EnemySkillCastLabel"
+	_skill_name_label.text = "Big Attack"
+	_skill_name_label.position = Vector2(-90, -88)
+	_skill_name_label.size = Vector2(180, 28)
+	_skill_name_label.pivot_offset = _skill_name_label.size * 0.5
+	_skill_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_skill_name_label.add_theme_font_size_override("font_size", 19)
+	_skill_name_label.add_theme_color_override("font_color", Color("ffddd8"))
+	_skill_name_label.add_theme_color_override("font_outline_color", Color("4a0909"))
+	_skill_name_label.add_theme_constant_override("outline_size", 5)
+	_skill_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_skill_name_label.z_index = 40
+	_skill_name_label.modulate.a = 0.0
+	_skill_name_label.scale = Vector2(0.72, 0.72)
+	add_child(_skill_name_label)
+	var reveal := _skill_name_label.create_tween().set_parallel(true)
+	reveal.tween_property(_skill_name_label, "modulate:a", 1.0, 0.12)
+	reveal.tween_property(_skill_name_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _fade_enemy_skill_name() -> void:
+	if not is_instance_valid(_skill_name_label):
+		_skill_name_label = null
+		return
+	var label := _skill_name_label
+	_skill_name_label = null
+	var fade := label.create_tween().set_parallel(true)
+	fade.tween_property(label, "position:y", label.position.y - 10.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	fade.tween_property(label, "modulate:a", 0.0, 0.16)
+	fade.finished.connect(label.queue_free)
+
+
+func _clear_enemy_skill_name() -> void:
+	if is_instance_valid(_skill_name_label):
+		_skill_name_label.queue_free()
+	_skill_name_label = null
+
+
+func _play_enemy_skill_camera_feedback(direction: Vector2, strength: float) -> void:
+	var camera := get_viewport().get_camera_2d()
+	if camera == null:
+		return
+	_cancel_enemy_skill_camera_feedback()
+	_skill_camera = camera
+	_skill_camera_origin = camera.position
+	var strike_direction := direction.normalized() if not direction.is_zero_approx() else Vector2.RIGHT
+	var perpendicular := Vector2(-strike_direction.y, strike_direction.x)
+	_skill_camera_tween = camera.create_tween()
+	_skill_camera_tween.tween_property(camera, "position", _skill_camera_origin + strike_direction * strength, 0.035).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_skill_camera_tween.tween_property(camera, "position", _skill_camera_origin - strike_direction * strength * 0.45 + perpendicular * strength * 0.55, 0.04)
+	_skill_camera_tween.tween_property(camera, "position", _skill_camera_origin - perpendicular * strength * 0.35, 0.04)
+	_skill_camera_tween.tween_property(camera, "position", _skill_camera_origin, 0.07).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_skill_camera_tween.finished.connect(_finish_enemy_skill_camera_feedback.bind(camera))
+
+
+func _finish_enemy_skill_camera_feedback(camera: Camera2D) -> void:
+	if camera != _skill_camera:
+		return
+	if is_instance_valid(camera):
+		camera.position = _skill_camera_origin
+	_skill_camera_tween = null
+	_skill_camera = null
+
+
+func _cancel_enemy_skill_camera_feedback() -> void:
+	if _skill_camera_tween and _skill_camera_tween.is_valid():
+		_skill_camera_tween.kill()
+	if is_instance_valid(_skill_camera):
+		_skill_camera.position = _skill_camera_origin
+	_skill_camera_tween = null
+	_skill_camera = null
+
+
+func _finish_enemy_skill() -> void:
+	var finished_skill_id := _active_skill_id
+	_release_player_snare()
+	if _active_skill_slot >= 0 and _active_skill_slot < enemy_skills.size():
+		_skill_cooldowns[_active_skill_slot] = _get_enemy_skill_cooldown(enemy_skills[_active_skill_slot])
+	_active_skill_targets.clear()
+	_fade_enemy_skill_name()
+	_active_skill_slot = -1
+	_active_skill_elapsed = 0.0
+	_active_skill_id = SKILL_NONE
+	_active_skill_released = false
+	_skill_tutorial_paused = false
+	_skip_cascade_tutorial_for_current_cast = false
+	_begin_enemy_skill_recovery(finished_skill_id)
+
+
+func _reset_enemy_skills() -> void:
+	_release_player_snare()
+	_clear_enemy_skill_telegraphs()
+	_clear_enemy_skill_name()
+	_cancel_enemy_skill_camera_feedback()
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	_combat_skills_initialized = false
+	_active_skill_slot = -1
+	_active_skill_elapsed = 0.0
+	_skill_cooldowns.resize(enemy_skills.size())
+	_skill_cooldowns.fill(0.0)
+	_active_skill_id = SKILL_NONE
+	_active_skill_released = false
+	_active_skill_impact_count = 0
+	_skill_tutorial_paused = false
+	_skip_cascade_tutorial_for_current_cast = false
+	if is_instance_valid(chicken_sprite):
+		chicken_sprite.position = Vector2.ZERO
+		chicken_sprite.scale = Vector2.ONE
+		chicken_sprite.rotation = 0.0
+		chicken_sprite.modulate = Color.WHITE
+
+
+func _clear_enemy_skill_telegraphs() -> void:
+	for target in _active_skill_targets:
+		var telegraph_value: Variant = target.get("telegraph")
+		if is_instance_valid(telegraph_value):
+			(telegraph_value as Node2D).queue_free()
+	_active_skill_targets.clear()
+
+
+func _release_player_snare() -> void:
+	if is_instance_valid(_player):
+		_player.set_snared_by(self, false)
+
+
+func _get_enemy_skill_cooldown(skill: Dictionary) -> float:
+	var configured := float(skill.get("cooldown", 0.0))
+	if configured > 0.0:
+		return configured
+	var skill_id := clampi(int(skill.get("skill_id", SKILL_NONE)), 0, SKILL_DEFAULT_COOLDOWNS.size() - 1)
+	return SKILL_DEFAULT_COOLDOWNS[skill_id]
+
+
+func _cardinal_direction(offset: Vector2i) -> Vector2i:
+	if absi(offset.x) >= absi(offset.y) and offset.x != 0:
+		return Vector2i(signi(offset.x), 0)
+	if offset.y != 0:
+		return Vector2i(0, signi(offset.y))
+	return Vector2i.RIGHT
+
+
 func is_player_combat_sequence_active() -> bool:
-	return health > 0 and (_movement_mode == MovementMode.CHASE or _is_in_combat())
+	if health <= 0 or not is_instance_valid(_world) or not is_instance_valid(_player) \
+			or not _world.belongs_to_world(_player):
+		return false
+	if _world is DungeonLevel and not (_world as DungeonLevel).is_actor_in_active_room(self):
+		return false
+	return _movement_mode == MovementMode.CHASE or _is_in_combat()
+
+
+func _can_emit_combat_feedback() -> bool:
+	if not is_instance_valid(_world) or not is_instance_valid(_player) or not _world.belongs_to_world(_player):
+		return false
+	return not (_world is DungeonLevel) or (_world as DungeonLevel).is_actor_in_active_room(self)
 
 
 func _dialogue_is_open() -> bool:
@@ -450,9 +1050,9 @@ func _follow_behavior_path(delta: float) -> float:
 		return previous_position.distance_to(global_position)
 	velocity = offset.normalized() * move_speed
 	if velocity.x < -0.1:
-		chicken_sprite.flip_h = true
+		_set_facing_left(true)
 	elif velocity.x > 0.1:
-		chicken_sprite.flip_h = false
+		_set_facing_left(false)
 	if not _world.can_enter_position(self, global_position + velocity * delta):
 		_clear_movement_path()
 		return 0.0
@@ -505,9 +1105,9 @@ func _patrol(delta: float) -> void:
 		return
 	velocity = offset.normalized() * move_speed
 	if velocity.x < -0.1:
-		chicken_sprite.flip_h = true
+		_set_facing_left(true)
 	elif velocity.x > 0.1:
-		chicken_sprite.flip_h = false
+		_set_facing_left(false)
 	if _world and not _world.can_enter_position(self, global_position + velocity * delta):
 		_set_target_to_own_tile(_world)
 		return
@@ -544,7 +1144,7 @@ func _attack_player(in_combat_override: Variant = null) -> void:
 	if _attack_time_left > 0.0:
 		return
 	var in_combat := _is_in_combat() if in_combat_override == null else bool(in_combat_override)
-	if in_combat and _player:
+	if in_combat and _player and _can_emit_combat_feedback():
 		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 		if audio:
 			audio.play_damage()
@@ -556,7 +1156,7 @@ func _attack_player(in_combat_override: Variant = null) -> void:
 
 
 func _attack_hunter() -> void:
-	if _attack_time_left > 0.0 or not _is_hunter_in_combat():
+	if _attack_time_left > 0.0 or not _is_hunter_in_combat() or not _can_emit_combat_feedback():
 		return
 	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 	if audio:
@@ -573,7 +1173,7 @@ func _play_attack_animation(target: Node2D) -> void:
 	_attack_visual_time_left = 0.30
 	var direction := signf(target.global_position.x - global_position.x)
 	if is_zero_approx(direction):
-		direction = 1.0 if not chicken_sprite.flip_h else -1.0
+		direction = -1.0 if _is_facing_left() else 1.0
 	chicken_sprite.scale = Vector2(0.80, 1.24)
 	chicken_sprite.rotation = -0.24 * direction
 	_attack_tween = create_tween()
@@ -587,6 +1187,8 @@ func _play_attack_animation(target: Node2D) -> void:
 
 
 func _update_walk_animation(delta: float) -> void:
+	if _active_skill_slot >= 0:
+		return
 	if _attack_visual_time_left > 0.0 or _hit_visual_time_left > 0.0:
 		return
 	if velocity.length_squared() > 1.0:
@@ -596,6 +1198,13 @@ func _update_walk_animation(delta: float) -> void:
 	else:
 		chicken_sprite.position = Vector2.ZERO
 		chicken_sprite.rotation = 0.0
+
+
+func _exit_tree() -> void:
+	_release_player_snare()
+	_clear_enemy_skill_telegraphs()
+	_clear_enemy_skill_name()
+	_cancel_enemy_skill_camera_feedback()
 
 
 func _update_health_label() -> void:
@@ -617,6 +1226,13 @@ func _update_damage_label() -> void:
 
 
 func _update_reward_visual() -> void:
+	if not rewards_enabled:
+		reward_icon.visible = false
+		reward_label.hide()
+		reward_dot.hide()
+		reward_dot_outline.hide()
+		return
+	reward_label.show()
 	var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 	var reward_color: Color = colors[damage_reward_color]
 	reward_icon.visible = true
@@ -646,6 +1262,14 @@ func _update_reward_visual() -> void:
 	elif reward_type == REWARD_DEFENSE:
 		reward_color = colors[defense_reward_color]
 		reward_icon.texture = preload("res://Sprites/ShieldIcon.webp")
+	elif reward_type == REWARD_MANA:
+		reward_color = Color("67e8f9")
+		reward_icon.texture = preload("res://Sprites/IconMana.webp")
+	elif reward_type == REWARD_MANA_REGENERATE:
+		reward_color = Color("67e8f9")
+		reward_icon.texture = preload("res://Sprites/iconManaRegen.webp")
+		reward_label.text = "+%s" % FoxPlayer.format_health_per_second(float(damage_reward) / 3.0)
+		reward_label.offset_right = 112.0
 	else:
 		reward_icon.texture = preload("res://Sprites/DamageIcon.webp")
 	_set_reward_icon_size()
@@ -690,9 +1314,18 @@ func _face_combat_target(player_in_combat: bool, hunter_in_combat: bool) -> void
 func _face_toward(target: Node2D) -> void:
 	var horizontal_offset := target.global_position.x - global_position.x
 	if horizontal_offset > 0.1:
-		chicken_sprite.flip_h = false
+		_set_facing_left(false)
 	elif horizontal_offset < -0.1:
-		chicken_sprite.flip_h = true
+		_set_facing_left(true)
+
+
+func _set_facing_left(facing_left: bool) -> void:
+	if is_instance_valid(chicken_sprite):
+		chicken_sprite.flip_h = facing_left != _flip_sprite_orientation
+
+
+func _is_facing_left() -> bool:
+	return chicken_sprite.flip_h != _flip_sprite_orientation if is_instance_valid(chicken_sprite) else false
 
 
 func _create_combat_ring() -> Line2D:
@@ -767,6 +1400,14 @@ func _grant_kill_reward() -> void:
 			var defense_target: Vector2 = armor_grid.get_color_target_screen_position(defense_reward_color) if armor_grid else Vector2(90, 42)
 			var colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 			_launch_reward_orb(defense_target, colors[defense_reward_color], fox.add_color_defense.bind(defense_reward_color, damage_reward))
+		REWARD_MANA:
+			var vitals := _get_hud_control("PlayerVitals")
+			var mana_target: Vector2 = vitals.call("get_stat_target_screen_position", &"mana") if vitals else Vector2(42, 150)
+			_launch_reward_orb(mana_target, Color("67e8f9"), fox.add_max_mana.bind(damage_reward))
+		REWARD_MANA_REGENERATE:
+			var vitals := _get_hud_control("PlayerVitals")
+			var mana_regen_target: Vector2 = vitals.call("get_stat_target_screen_position", &"mana_regeneration") if vitals else Vector2(100, 150)
+			_launch_reward_orb(mana_regen_target, Color("67e8f9"), fox.add_passive_mana_regeneration.bind(damage_reward))
 
 
 func _get_hud_control(node_name: String) -> Control:

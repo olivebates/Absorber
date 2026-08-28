@@ -118,7 +118,7 @@ func _refresh() -> void:
 		# this panel's custom minimum size.
 		_items.remove_child(child)
 		child.queue_free()
-	for index in range(4):
+	for index in range(_player.inventory_slots.size()):
 		var item := _player.get_slot_item("inventory", index)
 		var slot := ItemSlot.new()
 		var merge_target := _player.is_tutorial_merge_slot("inventory", index) or (not ("inventory" == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item))

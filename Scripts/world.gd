@@ -17,6 +17,7 @@ var _pathfinder := AStarGrid2D.new()
 var _walkable_cells: Dictionary = {}
 var _navigation_region := Rect2i()
 var explored_cells: Dictionary = {}
+var _exploration_map_revision := 0
 var visited_campfires: Dictionary = {}
 var second_campfire_tab_prompt_dismissed := false
 var map_show_enemies := false
@@ -76,11 +77,16 @@ func _update_exploration() -> void:
 	if dungeon_manager and dungeon_manager.is_dungeon_active():
 		return
 	var player_cell := world_to_cell(player.global_position)
+	var changed := false
 	for y in range(player_cell.y - EXPLORATION_RADIUS_TILES, player_cell.y + EXPLORATION_RADIUS_TILES + 1):
 		for x in range(player_cell.x - EXPLORATION_RADIUS_TILES, player_cell.x + EXPLORATION_RADIUS_TILES + 1):
 			var cell := Vector2i(x, y)
 			if (cell - player_cell).length_squared() <= EXPLORATION_RADIUS_TILES * EXPLORATION_RADIUS_TILES and _navigation_region.has_point(cell):
-				explored_cells[cell] = true
+				if not explored_cells.has(cell):
+					explored_cells[cell] = true
+					changed = true
+	if changed:
+		_exploration_map_revision += 1
 	for node in get_tree().get_nodes_in_group("campfires"):
 		if node is Campfire and is_instance_valid(node) and node.is_player_in_range(player):
 			visited_campfires[world_to_cell(node.global_position)] = true
@@ -91,6 +97,41 @@ func _update_exploration() -> void:
 
 func is_cell_explored(cell: Vector2i) -> bool:
 	return explored_cells.has(cell)
+
+
+func get_map_region() -> Rect2i:
+	if explored_cells.is_empty():
+		return Rect2i(world_to_cell(player.global_position), Vector2i.ONE) if is_instance_valid(player) else _navigation_region
+	var cells := explored_cells.keys()
+	var minimum: Vector2i = cells[0]
+	var maximum := minimum
+	for cell_value in cells:
+		var cell: Vector2i = cell_value
+		minimum.x = mini(minimum.x, cell.x)
+		minimum.y = mini(minimum.y, cell.y)
+		maximum.x = maxi(maximum.x, cell.x)
+		maximum.y = maxi(maximum.y, cell.y)
+	return Rect2i(minimum, maximum - minimum + Vector2i.ONE)
+
+
+func get_map_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for cell_value in explored_cells:
+		cells.append(cell_value as Vector2i)
+	return cells
+
+
+func get_map_wall_cells() -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for cell_value in explored_cells:
+		var cell := cell_value as Vector2i
+		if wall_layer.get_cell_source_id(cell) != -1:
+			cells.append(cell)
+	return cells
+
+
+func get_map_revision() -> int:
+	return _exploration_map_revision
 
 
 func is_campfire_visited(campfire: Campfire) -> bool:
@@ -119,6 +160,7 @@ func load_exploration_save_data(data: Array) -> void:
 		for raw_cell in data[1]:
 			if raw_cell is Array and raw_cell.size() >= 2:
 				visited_campfires[Vector2i(int(raw_cell[0]), int(raw_cell[1]))] = true
+	_exploration_map_revision += 1
 	second_campfire_tab_prompt_dismissed = bool(data[2]) if data.size() > 2 else false
 	map_show_enemies = bool(data[3]) if data.size() > 3 else false
 	map_show_buildings = true

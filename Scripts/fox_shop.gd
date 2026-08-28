@@ -196,6 +196,8 @@ func _apply_upgrade(upgrade: Dictionary) -> void:
 			_player.add_max_health(amount)
 		&"item":
 			_player.collect_item(str(upgrade["item_id"]))
+		&"auto_fight":
+			_player.unlock_auto_fight()
 
 
 func _get_upgrade_current_value(upgrade_index: int) -> Variant:
@@ -216,6 +218,8 @@ func _get_upgrade_current_value(upgrade_index: int) -> Variant:
 				if str(item.get("item_id", "")) == item_id:
 					count += 1
 			return count
+		&"auto_fight":
+			return 1 if _player.auto_fight_unlocked else 0
 	return 0
 
 
@@ -513,6 +517,9 @@ func _make_upgrade_button(upgrade_index: int) -> Button:
 		if StringName(upgrade["stat"]) == &"regeneration" else "+%d" % int(upgrade["amount"])
 	amount.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	amount.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if StringName(upgrade["stat"]) == &"damage" or StringName(upgrade["stat"]) == &"defense":
+		var stat_colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+		amount.add_theme_color_override("font_color", stat_colors[int(upgrade.get("color", FoxPlayer.COLOR_RED))])
 	row.add_child(amount)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -637,6 +644,8 @@ func _refresh() -> void:
 
 
 func _is_upgrade_available(_index: int, upgrade: Dictionary) -> bool:
+	if StringName(upgrade.get("stat", &"")) == &"auto_fight":
+		return _player == null or not _player.auto_fight_unlocked
 	if str(upgrade.get("item_id", "")) != "spare_cart_parts":
 		return true
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager

@@ -1,7 +1,7 @@
 class_name DungeonDoorLocked
 extends Node2D
 
-const PLAYER_PORTRAIT := preload("res://Sprites/FoxMira.webp")
+const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
 
 var unlocked := false
 var _pending_player: FoxPlayer

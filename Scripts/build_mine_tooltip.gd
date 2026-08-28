@@ -20,6 +20,9 @@ func _ready() -> void:
 
 
 func show_cost(cost: Dictionary, resource_manager: ResourceManager, anchor: Control, building_icon: Texture2D = MINE_ICON) -> void:
+	if _is_dungeon_active():
+		hide_tooltip()
+		return
 	for child in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()
@@ -59,6 +62,9 @@ func hide_tooltip(requester: Variant = null) -> void:
 
 
 func show_stat(icon_texture: Texture2D, stat_name: String, stat_value: String, world_anchor: Node2D) -> void:
+	if _is_dungeon_active():
+		hide_tooltip()
+		return
 	for child in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()
@@ -82,8 +88,16 @@ func show_stat(icon_texture: Texture2D, stat_name: String, stat_value: String, w
 
 
 func _process(_delta: float) -> void:
+	if _is_dungeon_active():
+		hide_tooltip()
+		return
 	if visible:
 		_fit_and_place()
+
+
+func _is_dungeon_active() -> bool:
+	var manager := get_tree().get_first_node_in_group("dungeon_manager")
+	return manager != null and manager.has_method("is_dungeon_active") and bool(manager.call("is_dungeon_active"))
 
 
 func _make_cost_row(icon_texture: Texture2D, amount: int) -> HBoxContainer:

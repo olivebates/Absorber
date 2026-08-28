@@ -28,6 +28,11 @@ const WALKING_SFX: AudioStream = preload("res://Music/sfxWalking.ogg")
 const EATING_SFX: AudioStream = preload("res://Music/sfxEating.ogg")
 const OPEN_GATE_SFX: AudioStream = preload("res://Music/sfxOpenGate.mp3")
 const ASHA_JOINS_SFX: AudioStream = preload("res://Music/AshaJoins.mp3")
+const SKILL_UNAVAILABLE_SFX: AudioStream = preload("res://Music/sfxSkillUnavailable.ogg")
+const PLAYER_ROLL_SFX: AudioStream = preload("res://Music/sfxPlayerRoll.ogg")
+const ENEMY_CHARGE_SFX: AudioStream = preload("res://Music/sfxEnemyCharge.ogg")
+const BIG_ATTACK_SFX: AudioStream = preload("res://Music/sfxBigAttack.ogg")
+const CHEST_VISIBLE_SFX: AudioStream = preload("res://Music/sfxChestVisible.ogg")
 
 const SILENT_DB := -80.0
 const MUSIC_DB := -8.0
@@ -73,9 +78,11 @@ var _boss_zoom_active := false
 var _normal_camera_zoom := Vector2.ONE
 var _camera_zoom_initialized := false
 var _boss_zoom_tween: Tween
+var _zoom_camera: Camera2D
 var _recruitment_music_ducked := false
 var music_volume := 1.0
 var sfx_volume := 1.0
+var _last_enemy_charge_frame := -1
 
 
 func setup(world: WorldNavigation) -> void:
@@ -178,6 +185,31 @@ func play_asha_joins() -> void:
 	_play_sfx(ASHA_JOINS_SFX, false)
 
 
+func play_skill_unavailable() -> void:
+	_play_sfx(SKILL_UNAVAILABLE_SFX, false)
+
+
+func play_player_roll() -> void:
+	_play_sfx(PLAYER_ROLL_SFX, false)
+
+
+func play_enemy_charge() -> void:
+	var current_frame := Engine.get_process_frames()
+	if current_frame == _last_enemy_charge_frame:
+		return
+	_last_enemy_charge_frame = current_frame
+	_play_sfx(ENEMY_CHARGE_SFX, false)
+
+
+func play_big_attack() -> void:
+	# Skill tiles may resolve together, and each tile must produce its own hit.
+	_play_sfx(BIG_ATTACK_SFX, false)
+
+
+func play_chest_visible() -> void:
+	_play_sfx(CHEST_VISIBLE_SFX, false)
+
+
 func show_area_name(area_name: String) -> void:
 	if not area_name.is_empty():
 		_show_area_name(area_name)
@@ -233,12 +265,18 @@ func _update_biome_music() -> void:
 		return
 	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager")
 	if dungeon_manager and dungeon_manager.has_method("is_dungeon_active") \
-		and bool(dungeon_manager.call("is_dungeon_active")):
-		_set_boss_camera_zoom(false)
+			and bool(dungeon_manager.call("is_dungeon_active")):
+		var dungeon_world := dungeon_manager.call("get_active_level") as DungeonLevel
+		var dungeon_camera := dungeon_world.get_node_or_null("DungeonCamera") as Camera2D if is_instance_valid(dungeon_world) else null
+		var fighting_dungeon_boss := _is_player_fighting_boss(dungeon_world)
+		_set_boss_camera_zoom(fighting_dungeon_boss, dungeon_camera)
+		if fighting_dungeon_boss:
+			_set_active_biome(Biome.BOSS)
+			return
 		_set_active_biome(Biome.DUNGEON)
 		return
-	var fighting_boss := _is_player_fighting_boss()
-	_set_boss_camera_zoom(fighting_boss)
+	var fighting_boss := _is_player_fighting_boss(_world)
+	_set_boss_camera_zoom(fighting_boss, _world.player.get_node_or_null("Camera2D") as Camera2D)
 	if fighting_boss:
 		_set_active_biome(Biome.BOSS)
 		return
@@ -378,28 +416,31 @@ func _mark_biome_heard(biome: Biome) -> void:
 			_boss_heard = true
 
 
-func _is_player_fighting_boss() -> bool:
-	if not is_instance_valid(_world) or not is_instance_valid(_world.player) or _world.player.health <= 0 or _world.gameplay_paused:
+func _is_player_fighting_boss(navigation_world: WorldNavigation = _world) -> bool:
+	if not is_instance_valid(navigation_world) or not is_instance_valid(navigation_world.player) \
+			or navigation_world.player.health <= 0:
 		return false
 	for node in get_tree().get_nodes_in_group("enemies"):
 		if not node is ChickenEnemy or not is_instance_valid(node) or node.health <= 0:
 			continue
 		var enemy := node as ChickenEnemy
 		if is_instance_valid(enemy.spawn_point) and enemy.spawn_point.boss \
-			and not enemy.spawn_point.emptied_once and _world.are_adjacent(_world.player, enemy):
+				and navigation_world.belongs_to_world(enemy) and not enemy.spawn_point.emptied_once \
+				and enemy.is_player_combat_sequence_active():
 			return true
 	return false
 
 
-func _set_boss_camera_zoom(active: bool) -> void:
-	if not is_instance_valid(_world) or not is_instance_valid(_world.player):
-		return
-	var camera := _world.player.get_node_or_null("Camera2D") as Camera2D
+func _set_boss_camera_zoom(active: bool, camera: Camera2D = null) -> void:
 	if camera == null:
 		return
-	if not _camera_zoom_initialized:
+	if camera != _zoom_camera:
+		if is_instance_valid(_zoom_camera) and _boss_zoom_active:
+			_zoom_camera.zoom = _normal_camera_zoom
+		_zoom_camera = camera
 		_normal_camera_zoom = camera.zoom
 		_camera_zoom_initialized = true
+		_boss_zoom_active = false
 	if active == _boss_zoom_active:
 		return
 	_boss_zoom_active = active

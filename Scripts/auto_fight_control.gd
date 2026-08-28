@@ -6,7 +6,6 @@ const TOOLTIP := "Will automatically attack any creatures you have already defea
 var _player: FoxPlayer
 var _world: WorldNavigation
 var _toggle: CheckButton
-var _unlock_in_progress := false
 
 
 func _ready() -> void:
@@ -39,28 +38,7 @@ func _connect_world() -> void:
 		return
 	if not _player.auto_fight_changed.is_connected(_refresh):
 		_player.auto_fight_changed.connect(_refresh)
-	var first_boss_spawn := _world.get_node_or_null("ChickenSpawn8") as EnemySpawnPoint
-	if first_boss_spawn and not first_boss_spawn.enemy_killed.is_connected(_on_first_boss_killed):
-		first_boss_spawn.enemy_killed.connect(_on_first_boss_killed)
 	_refresh()
-
-
-func _on_first_boss_killed(_enemy: ChickenEnemy) -> void:
-	if _player == null or _player.auto_fight_unlocked or _unlock_in_progress:
-		return
-	_unlock_in_progress = true
-	# Lay the control out while hidden so the orb has an exact destination.
-	reset_size()
-	_position_beside_resources()
-	var target_screen := get_global_rect().get_center()
-	var target_world := get_viewport().get_canvas_transform().affine_inverse() * target_screen
-	RewardOrb.fly(_world, _player.global_position, target_world, Color("fbc02d"), _finish_unlock)
-
-
-func _finish_unlock() -> void:
-	_unlock_in_progress = false
-	if is_instance_valid(_player):
-		_player.unlock_auto_fight()
 
 
 func _on_toggled(enabled: bool) -> void:
@@ -94,7 +72,7 @@ func _refresh() -> void:
 
 
 func _position_beside_resources() -> void:
-	if not visible and not _unlock_in_progress:
+	if not visible:
 		return
 	var resources := get_parent().get_node_or_null("ResourcePanel") as Control
 	var fitted := get_combined_minimum_size()

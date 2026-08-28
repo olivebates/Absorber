@@ -63,6 +63,7 @@ func show_item(item: Dictionary) -> void:
 		_rank.add_theme_color_override("font_color", Color.WHITE)
 		_stat_icon.visible = false
 		_stat.text = description
+		_stat.add_theme_color_override("font_color", Color.WHITE)
 		_stat.visible = true
 		_set_style(Color("b71c1c") if ItemPickup.is_protected(item_id) else Color("777777"))
 		visible = true
@@ -76,6 +77,7 @@ func show_item(item: Dictionary) -> void:
 		_stat_icon.texture = preload("res://Sprites/Heart.webp")
 		_stat_icon.visible = true
 		_stat.text = "Full Heal" if ItemPickup.is_full_heal(item) else "+%d HP" % ItemPickup.get_healing_amount(item)
+		_stat.add_theme_color_override("font_color", Color.WHITE)
 		_stat.visible = true
 		_set_style(Color("777777"))
 		visible = true
@@ -89,6 +91,8 @@ func show_item(item: Dictionary) -> void:
 	_stat_icon.texture = preload("res://Sprites/DamageIcon.webp") if is_weapon else preload("res://Sprites/ArmorIcon.webp")
 	_stat_icon.visible = true
 	_stat.text = "+%d" % (ItemPickup.get_damage_bonus(item) if is_weapon else ItemPickup.get_block_amount(item))
+	var stat_colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+	_stat.add_theme_color_override("font_color", stat_colors[ItemPickup.get_stat_color(item)])
 	_stat.visible = true
 	_set_style(ItemPickup.get_grade_color(grade))
 	visible = true
@@ -104,6 +108,7 @@ func show_description(icon: Texture2D, title: String, description: String) -> vo
 	_rank.add_theme_color_override("font_color", Color.WHITE)
 	_stat_icon.visible = false
 	_stat.text = description
+	_stat.add_theme_color_override("font_color", Color.WHITE)
 	_stat.visible = not description.is_empty()
 	_set_style(Color("777777"))
 	visible = true

@@ -5,7 +5,7 @@ const LUCA_SHOP_SCRIPT := preload("res://Scripts/fox_luca_shop.gd")
 
 
 func _ready() -> void:
-	purchase_counts = [0, 0, 0, 0]
+	purchase_counts = [0, 0, 0, 0, 0]
 	super._ready()
 
 
@@ -37,9 +37,9 @@ func get_save_data() -> Array:
 func load_save_data(data: Array) -> bool:
 	purchase_counts = []
 	var old_order := data.size() >= 8
-	var count_indices := [3, 5, 1, 2] if old_order else [0, 1, 2, 3]
+	var count_indices := [3, 5, 1, 2, -1] if old_order else [0, 1, 2, 3, 4]
 	for index in count_indices:
-		purchase_counts.append(maxi(0, int(data[index])) if index < data.size() else 0)
+		purchase_counts.append(maxi(0, int(data[index])) if index >= 0 and index < data.size() else 0)
 	# Keep Luca at the position authored in the current scene. Saved coordinates
 	# are deliberately ignored so map edits take effect for existing saves.
 	_stop_patrol()

@@ -37,8 +37,8 @@ const GRADES := [
 ]
 
 const ITEM_DATA := {
-	"weathered_armor": {"block": 2, "slot": "armor"},
-	"weathered_sword": {"damage": 3, "slot": "weapon"},
+	"weathered_armor": {"block": 2, "slot": "armor", "color": FoxPlayer.COLOR_YELLOW},
+	"weathered_sword": {"damage": 3, "slot": "weapon", "color": FoxPlayer.COLOR_YELLOW},
 	"potion_basic": {"healing": 40, "slot": "consumable"},
 	"potion_rope": {"healing": 100, "slot": "consumable"},
 	"potion_bronze": {"healing": 240, "slot": "consumable"},
@@ -131,6 +131,10 @@ static func get_damage_bonus(item: Dictionary) -> int:
 
 static func get_block_amount(item: Dictionary) -> int:
 	return _scaled_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("block", 0)), get_item_grade(item))
+
+
+static func get_stat_color(item: Dictionary) -> int:
+	return clampi(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("color", FoxPlayer.COLOR_RED)), FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
 
 
 static func is_weapon(item_id: String) -> bool:

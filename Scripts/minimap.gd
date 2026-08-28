@@ -20,6 +20,13 @@ const FLOOR_COLORS := [
 
 var _world: WorldNavigation
 var _redraw_time_left := 0.0
+var _display_region_cache := Rect2i()
+var _tile_scale_cache := Vector2.ONE
+var _map_content_offset_cache := Vector2.ZERO
+var _map_rect_cache := Rect2()
+var _transform_world_id := 0
+var _transform_revision := -1
+var _transform_center_cell := Vector2i(2147483647, 2147483647)
 
 
 func _ready() -> void:
@@ -28,6 +35,7 @@ func _ready() -> void:
 	offset_top = 60.0
 	offset_right = -12.0
 	offset_bottom = 196.0
+	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	gui_input.connect(_on_gui_input)
 	call_deferred("_connect_world")
@@ -73,27 +81,26 @@ func _draw() -> void:
 			var npc_position := _world_to_minimap(npc.global_position, map_rect)
 			draw_circle(npc_position, 4.0, Color.BLACK)
 			draw_circle(npc_position, 2.5, NPC_COLOR)
-	var player_position := map_rect.get_center()
+	var player_position := _world_to_minimap(player.global_position, map_rect)
 	draw_circle(player_position, 3.5, Color.BLACK)
 	draw_circle(player_position, 2.0, Color.WHITE)
 
 
 func _draw_terrain(map_rect: Rect2, player_cell: Vector2i, tile_scale: Vector2) -> void:
-	var radius := int(VISIBLE_RADIUS_TILES)
-	for y in range(player_cell.y - radius, player_cell.y + radius + 1):
-		for x in range(player_cell.x - radius, player_cell.x + radius + 1):
-			var cell := Vector2i(x, y)
-			if not _world.is_cell_explored(cell):
-				continue
-			if not _world is DungeonLevel and not _world._navigation_region.has_point(cell):
-				continue
-			var center := map_rect.get_center() + Vector2(cell - player_cell) * tile_scale
-			var drawn_size := Vector2(maxf(1.0, tile_scale.x), maxf(1.0, tile_scale.y))
-			var cell_rect := Rect2(center - tile_scale * 0.5, drawn_size)
-			if _world is DungeonLevel or _world.floor_layer.get_cell_source_id(cell) != -1:
-				draw_rect(cell_rect, _get_floor_color(cell), true)
-			if _world.wall_layer.get_cell_source_id(cell) != -1:
-				draw_rect(cell_rect, DUNGEON_WALL_COLOR if _world is DungeonLevel else _get_wall_color(cell), true)
+	var cells: Array[Vector2i] = _world.call("get_map_cells") as Array[Vector2i] if _world.has_method("get_map_cells") else []
+	if cells.is_empty():
+		cells.append(player_cell)
+	var display_region := _get_display_region()
+	for cell in cells:
+		if not display_region.has_point(cell) or not _world.is_cell_explored(cell):
+			continue
+		var center := _world_to_minimap_unclamped(_world.cell_to_world(cell), map_rect)
+		var drawn_size := Vector2(maxf(1.0, tile_scale.x), maxf(1.0, tile_scale.y))
+		var cell_rect := Rect2(center - tile_scale * 0.5, drawn_size)
+		if _world is DungeonLevel or _world.floor_layer.get_cell_source_id(cell) != -1:
+			draw_rect(cell_rect, _get_floor_color(cell), true)
+		if _world.wall_layer.get_cell_source_id(cell) != -1:
+			draw_rect(cell_rect, DUNGEON_WALL_COLOR if _world is DungeonLevel else _get_wall_color(cell), true)
 
 
 func _get_floor_color(cell: Vector2i) -> Color:
@@ -118,9 +125,9 @@ func _get_wall_color(cell: Vector2i) -> Color:
 	return WATER_COLOR if source == 3 and atlas.y == 1 and atlas.x >= 3 else OBSTACLE_COLOR
 
 
-func _is_within_visible_range(world_position: Vector2, player_cell: Vector2i) -> bool:
-	var offset := _world.world_to_cell(world_position) - player_cell
-	return offset.length_squared() <= VISIBLE_RADIUS_TILES * VISIBLE_RADIUS_TILES
+func _is_within_visible_range(world_position: Vector2, _player_cell: Vector2i) -> bool:
+	var cell := _world.world_to_cell(world_position)
+	return _get_display_region().has_point(cell) and _world.is_cell_explored(cell)
 
 
 func _is_visible_marker(node: Node2D, player_cell: Vector2i) -> bool:
@@ -129,7 +136,40 @@ func _is_visible_marker(node: Node2D, player_cell: Vector2i) -> bool:
 
 
 func _get_tile_scale(map_rect: Rect2) -> Vector2:
-	return map_rect.size / (VISIBLE_RADIUS_TILES * 2.0 + 1.0)
+	_update_map_transform(map_rect)
+	return _tile_scale_cache
+
+
+func _get_display_region() -> Rect2i:
+	var diameter := int(VISIBLE_RADIUS_TILES * 2.0 + 1.0)
+	var player_cell := Vector2i.ZERO
+	if _world != null and is_instance_valid(_world.player):
+		player_cell = _world.world_to_cell(_world.player.global_position)
+	elif _world != null and _world.has_method("get_map_region"):
+		var map_region := _world.call("get_map_region") as Rect2i
+		player_cell = map_region.position + map_region.size / 2
+	return Rect2i(player_cell - Vector2i(diameter / 2, diameter / 2), Vector2i(diameter, diameter))
+
+
+func _update_map_transform(map_rect: Rect2) -> void:
+	if _world == null:
+		return
+	var world_id := _world.get_instance_id()
+	var revision := int(_world.call("get_map_revision")) if _world.has_method("get_map_revision") else 0
+	var center_cell := _world.world_to_cell(_world.player.global_position) if is_instance_valid(_world.player) else Vector2i.ZERO
+	if world_id == _transform_world_id and revision == _transform_revision and center_cell == _transform_center_cell and map_rect == _map_rect_cache:
+		return
+	_transform_world_id = world_id
+	_transform_revision = revision
+	_transform_center_cell = center_cell
+	_map_rect_cache = map_rect
+	_display_region_cache = _get_display_region()
+	var scale_value := minf(
+		map_rect.size.x / maxf(1.0, _display_region_cache.size.x),
+		map_rect.size.y / maxf(1.0, _display_region_cache.size.y)
+	)
+	_tile_scale_cache = Vector2.ONE * scale_value
+	_map_content_offset_cache = map_rect.position + (map_rect.size - Vector2(_display_region_cache.size) * _tile_scale_cache) * 0.5
 
 
 func _draw_player_path(map_rect: Rect2) -> void:
@@ -160,20 +200,16 @@ func _world_to_minimap(world_position: Vector2, map_rect: Rect2) -> Vector2:
 
 func _world_to_minimap_unclamped(world_position: Vector2, map_rect: Rect2) -> Vector2:
 	var cell := _world.world_to_cell(world_position)
-	var player := _world.player if _world else null
-	if player == null:
+	if _world == null or not is_instance_valid(_world.player):
 		return map_rect.get_center()
-	var player_cell := _world.world_to_cell(player.global_position)
-	var cell_offset := cell - player_cell
-	var tile_scale := _get_tile_scale(map_rect)
-	return map_rect.get_center() + Vector2(cell_offset) * tile_scale
+	_update_map_transform(map_rect)
+	return _map_content_offset_cache + (Vector2(cell - _display_region_cache.position) + Vector2.ONE * 0.5) * _tile_scale_cache
 
 
 func _minimap_to_cell(local_position: Vector2, map_rect: Rect2) -> Vector2i:
-	var player_cell := _world.world_to_cell(_world.player.global_position)
-	var tile_scale := _get_tile_scale(map_rect)
-	var offset := local_position - map_rect.get_center()
-	return player_cell + Vector2i(roundi(offset.x / tile_scale.x), roundi(offset.y / tile_scale.y))
+	_update_map_transform(map_rect)
+	var offset := local_position - _map_content_offset_cache
+	return _display_region_cache.position + Vector2i(floori(offset.x / _tile_scale_cache.x), floori(offset.y / _tile_scale_cache.y))
 
 
 func _on_gui_input(event: InputEvent) -> void:

@@ -5,10 +5,14 @@ signal dungeon_entered(dungeon_id: StringName)
 signal dungeon_left(dungeon_id: StringName)
 signal dungeon_state_changed(dungeon_id: StringName)
 signal dungeon_keys_changed(dungeon_id: StringName, amount: int)
+signal dungeons_reset_for_save_load
 
 const WARNING_TEXT := "You're about to enter a dungeon.\n\nIn a dungeon your stats are temporarily reset.\nYou will keep any rewards you gain during the dungeon.\nYour stats will be restored once you leave the dungeon again.\n\nLeave at any time through the map by pressing M/TAB."
 const CAVE_MOSS_ID := &"cave_moss"
 const CAVE_MOSS_INTERVAL := 600.0
+const COMPLETION_LIGHT_FADE_TIME := 1.0
+const COMPLETION_RISE_TIME := 3.0
+const COMPLETION_TRANSITION_DELAY := 2.5
 const TRANSITION_GROW_TIME := 0.42
 const TRANSITION_SHRINK_TIME := 0.24
 const TRANSITION_FADE_TIME := 0.20
@@ -17,6 +21,8 @@ const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 const HEALTH_ICON := preload("res://Sprites/Heart.webp")
 const REGEN_ICON := preload("res://Sprites/RecoveryHeart.webp")
 const DEFENSE_ICON := preload("res://Sprites/ShieldIcon.webp")
+const MANA_ICON := preload("res://Sprites/IconMana.webp")
+const MANA_REGEN_ICON := preload("res://Sprites/iconManaRegen.webp")
 const KEY_ICON := preload("res://Sprites/IconKey.webp")
 const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
 const FIRST_EXIT_TEXT := "Phew, that was intense! But fun!"
@@ -47,6 +53,7 @@ var _tutorial_overlay: Control
 var _tutorial_button: Button
 var _tutorial_pending_entrance: DungeonEntrance
 var _transitioning := false
+var _completion_exit_running := false
 
 @onready var _world: WorldNavigation = get_parent() as WorldNavigation
 
@@ -70,7 +77,7 @@ func _input(event: InputEvent) -> void:
 				_confirm_dungeon_tutorial()
 				get_viewport().set_input_as_handled()
 		return
-	if not is_dungeon_active() or not event is InputEventKey or not event.pressed or event.echo:
+	if not is_dungeon_active() or _transitioning or not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key_event := event as InputEventKey
 	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
@@ -109,6 +116,7 @@ func get_active_dungeon_id() -> StringName:
 
 func request_enter(entrance: DungeonEntrance) -> void:
 	if entrance == null or entrance.dungeon_scene == null or is_dungeon_active() or _transitioning \
+		or is_cleared(entrance.dungeon_id) \
 		or (is_instance_valid(_tutorial_overlay) and _tutorial_overlay.visible):
 		return
 	_active_entrance = entrance
@@ -119,7 +127,8 @@ func request_enter(entrance: DungeonEntrance) -> void:
 
 
 func _begin_entry(entrance: DungeonEntrance) -> void:
-	if entrance == null or entrance.dungeon_scene == null or is_dungeon_active() or _transitioning:
+	if entrance == null or entrance.dungeon_scene == null or is_dungeon_active() or _transitioning \
+			or is_cleared(entrance.dungeon_id):
 		return
 	_active_entrance = entrance
 	_transitioning = true
@@ -150,6 +159,7 @@ func _begin_entry(entrance: DungeonEntrance) -> void:
 
 func _open_dungeon(entrance: DungeonEntrance) -> void:
 	var player := _world.player
+	_hide_overworld_popups()
 	_active_id = entrance.dungeon_id
 	_overworld_stats = _capture_stats(player)
 	_player_parent = player.get_parent()
@@ -169,6 +179,11 @@ func _open_dungeon(entrance: DungeonEntrance) -> void:
 		return
 	_active_level = instance as DungeonLevel
 	_subviewport.add_child(_active_level)
+	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+	if story:
+		for child in _active_level.get_children():
+			if child is EnemySpawnPoint:
+				story._connect_enemy_story_spawn(child as EnemySpawnPoint)
 	if _camera:
 		_overworld_camera_screen_position = _camera.get_screen_center_position()
 		_camera.reparent(_world, true)
@@ -211,6 +226,18 @@ func _open_dungeon(entrance: DungeonEntrance) -> void:
 	dungeon_entered.emit(_active_id)
 
 
+func _hide_overworld_popups() -> void:
+	var item_tooltip := _world.get_node_or_null("HUD/ItemTooltip") as ItemTooltip
+	if item_tooltip:
+		item_tooltip.hide_item()
+	var build_tooltip := _world.get_node_or_null("HUD/BuildMineTooltip") as BuildMineTooltip
+	if build_tooltip:
+		build_tooltip.hide_tooltip()
+	var enemy_tooltip := _world.get_node_or_null("HUD/EnemyDropTooltip") as EnemyDropTooltip
+	if enemy_tooltip:
+		enemy_tooltip.hide()
+
+
 func leave_dungeon(dungeon_animation_remaining := 0.0) -> void:
 	if not is_dungeon_active() or _transitioning:
 		return
@@ -233,6 +260,10 @@ func leave_dungeon(dungeon_animation_remaining := 0.0) -> void:
 	var transferred := state.get("transferred_stats", _make_reset_stats()) as Dictionary
 	var rewards := _collect_stat_rewards(transferred, dungeon_stats)
 	state["transferred_stats"] = dungeon_stats.duplicate(true)
+	if bool(state.get("cleared", false)):
+		# Completion is permanent, but a completed layout no longer needs enemy,
+		# chest, door, exploration, key, or temporary-stat snapshot data.
+		state = {"cleared": true}
 	dungeon_states[str(leaving_id)] = state
 	_refresh_cave_moss_production()
 	dungeon_state_changed.emit(leaving_id)
@@ -286,6 +317,82 @@ func leave_dungeon(dungeon_animation_remaining := 0.0) -> void:
 	var save_system := get_tree().get_first_node_in_group("save_system") as SaveSystem
 	if save_system and save_system._automatic_saves_enabled:
 		save_system.save_auto()
+
+
+func request_completed_dungeon_exit() -> void:
+	if not is_dungeon_active() or _transitioning or _completion_exit_running:
+		return
+	var state := _get_or_create_state(_active_id)
+	state["cleared"] = true
+	dungeon_states[str(_active_id)] = state
+	_refresh_cave_moss_production()
+	dungeon_state_changed.emit(_active_id)
+	_completion_exit_running = true
+	call_deferred("_play_completed_dungeon_exit")
+
+
+func _play_completed_dungeon_exit() -> void:
+	if not is_dungeon_active() or not is_instance_valid(_world.player):
+		_completion_exit_running = false
+		return
+	_transitioning = true
+	_active_level.interaction_locked = true
+	_active_level.set_process(false)
+	var player := _world.player
+	player.stop()
+	player.begin_scripted_movement()
+	var original_sprite_rotation := player.fox_sprite.rotation
+	var original_sprite_scale := player.fox_sprite.scale
+	var original_sprite_modulate := player.fox_sprite.modulate
+	var beam := Node2D.new()
+	beam.name = "DungeonCompletionLight"
+	beam.z_index = 70
+	_active_level.add_child(beam)
+	beam.global_position = player.global_position
+	var light := Polygon2D.new()
+	light.polygon = PackedVector2Array([
+		Vector2(-150, 38), Vector2(150, 38), Vector2(70, -900), Vector2(-70, -900),
+	])
+	light.color = Color(1.0, 0.98, 0.78, 0.0)
+	beam.add_child(light)
+	var core := Polygon2D.new()
+	core.polygon = PackedVector2Array([
+		Vector2(-58, 34), Vector2(58, 34), Vector2(28, -900), Vector2(-28, -900),
+	])
+	core.color = Color(1.0, 1.0, 1.0, 0.0)
+	beam.add_child(core)
+	var shine := create_tween().set_parallel(true)
+	shine.tween_property(light, "color:a", 0.5, COMPLETION_LIGHT_FADE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	shine.tween_property(core, "color:a", 0.5, COMPLETION_LIGHT_FADE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	shine.tween_property(player.fox_sprite, "modulate", Color(1.2, 1.18, 1.05, 1.0), COMPLETION_LIGHT_FADE_TIME)
+	await shine.finished
+	if not is_instance_valid(player) or not is_instance_valid(_active_level):
+		_completion_exit_running = false
+		_transitioning = false
+		return
+	var rise_distance := float(_subviewport.size.y) + 180.0
+	var rise := create_tween().set_parallel(true)
+	rise.tween_property(player, "global_position:y", player.global_position.y - rise_distance, COMPLETION_RISE_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	rise.tween_property(player.fox_sprite, "scale", original_sprite_scale * 0.82, COMPLETION_RISE_TIME).set_trans(Tween.TRANS_SINE)
+	# The old turn covered 0.18 radians in six seconds. Covering 0.27 radians
+	# in three seconds makes that rotation exactly three times as fast.
+	rise.tween_property(player.fox_sprite, "rotation", original_sprite_rotation + 0.27, COMPLETION_RISE_TIME).set_trans(Tween.TRANS_SINE)
+	rise.finished.connect(func() -> void:
+		if is_instance_valid(player.fox_sprite):
+			player.fox_sprite.rotation = original_sprite_rotation
+			player.fox_sprite.scale = original_sprite_scale
+			player.fox_sprite.modulate = original_sprite_modulate
+	, CONNECT_ONE_SHOT)
+	await get_tree().create_timer(COMPLETION_TRANSITION_DELAY).timeout
+	_transitioning = false
+	_completion_exit_running = false
+	await leave_dungeon(COMPLETION_RISE_TIME - COMPLETION_TRANSITION_DELAY)
+	if is_instance_valid(beam):
+		beam.queue_free()
+	if is_instance_valid(player.fox_sprite):
+		player.fox_sprite.rotation = original_sprite_rotation
+		player.fox_sprite.scale = original_sprite_scale
+		player.fox_sprite.modulate = original_sprite_modulate
 
 
 func _play_overworld_exit_animation(player: FoxPlayer, destination: Vector2) -> void:
@@ -350,17 +457,124 @@ func is_cleared(dungeon_id: StringName) -> bool:
 	return bool(_get_or_create_state(dungeon_id).get("cleared", false))
 
 
+func reset_for_save_load() -> void:
+	# Clear every live snapshot before any incoming player/world state is applied,
+	# then let that save's dungeon payload repopulate only the runs it contains.
+	dungeon_states.clear()
+	_last_moss_timestamp = int(Time.get_unix_time_from_system())
+	dungeons_reset_for_save_load.emit()
+
+
+func prepare_for_save_load() -> void:
+	if not is_dungeon_active():
+		return
+	var player := _world.player
+	player.stop()
+	player.clear_attack_target()
+	var dialogue := get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
+	if dialogue and dialogue.is_open():
+		dialogue.close()
+	var world_map := _world.get_node_or_null("HUD/WorldMap") as WorldMap
+	if world_map:
+		world_map.close()
+	var destination_parent := _player_parent if is_instance_valid(_player_parent) else _world
+	player.reparent(destination_parent, false)
+	if destination_parent == _player_parent:
+		_player_parent.move_child(player, mini(_player_sibling_index, _player_parent.get_child_count() - 1))
+	if _camera:
+		_camera.reparent(player, true)
+		_camera.position = Vector2.ZERO
+		_camera.position_smoothing_speed = _camera_smoothing_speed
+		_camera.position_smoothing_enabled = _camera_smoothing_enabled
+		_camera.reset_smoothing()
+		_camera.force_update_scroll()
+	_key_panel.hide()
+	_container.hide()
+	_subviewport.remove_child(_active_level)
+	_active_level.free()
+	_active_level = null
+	_dungeon_camera = null
+	_active_id = &""
+	_active_entrance = null
+	_transitioning = false
+	_completion_exit_running = false
+	_world.interaction_locked = false
+	player.end_scripted_movement()
+
+
 func get_save_data() -> Array:
-	return [tutorial_seen, dungeon_states.duplicate(true), int(Time.get_unix_time_from_system()), first_exit_comment_seen]
+	_capture_active_state_for_save()
+	var saved_states: Dictionary = {}
+	for key in dungeon_states:
+		var state := dungeon_states[key] as Dictionary
+		if bool(state.get("cleared", false)):
+			saved_states[str(key)] = {"cleared": true}
+			continue
+		var raw_snapshot: Variant = state.get("level", {})
+		var snapshot := raw_snapshot as Dictionary if raw_snapshot is Dictionary else {}
+		if not snapshot.is_empty():
+			saved_states[str(key)] = state.duplicate(true)
+	return [tutorial_seen, saved_states, int(Time.get_unix_time_from_system()), first_exit_comment_seen, str(_active_id)]
+
+
+func get_player_save_data_for_save() -> Array:
+	var player_data := _world.player.get_save_data()
+	if not is_dungeon_active() or _overworld_stats.is_empty():
+		return player_data
+	# The world payload is the safe staging state used while rebuilding a saved
+	# dungeon. Dungeon-local position, vitals, and combat state live in its snapshot.
+	player_data[0] = roundi(_overworld_position.x)
+	player_data[1] = roundi(_overworld_position.y)
+	player_data[2] = int(_overworld_stats.get("health", player_data[2]))
+	player_data[3] = int(_overworld_stats.get("max_health", player_data[3]))
+	player_data[4] = int(_overworld_stats.get("regeneration", player_data[4]))
+	var flattened_damage: Array[int] = []
+	for color_values in _overworld_stats.get("damage", []) as Array:
+		for value in color_values as Array:
+			flattened_damage.append(int(value))
+	if not flattened_damage.is_empty():
+		player_data[6] = flattened_damage
+	player_data[14] = int((_overworld_stats.get("defense", [0]) as Array)[0])
+	player_data[15] = (_overworld_stats.get("defense", [0, 0, 0]) as Array).duplicate()
+	player_data[24] = int(_overworld_stats.get("mana", player_data[24]))
+	player_data[25] = int(_overworld_stats.get("max_mana", player_data[25]))
+	player_data[26] = int(_overworld_stats.get("mana_regeneration", player_data[26]))
+	return player_data
+
+
+func _capture_active_state_for_save() -> void:
+	if not is_dungeon_active() or _active_id.is_empty():
+		return
+	var state := _get_or_create_state(_active_id)
+	state["stats"] = _capture_stats(_world.player)
+	state["level"] = _active_level.capture_snapshot()
+	# Completion and reward transfer are finalized by the normal exit flow.
+	# Until then, retain the live snapshot so no gained state can be discarded.
+	dungeon_states[str(_active_id)] = state
 
 
 func load_save_data(data: Array, offline_seconds: int) -> bool:
 	if data.is_empty():
 		return false
 	tutorial_seen = bool(data[0])
-	dungeon_states = (data[1] as Dictionary).duplicate(true) if data.size() > 1 and data[1] is Dictionary else {}
+	# Keep this clear as a defensive replacement boundary for direct callers;
+	# SaveSystem has already reset the collection before applying world data.
+	dungeon_states.clear()
+	var saved_states := data[1] as Dictionary if data.size() > 1 and data[1] is Dictionary else {}
+	for key in saved_states:
+		if not saved_states[key] is Dictionary:
+			continue
+		var state := saved_states[key] as Dictionary
+		if bool(state.get("cleared", false)):
+			dungeon_states[str(key)] = {"cleared": true}
+			continue
+		var raw_snapshot: Variant = state.get("level", {})
+		var snapshot := raw_snapshot as Dictionary if raw_snapshot is Dictionary else {}
+		if not snapshot.is_empty():
+			dungeon_states[str(key)] = state.duplicate(true)
 	_last_moss_timestamp = int(data[2]) if data.size() > 2 else int(Time.get_unix_time_from_system()) - offline_seconds
 	first_exit_comment_seen = bool(data[3]) if data.size() > 3 else false
+	var saved_active_id := StringName(str(data[4])) if data.size() > 4 else &""
 	var cleared_count := _get_cleared_count()
 	if cleared_count > 0 and offline_seconds > 0:
 		var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
@@ -368,7 +582,33 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 			resources.add_resource(CAVE_MOSS_ID, float(offline_seconds * cleared_count) / CAVE_MOSS_INTERVAL)
 	_refresh_cave_moss_production()
 	dungeon_state_changed.emit(&"")
+	if not saved_active_id.is_empty() and dungeon_states.has(str(saved_active_id)):
+		call_deferred("_restore_loaded_active_dungeon", saved_active_id)
 	return true
+
+
+func _restore_loaded_active_dungeon(dungeon_id: StringName) -> void:
+	if is_dungeon_active() or _transitioning or not dungeon_states.has(str(dungeon_id)):
+		return
+	var state := dungeon_states[str(dungeon_id)] as Dictionary
+	if bool(state.get("cleared", false)) or not state.get("level", {}) is Dictionary \
+			or (state.get("level", {}) as Dictionary).is_empty():
+		return
+	var entrance: DungeonEntrance
+	for node in get_tree().get_nodes_in_group("dungeon_entrances"):
+		if node is DungeonEntrance and (node as DungeonEntrance).dungeon_id == dungeon_id:
+			entrance = node as DungeonEntrance
+			break
+	if entrance == null or entrance.dungeon_scene == null:
+		push_warning("Could not restore dungeon %s because its entrance is unavailable." % dungeon_id)
+		return
+	_active_entrance = entrance
+	_overworld_position = _world.player.global_position
+	_transitioning = true
+	_world.interaction_locked = true
+	_world.player.stop()
+	_world.player.begin_scripted_movement()
+	await _open_dungeon(entrance)
 
 
 func _get_or_create_state(dungeon_id: StringName) -> Dictionary:
@@ -382,7 +622,19 @@ func _get_or_create_state(dungeon_id: StringName) -> Dictionary:
 			"level": {},
 			"cleared": false,
 		}
-	return dungeon_states[key] as Dictionary
+	var state := dungeon_states[key] as Dictionary
+	_migrate_legacy_defense_baseline(state)
+	return state
+
+
+func _migrate_legacy_defense_baseline(state: Dictionary) -> void:
+	var stats := state.get("stats", {}) as Dictionary
+	var transferred := state.get("transferred_stats", {}) as Dictionary
+	var defense := stats.get("defense", []) as Array
+	var transferred_defense := transferred.get("defense", []) as Array
+	if defense == [1, 1, 1] and transferred_defense == [1, 1, 1]:
+		stats["defense"] = [0, 0, 0]
+		transferred["defense"] = [0, 0, 0]
 
 
 func _capture_stats(player: FoxPlayer) -> Dictionary:
@@ -390,6 +642,9 @@ func _capture_stats(player: FoxPlayer) -> Dictionary:
 		"health": player.health,
 		"max_health": player.max_health,
 		"regeneration": player.passive_healing_amount,
+		"mana": player.mana,
+		"max_mana": player.max_mana,
+		"mana_regeneration": player.passive_mana_regeneration_amount,
 		"damage": player.damage_by_color.duplicate(true),
 		"defense": player.defense_by_color.duplicate(),
 	}
@@ -397,27 +652,34 @@ func _capture_stats(player: FoxPlayer) -> Dictionary:
 
 func _make_reset_stats() -> Dictionary:
 	return {
-		"health": 1,
-		"max_health": 1,
+		"health": 10,
+		"max_health": 10,
 		"regeneration": 1,
+		"mana": 10,
+		"max_mana": 10,
+		"mana_regeneration": 1,
 		"damage": [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
-		"defense": [1, 1, 1],
+		"defense": [0, 0, 0],
 	}
 
 
 func _apply_stats(player: FoxPlayer, stats: Dictionary) -> void:
-	player.max_health = maxi(1, int(stats.get("max_health", 1)))
+	player.max_health = maxi(1, int(stats.get("max_health", 10)))
 	player.passive_healing_amount = maxi(1, int(stats.get("regeneration", 1)))
+	player.max_mana = maxi(1, int(stats.get("max_mana", 10)))
+	player.mana = clampi(int(stats.get("mana", player.max_mana)), 0, player.max_mana)
+	player.passive_mana_regeneration_amount = maxi(1, int(stats.get("mana_regeneration", 1)))
 	var raw_damage := stats.get("damage", [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]) as Array
 	player.damage_by_color = raw_damage.duplicate(true)
-	var raw_defense := stats.get("defense", [1, 1, 1]) as Array
+	var raw_defense := stats.get("defense", [0, 0, 0]) as Array
 	player.defense_by_color.clear()
 	for value in raw_defense:
 		player.defense_by_color.append(maxi(0, int(value)))
 	while player.defense_by_color.size() < 3:
-		player.defense_by_color.append(1)
+		player.defense_by_color.append(0)
 	player.attack_damage = player.get_damage_for_color(FoxPlayer.COLOR_RED)
 	player.health_bar.max_value = player.max_health
+	player._update_mana_display()
 	player.damage_matrix_changed.emit()
 
 
@@ -429,6 +691,12 @@ func _collect_stat_rewards(previous: Dictionary, current: Dictionary) -> Array[D
 	var regen_delta := int(current.get("regeneration", 1)) - int(previous.get("regeneration", 1))
 	if regen_delta > 0:
 		rewards.append({"kind": "regeneration", "amount": regen_delta, "icon": REGEN_ICON})
+	var mana_delta := int(current.get("max_mana", 10)) - int(previous.get("max_mana", 10))
+	if mana_delta > 0:
+		rewards.append({"kind": "mana", "amount": mana_delta, "icon": MANA_ICON})
+	var mana_regen_delta := int(current.get("mana_regeneration", 1)) - int(previous.get("mana_regeneration", 1))
+	if mana_regen_delta > 0:
+		rewards.append({"kind": "mana_regeneration", "amount": mana_regen_delta, "icon": MANA_REGEN_ICON})
 	var old_damage := previous.get("damage", []) as Array
 	var new_damage := current.get("damage", []) as Array
 	for color in range(mini(old_damage.size(), new_damage.size())):
@@ -487,7 +755,8 @@ func _get_reward_target(reward: Dictionary) -> Vector2:
 		var armor = _world.get_node_or_null("HUD/ArmorGrid")
 		return armor.get_color_target_screen_position(int(reward.get("color", 0))) if armor else Vector2(90, 42)
 	var vitals := _world.get_node_or_null("HUD/PlayerVitals") as PlayerVitals
-	return vitals.get_stat_target_screen_position(&"regeneration" if kind == "regeneration" else &"health") if vitals else Vector2(60, 120)
+	var stat_id := &"mana_regeneration" if kind == "mana_regeneration" else &"mana" if kind == "mana" else &"regeneration" if kind == "regeneration" else &"health"
+	return vitals.get_stat_target_screen_position(stat_id) if vitals else Vector2(60, 120)
 
 
 func _apply_single_stat_reward(reward: Dictionary) -> void:
@@ -498,6 +767,10 @@ func _apply_single_stat_reward(reward: Dictionary) -> void:
 			player.add_max_health(amount)
 		"regeneration":
 			player.add_passive_healing(amount)
+		"mana":
+			player.add_max_mana(amount)
+		"mana_regeneration":
+			player.add_passive_mana_regeneration(amount)
 		"damage":
 			var color := int(reward.get("color", 0))
 			var weapon := int(reward.get("weapon", 0))

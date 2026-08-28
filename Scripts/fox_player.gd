@@ -5,6 +5,30 @@ const DAMAGE_POPUP_SCENE := preload("res://Scenes/damage_popup.tscn")
 const COLOR_RED := 0
 const COLOR_YELLOW := 1
 const COLOR_BLUE := 2
+const SKILL_ROLL_CLOCKWISE := &"roll_clockwise"
+const SKILL_YELLOW_GUARD := &"yellow_guard"
+const SKILL_ROLL_BACK := &"roll_back"
+const SKILL_ROLL_ARC := &"roll_arc"
+const PLAYER_SKILL_IDS: Array[StringName] = [SKILL_ROLL_CLOCKWISE, SKILL_YELLOW_GUARD, SKILL_ROLL_BACK, SKILL_ROLL_ARC]
+const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const SKILL_DATA := {
+	SKILL_ROLL_CLOCKWISE: {
+		"name": "Quick Roll", "description": "Roll clockwise to the next tile around your target, or counter-clockwise if that tile is blocked. You cannot take damage during the roll.",
+		"icon": preload("res://Sprites/skillRoll.webp"), "mana": 5, "cooldown": 4.0,
+	},
+	SKILL_YELLOW_GUARD: {
+		"name": "Golden Guard", "description": "Create a golden circle for 1 second that blocks all yellow damage.",
+		"icon": preload("res://Sprites/IconSkillBook.webp"), "mana": 15, "cooldown": 12.0,
+	},
+	SKILL_ROLL_BACK: {
+		"name": "Back Roll", "description": "Roll two tiles away from your current enemy target. You cannot take damage during the roll.",
+		"icon": preload("res://Sprites/iconBackwardsRoll.webp"), "mana": 5, "cooldown": 4.0,
+	},
+	SKILL_ROLL_ARC: {
+		"name": "Arc Roll", "description": "Roll clockwise around your target to the opposite tile. You cannot take damage during the roll.",
+		"icon": preload("res://Sprites/skillRoll.webp"), "mana": 5, "cooldown": 4.0,
+	},
+}
 
 signal damage_matrix_changed
 signal vitals_changed
@@ -15,6 +39,8 @@ signal merge_targets_changed(dragged_item: Dictionary, source_storage: String, s
 signal merge_completed(merged_item: Dictionary, target_storage: String, target_index: int)
 signal duplicate_equipment_found
 signal auto_fight_changed
+signal skills_changed
+signal mana_changed
 
 @export var move_speed := 280.0
 @export var max_health := 10
@@ -24,6 +50,14 @@ signal auto_fight_changed
 
 var health: int
 var passive_healing_amount := 1
+var max_mana := 10
+var mana := 10
+var passive_mana_regeneration_amount := 1
+var unlocked_player_skills: Array[StringName] = []
+var equipped_player_skills: Array[StringName] = [&"", &"", &"", &""]
+var player_skill_slots_unlocked := [true, false, false, false]
+var equipment_slots_unlocked := 1
+var skill_swap_tutorial_seen := false
 var current_weapon_index := 0
 var damage_by_color := [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]
 var defense_by_color: Array[int] = [0, 0, 0]
@@ -41,6 +75,9 @@ var weapon_ever_equipped := [false, false, false, false]
 var armor_ever_equipped := false
 var merge_count := 0
 var duplicate_equipment_tutorial_seen := false
+var enemy_skill_move_tutorial_seen := false
+var cascading_sweep_skill_tutorial_seen := false
+var snare_without_quick_roll_tutorial_seen := false
 var auto_fight_unlocked := false
 var auto_fight_enabled := false
 var _weapon_cooldowns := [0.0, 0.0, 0.0, 0.0]
@@ -67,10 +104,35 @@ var _scripted_movement := false
 var _death_overlay: ColorRect
 var _auto_fight_range_fill: Polygon2D
 var _auto_fight_range_border: Line2D
+var _skill_cooldowns: Dictionary = {}
+var _mana_regen_time_left := 3.0
+var _skill_casting := false
+var _skill_invulnerable := false
+var _yellow_guard_time_left := 0.0
+var _yellow_guard_ring: Line2D
+var _skill_visual_tween: Tween
+var _last_skill_cast_failure := ""
+var _roll_start := Vector2.ZERO
+var _roll_end := Vector2.ZERO
+var _roll_center := Vector2.ZERO
+var _roll_start_angle := 0.0
+var _roll_arc_angle := 0.0
+var _roll_is_arc := false
+var _roll_sprite_start_rotation := 0.0
+var _roll_rotation_turns := 1.0
+var _roll_skill_id: StringName = &""
+var _roll_trail: Line2D
+var _roll_afterimage_progress := -1.0
+var _snare_sources: Dictionary = {}
+var _snare_ring: Line2D
+var _snare_label: Label
+var _snare_shake_tween: Tween
 
 @onready var fox_sprite: Sprite2D = $FoxSprite
 @onready var health_bar: ProgressBar = $HealthBar
 @onready var health_label: Label = $HealthLabel
+@onready var mana_bar: ProgressBar = $ManaBar
+@onready var mana_label: Label = $ManaLabel
 
 
 func _ready() -> void:
@@ -80,6 +142,10 @@ func _ready() -> void:
 	health_bar.max_value = max_health
 	health_bar.value = health
 	_update_health_label()
+	mana = max_mana
+	mana_bar.max_value = max_mana
+	mana_bar.value = mana
+	_update_mana_display()
 	attack_damage = get_damage_for_color(COLOR_RED)
 	_combat_ring = _create_combat_ring(Color.WHITE)
 	add_child(_combat_ring)
@@ -91,6 +157,9 @@ func _ready() -> void:
 
 
 func follow_path(points: PackedVector2Array) -> void:
+	if is_snared() and not points.is_empty():
+		_play_snare_blocked_feedback()
+		return
 	_path = points
 	_path_index = 0
 	if not points.is_empty():
@@ -119,6 +188,9 @@ func end_scripted_movement() -> void:
 
 
 func follow_enemy(enemy: ChickenEnemy) -> void:
+	if is_snared():
+		_play_snare_blocked_feedback()
+		return
 	_attack_target = enemy
 	_target_cell = Vector2i(-999999, -999999)
 	_update_enemy_chase()
@@ -143,17 +215,29 @@ func get_remaining_path_points() -> PackedVector2Array:
 
 
 func take_damage(amount: int, color_index := COLOR_RED) -> void:
-	if health <= 0 or _is_dying:
-		return
+	_apply_damage(amount, color_index, false, Vector2.ZERO)
+
+
+func take_skill_damage(amount: int, color_index: int, impact_direction: Vector2) -> bool:
+	return _apply_damage(amount, color_index, true, impact_direction)
+
+
+func _apply_damage(amount: int, color_index: int, skill_hit: bool, impact_direction: Vector2) -> bool:
+	if health <= 0 or _is_dying or _skill_invulnerable:
+		return false
+	if color_index == COLOR_YELLOW and _yellow_guard_time_left > 0.0:
+		_play_guard_block_feedback()
+		return false
 	var applied_damage := maxi(1, amount - get_defense_for_color(color_index))
 	var blocked_damage := maxi(0, amount - applied_damage)
 	health = max(0, health - applied_damage)
 	health_bar.value = health
 	_update_health_label()
 	vitals_changed.emit()
-	_show_damage_popup(amount, color_index, blocked_damage)
+	_show_damage_popup(amount, color_index, blocked_damage, skill_hit, impact_direction)
 	if health == 0:
 		_begin_death_sequence()
+	return true
 
 
 func heal(amount: int) -> void:
@@ -226,6 +310,494 @@ func add_passive_healing(amount: int) -> void:
 	var progress_left := clampf(_heal_time_left / old_interval, 0.0, 1.0)
 	_heal_time_left = _get_passive_heal_interval() * progress_left
 	vitals_changed.emit()
+
+
+func add_max_mana(amount: int) -> void:
+	if amount == 0:
+		return
+	var old_maximum := max_mana
+	max_mana = maxi(1, max_mana + amount)
+	if max_mana > old_maximum:
+		mana = mini(max_mana, mana + max_mana - old_maximum)
+	else:
+		mana = mini(mana, max_mana)
+	_update_mana_display()
+	mana_changed.emit()
+	vitals_changed.emit()
+
+
+func add_passive_mana_regeneration(amount: int) -> void:
+	if amount == 0:
+		return
+	var old_interval := _get_passive_mana_regeneration_interval()
+	passive_mana_regeneration_amount = maxi(1, passive_mana_regeneration_amount + amount)
+	var progress_left := clampf(_mana_regen_time_left / old_interval, 0.0, 1.0)
+	_mana_regen_time_left = _get_passive_mana_regeneration_interval() * progress_left
+	mana_changed.emit()
+	vitals_changed.emit()
+
+
+func restore_mana(amount: int) -> void:
+	if amount <= 0 or mana >= max_mana:
+		return
+	mana = mini(max_mana, mana + amount)
+	_update_mana_display()
+	mana_changed.emit()
+	vitals_changed.emit()
+
+
+func unlock_player_skill(skill_id: StringName) -> bool:
+	if not SKILL_DATA.has(skill_id) or unlocked_player_skills.has(skill_id):
+		return false
+	unlocked_player_skills.append(skill_id)
+	for index in range(equipped_player_skills.size()):
+		if bool(player_skill_slots_unlocked[index]) and equipped_player_skills[index].is_empty():
+			equipped_player_skills[index] = skill_id
+			break
+	_update_mana_display()
+	skills_changed.emit()
+	mana_changed.emit()
+	return true
+
+
+func unlock_player_skill_slot(index: int) -> bool:
+	if index < 0 or index >= player_skill_slots_unlocked.size() or bool(player_skill_slots_unlocked[index]):
+		return false
+	player_skill_slots_unlocked[index] = true
+	skills_changed.emit()
+	return true
+
+
+func unlock_next_player_skill_slots(amount := 1) -> int:
+	var unlocked := 0
+	for index in range(player_skill_slots_unlocked.size()):
+		if unlocked >= maxi(0, amount):
+			break
+		if unlock_player_skill_slot(index):
+			unlocked += 1
+	return unlocked
+
+
+func unlock_inventory_slots(amount := 1) -> int:
+	var unlocked := maxi(0, amount)
+	for _index in range(unlocked):
+		inventory_slots.append({})
+	if unlocked > 0:
+		inventory_changed.emit()
+	return unlocked
+
+
+func unlock_equipment_slots(amount := 1) -> int:
+	var previous := equipment_slots_unlocked
+	equipment_slots_unlocked = mini(4, equipment_slots_unlocked + maxi(0, amount))
+	var unlocked := equipment_slots_unlocked - previous
+	if unlocked > 0:
+		equipment_changed.emit()
+	return unlocked
+
+
+func is_equipment_slot_unlocked(index: int) -> bool:
+	return index >= 0 and index < equipment_slots_unlocked
+
+
+func complete_skill_swap_tutorial() -> void:
+	if skill_swap_tutorial_seen:
+		return
+	skill_swap_tutorial_seen = true
+	skills_changed.emit()
+
+
+func equip_player_skill(slot_index: int, skill_id: StringName) -> bool:
+	if slot_index < 0 or slot_index >= equipped_player_skills.size() or not bool(player_skill_slots_unlocked[slot_index]) \
+		or not unlocked_player_skills.has(skill_id):
+		return false
+	var existing_slot := equipped_player_skills.find(skill_id)
+	if existing_slot >= 0 and existing_slot != slot_index:
+		var replaced := equipped_player_skills[slot_index]
+		equipped_player_skills[existing_slot] = replaced
+	equipped_player_skills[slot_index] = skill_id
+	skills_changed.emit()
+	return true
+
+
+func swap_player_skill_slots(first: int, second: int) -> bool:
+	if first < 0 or second < 0 or first >= 4 or second >= 4 \
+		or not bool(player_skill_slots_unlocked[first]) or not bool(player_skill_slots_unlocked[second]):
+		return false
+	var first_skill := equipped_player_skills[first]
+	equipped_player_skills[first] = equipped_player_skills[second]
+	equipped_player_skills[second] = first_skill
+	skills_changed.emit()
+	return true
+
+
+func has_unlocked_player_skill() -> bool:
+	return not unlocked_player_skills.is_empty()
+
+
+func get_player_skill_data(skill_id: StringName) -> Dictionary:
+	return SKILL_DATA.get(skill_id, {}) as Dictionary
+
+
+func get_player_skill_cooldown_ratio(slot_index: int) -> float:
+	if slot_index < 0 or slot_index >= equipped_player_skills.size():
+		return 0.0
+	var skill_id := equipped_player_skills[slot_index]
+	var data := get_player_skill_data(skill_id)
+	if data.is_empty():
+		return 0.0
+	return clampf(float(_skill_cooldowns.get(skill_id, 0.0)) / maxf(float(data.get("cooldown", 1.0)), 0.01), 0.0, 1.0)
+
+
+func cast_player_skill_slot(slot_index: int) -> bool:
+	_last_skill_cast_failure = ""
+	if slot_index < 0 or slot_index >= equipped_player_skills.size() or not bool(player_skill_slots_unlocked[slot_index]):
+		return _fail_player_skill_cast("Locked")
+	if _skill_casting:
+		return _fail_player_skill_cast("Busy")
+	var skill_id := equipped_player_skills[slot_index]
+	var data := get_player_skill_data(skill_id)
+	if data.is_empty():
+		return _fail_player_skill_cast("Empty")
+	if float(_skill_cooldowns.get(skill_id, 0.0)) > 0.0:
+		return _fail_player_skill_cast("Cooling Down")
+	var mana_cost := int(data.get("mana", 0))
+	if mana < mana_cost:
+		return _fail_player_skill_cast("No Mana")
+	var cast_plan := _build_player_skill_cast_plan(skill_id)
+	if cast_plan.is_empty():
+		if _last_skill_cast_failure.is_empty():
+			_last_skill_cast_failure = "No Target"
+		return _fail_player_skill_cast(_last_skill_cast_failure)
+	if skill_id != SKILL_YELLOW_GUARD:
+		break_snare()
+		var skill_target := cast_plan.get("target") as ChickenEnemy
+		if is_instance_valid(skill_target):
+			skill_target.consume_pending_cascading_sweep_tutorial(skill_id)
+	mana -= mana_cost
+	_skill_cooldowns[skill_id] = float(data.get("cooldown", 0.0))
+	_update_mana_display()
+	_play_mana_spend_feedback()
+	mana_changed.emit()
+	if skill_id == SKILL_YELLOW_GUARD:
+		_begin_yellow_guard()
+	else:
+		_begin_player_roll(cast_plan)
+	return true
+
+
+func _fail_player_skill_cast(reason: String) -> bool:
+	_last_skill_cast_failure = reason
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_skill_unavailable()
+	return false
+
+
+func prepare_player_skill_slot_for_tutorial(slot_index: int) -> bool:
+	if slot_index < 0 or slot_index >= equipped_player_skills.size() or not bool(player_skill_slots_unlocked[slot_index]):
+		return false
+	var skill_id := equipped_player_skills[slot_index]
+	var data := get_player_skill_data(skill_id)
+	if data.is_empty():
+		return false
+	_skill_cooldowns[skill_id] = 0.0
+	if mana < 5:
+		mana = mini(max_mana, 5)
+		_update_mana_display()
+		mana_changed.emit()
+	var mana_cost := int(data.get("mana", 0))
+	return mana >= mana_cost and not _build_player_skill_cast_plan(skill_id).is_empty()
+
+
+func get_last_skill_cast_failure() -> String:
+	return _last_skill_cast_failure
+
+
+func _build_player_skill_cast_plan(skill_id: StringName) -> Dictionary:
+	if skill_id == SKILL_YELLOW_GUARD:
+		return {"guard": true}
+	var world := _get_navigation_world()
+	var target := _get_player_skill_target(world)
+	if world == null or target == null:
+		_last_skill_cast_failure = "No Target"
+		return {}
+	var player_cell := world.world_to_cell(global_position)
+	var enemy_cell := world.world_to_cell(target.global_position)
+	var relative := player_cell - enemy_cell
+	if absi(relative.x) + absi(relative.y) != 1:
+		_last_skill_cast_failure = "Move Closer"
+		return {}
+	var destination_cell := player_cell
+	var arc_angle := 0.0
+	if skill_id == SKILL_ROLL_CLOCKWISE:
+		destination_cell = enemy_cell + Vector2i(-relative.y, relative.x)
+		arc_angle = PI * 0.5
+		if not world.is_walkable(destination_cell) or world.is_cell_occupied(destination_cell, self):
+			destination_cell = enemy_cell + Vector2i(relative.y, -relative.x)
+			arc_angle = -PI * 0.5
+	elif skill_id == SKILL_ROLL_BACK:
+		destination_cell = player_cell + relative * 2
+	elif skill_id == SKILL_ROLL_ARC:
+		destination_cell = enemy_cell - relative
+		arc_angle = PI
+	else:
+		return {}
+	if not world.is_walkable(destination_cell) or world.is_cell_occupied(destination_cell, self):
+		_last_skill_cast_failure = "Blocked"
+		return {}
+	if skill_id == SKILL_ROLL_BACK:
+		var middle_cell := player_cell + relative
+		if not world.is_walkable(middle_cell) or world.is_cell_occupied(middle_cell, self):
+			_last_skill_cast_failure = "Blocked"
+			return {}
+	return {
+		"skill_id": skill_id,
+		"target": target,
+		"destination": world.cell_to_world(destination_cell),
+		"center": world.cell_to_world(enemy_cell),
+		"arc_angle": arc_angle,
+		"is_arc": not is_zero_approx(arc_angle),
+	}
+
+
+func _get_player_skill_target(world: WorldNavigation) -> ChickenEnemy:
+	if world == null:
+		return null
+	if is_instance_valid(_attack_target) and _attack_target.health > 0 and world.belongs_to_world(_attack_target):
+		return _attack_target
+	return _get_adjacent_enemy(world)
+
+
+func _begin_player_roll(plan: Dictionary) -> void:
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_player_roll()
+	_skill_casting = true
+	_skill_invulnerable = true
+	_cancel_combat_visual_tweens()
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	stop()
+	clear_attack_target()
+	_roll_skill_id = plan.get("skill_id", SKILL_ROLL_CLOCKWISE)
+	_roll_start = global_position
+	_roll_end = plan.get("destination", global_position)
+	_roll_center = plan.get("center", global_position)
+	_roll_arc_angle = float(plan.get("arc_angle", 0.0))
+	_roll_is_arc = bool(plan.get("is_arc", false))
+	_roll_start_angle = (_roll_start - _roll_center).angle()
+	_roll_rotation_turns = -1.0 if _roll_skill_id == SKILL_ROLL_BACK else 1.5 if _roll_skill_id == SKILL_ROLL_ARC else 1.0
+	_roll_afterimage_progress = -1.0
+	fox_sprite.modulate = Color.WHITE
+	var movement_direction := _roll_start.direction_to(_roll_end)
+	var anticipation_scale := Vector2(1.16, 0.80) if _roll_skill_id == SKILL_ROLL_BACK else Vector2(0.86, 1.16) if _roll_skill_id == SKILL_ROLL_ARC else Vector2(1.12, 0.84)
+	var anticipation_rotation := clampf(movement_direction.x, -1.0, 1.0) * (-0.12 if _roll_skill_id == SKILL_ROLL_BACK else 0.09)
+	_skill_visual_tween = create_tween().set_parallel(true)
+	_skill_visual_tween.tween_property(fox_sprite, "position", -movement_direction * 6.0, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(fox_sprite, "scale", anticipation_scale, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(fox_sprite, "rotation", anticipation_rotation, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.finished.connect(_start_player_roll)
+
+
+func _start_player_roll() -> void:
+	if not _skill_casting:
+		return
+	_roll_sprite_start_rotation = fox_sprite.rotation
+	fox_sprite.position = Vector2.ZERO
+	fox_sprite.scale = Vector2.ONE
+	_create_roll_trail()
+	_add_roll_afterimage()
+	var duration := 0.34 if _roll_skill_id == SKILL_ROLL_ARC else 0.28 if _roll_skill_id == SKILL_ROLL_BACK else 0.24
+	_skill_visual_tween = create_tween()
+	_skill_visual_tween.tween_method(_update_player_roll, 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_skill_visual_tween.tween_callback(_finish_player_roll)
+	_trigger_asha_roll()
+
+
+func _update_player_roll(progress: float) -> void:
+	if _roll_is_arc:
+		# Interpolating the radius keeps the path curved around the enemy even if
+		# combat left either actor a few pixels away from its tile center, while
+		# still meeting the destination tile without a visible final snap.
+		var radius := lerpf(_roll_start.distance_to(_roll_center), _roll_end.distance_to(_roll_center), progress)
+		global_position = _roll_center + Vector2.RIGHT.rotated(_roll_start_angle + _roll_arc_angle * progress) * radius
+	else:
+		global_position = _roll_start.lerp(_roll_end, progress)
+	fox_sprite.rotation = _roll_sprite_start_rotation + TAU * _roll_rotation_turns * progress
+	if is_instance_valid(_roll_trail):
+		_roll_trail.add_point(_roll_trail.get_parent().to_local(global_position))
+		while _roll_trail.get_point_count() > 24:
+			_roll_trail.remove_point(0)
+	if progress - _roll_afterimage_progress >= 0.16:
+		_roll_afterimage_progress = progress
+		_add_roll_afterimage()
+
+
+func _finish_player_roll() -> void:
+	global_position = _roll_end
+	fox_sprite.rotation = 0.0
+	fox_sprite.position = Vector2.ZERO
+	fox_sprite.scale = Vector2(1.26, 0.74)
+	fox_sprite.modulate = _get_roll_color().lightened(0.28)
+	_skill_casting = false
+	_skill_invulnerable = false
+	velocity = Vector2.ZERO
+	_skill_visual_tween = create_tween().set_parallel(true)
+	_skill_visual_tween.tween_property(fox_sprite, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(fox_sprite, "modulate", Color.WHITE, 0.12)
+	_fade_roll_trail()
+	_play_skill_camera_nudge(_roll_start.direction_to(_roll_end), 3.0)
+
+
+func _create_roll_trail() -> void:
+	if is_instance_valid(_roll_trail):
+		_roll_trail.queue_free()
+	_roll_trail = Line2D.new()
+	_roll_trail.name = "SkillRollTrail"
+	_roll_trail.width = 7.0 if _roll_skill_id == SKILL_ROLL_ARC else 5.0 if _roll_skill_id == SKILL_ROLL_BACK else 4.0
+	_roll_trail.default_color = _get_roll_color()
+	_roll_trail.default_color.a = 0.62
+	_roll_trail.antialiased = true
+	_roll_trail.z_index = z_index - 2
+	get_parent().add_child(_roll_trail)
+	_roll_trail.add_point(_roll_trail.get_parent().to_local(global_position))
+
+
+func _fade_roll_trail() -> void:
+	if not is_instance_valid(_roll_trail):
+		return
+	var trail := _roll_trail
+	_roll_trail = null
+	var tween := trail.create_tween().set_parallel(true)
+	tween.tween_property(trail, "modulate:a", 0.0, 0.18)
+	tween.tween_property(trail, "width", 0.5, 0.18)
+	tween.chain().tween_callback(trail.queue_free)
+
+
+func _add_roll_afterimage() -> void:
+	if not is_instance_valid(fox_sprite) or get_parent() == null:
+		return
+	var afterimage := Sprite2D.new()
+	afterimage.name = "SkillRollAfterimage"
+	afterimage.texture = fox_sprite.texture
+	afterimage.texture_filter = fox_sprite.texture_filter
+	afterimage.flip_h = fox_sprite.flip_h
+	afterimage.add_to_group("skill_roll_afterimages")
+	get_parent().add_child(afterimage)
+	afterimage.global_position = global_position + fox_sprite.position
+	afterimage.global_rotation = fox_sprite.global_rotation
+	afterimage.scale = fox_sprite.scale
+	afterimage.modulate = _get_roll_color()
+	afterimage.modulate.a = 0.38
+	afterimage.z_index = z_index - 1
+	var tween := afterimage.create_tween().set_parallel(true)
+	tween.tween_property(afterimage, "modulate:a", 0.0, 0.20)
+	tween.tween_property(afterimage, "scale", afterimage.scale * 0.78, 0.20).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(afterimage.queue_free)
+
+
+func _get_roll_color() -> Color:
+	if _roll_skill_id == SKILL_ROLL_BACK:
+		return Color("b58cff")
+	if _roll_skill_id == SKILL_ROLL_ARC:
+		return Color("ffd65a")
+	return Color("65e6ff")
+
+
+func _trigger_asha_roll() -> void:
+	for node in get_tree().get_nodes_in_group("story_characters"):
+		if node is FoxAsha and (node as FoxAsha).is_recruited():
+			(node as FoxAsha).play_roll_animation(0.2)
+			return
+
+
+func _begin_yellow_guard() -> void:
+	_yellow_guard_time_left = 1.0
+	_skill_casting = true
+	_cancel_combat_visual_tweens()
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	if is_instance_valid(_yellow_guard_ring):
+		_yellow_guard_ring.queue_free()
+	_yellow_guard_ring = _create_combat_ring(Color("fbc02d"))
+	_yellow_guard_ring.name = "YellowSkillGuard"
+	_yellow_guard_ring.width = 4.0
+	_yellow_guard_ring.position = Vector2(0, 10)
+	_yellow_guard_ring.visible = true
+	_yellow_guard_ring.scale = Vector2(0.28, 0.28)
+	add_child(_yellow_guard_ring)
+	_yellow_guard_ring.modulate.a = 0.0
+	fox_sprite.scale = Vector2(1.14, 0.82)
+	fox_sprite.modulate = Color("ffe780")
+	_skill_visual_tween = create_tween().set_parallel(true)
+	_skill_visual_tween.tween_property(_yellow_guard_ring, "scale", Vector2(1.16, 1.16), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(_yellow_guard_ring, "modulate:a", 1.0, 0.08)
+	_skill_visual_tween.tween_property(fox_sprite, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(fox_sprite, "modulate", Color.WHITE, 0.14)
+	_skill_visual_tween.finished.connect(_finish_guard_cast)
+	var fade := _yellow_guard_ring.create_tween()
+	fade.tween_interval(0.78)
+	fade.tween_property(_yellow_guard_ring, "modulate:a", 0.0, 0.20)
+
+
+func _finish_guard_cast() -> void:
+	if is_instance_valid(_yellow_guard_ring):
+		var settle := _yellow_guard_ring.create_tween()
+		settle.tween_property(_yellow_guard_ring, "scale", Vector2.ONE, 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_skill_casting = false
+
+
+func _play_guard_block_feedback() -> void:
+	var flash := _create_combat_ring(Color.WHITE)
+	flash.name = "YellowGuardBlockFlash"
+	flash.width = 6.0
+	flash.position = Vector2(0, 10)
+	flash.scale = Vector2(0.92, 0.92)
+	flash.modulate = Color("fff4a8")
+	flash.visible = true
+	flash.z_index = 3
+	add_child(flash)
+	var tween := flash.create_tween().set_parallel(true)
+	tween.tween_property(flash, "scale", Vector2(1.45, 1.45), 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(flash, "modulate:a", 0.0, 0.16)
+	tween.chain().tween_callback(flash.queue_free)
+	fox_sprite.modulate = Color("fff1a6")
+	var sprite_flash := fox_sprite.create_tween()
+	sprite_flash.tween_property(fox_sprite, "modulate", Color.WHITE, 0.14)
+	_play_skill_camera_nudge(Vector2.UP, 1.8)
+
+
+func _play_mana_spend_feedback() -> void:
+	if not is_instance_valid(mana_bar):
+		return
+	mana_bar.pivot_offset = mana_bar.size * 0.5
+	mana_bar.modulate = Color("7eeeff")
+	mana_bar.scale = Vector2(1.08, 0.82)
+	var tween := mana_bar.create_tween().set_parallel(true)
+	tween.tween_property(mana_bar, "modulate", Color.WHITE, 0.16)
+	tween.tween_property(mana_bar, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _play_skill_camera_nudge(direction: Vector2, strength: float) -> void:
+	var camera := get_viewport().get_camera_2d()
+	if camera == null:
+		return
+	var origin := camera.position
+	var nudge_direction := direction.normalized() if not direction.is_zero_approx() else Vector2.UP
+	var tween := camera.create_tween()
+	tween.tween_property(camera, "position", origin + nudge_direction * strength, 0.045).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(camera, "position", origin - nudge_direction * strength * 0.35, 0.05)
+	tween.tween_property(camera, "position", origin, 0.065).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+func _cancel_combat_visual_tweens() -> void:
+	if _attack_tween and _attack_tween.is_valid():
+		_attack_tween.kill()
+	if _hit_tween and _hit_tween.is_valid():
+		_hit_tween.kill()
+	_attack_visual_time_left = 0.0
+	_hit_visual_time_left = 0.0
 
 
 func add_attack_damage(amount: int) -> void:
@@ -596,7 +1168,9 @@ func has_weapon_been_equipped(weapon_index: int) -> bool:
 func get_damage_for_weapon_color(color_index: int, weapon_index: int) -> int:
 	if color_index < 0 or color_index >= damage_by_color.size() or weapon_index < 0 or weapon_index >= equipped_weapons.size():
 		return 0
-	return damage_by_color[color_index][weapon_index] + ItemPickup.get_damage_bonus(equipped_weapons[weapon_index])
+	var equipment_bonus := ItemPickup.get_damage_bonus(equipped_weapons[weapon_index]) \
+		if color_index == COLOR_YELLOW and not is_in_dungeon() else 0
+	return damage_by_color[color_index][weapon_index] + equipment_bonus
 
 
 func get_total_block() -> int:
@@ -611,9 +1185,91 @@ func get_base_defense_for_color(color_index: int) -> int:
 
 func get_defense_for_color(color_index: int) -> int:
 	var total := get_base_defense_for_color(color_index)
-	for item in equipped_armor:
-		total += ItemPickup.get_block_amount(item)
+	if color_index == COLOR_YELLOW and not is_in_dungeon():
+		for item in equipped_armor:
+			total += ItemPickup.get_block_amount(item)
 	return total
+
+
+func is_in_dungeon() -> bool:
+	return _get_navigation_world() is DungeonLevel
+
+
+func set_snared_by(source: Object, enabled: bool) -> void:
+	if source == null:
+		return
+	var source_id := source.get_instance_id()
+	if enabled:
+		_snare_sources[source_id] = true
+		_path.clear()
+		_path_index = 0
+		velocity = Vector2.ZERO
+		_show_snare_visuals()
+	else:
+		_snare_sources.erase(source_id)
+		if _snare_sources.is_empty():
+			_hide_snare_visuals()
+
+
+func is_snared() -> bool:
+	return not _snare_sources.is_empty()
+
+
+func break_snare() -> void:
+	if not is_snared():
+		return
+	_snare_sources.clear()
+	_hide_snare_visuals()
+
+
+func _show_snare_visuals() -> void:
+	if not is_instance_valid(_snare_ring):
+		_snare_ring = _create_combat_ring(Color.WHITE)
+		_snare_ring.name = "SnareRing"
+		_snare_ring.width = 3.0
+		_snare_ring.position = Vector2.ZERO
+		_snare_ring.clear_points()
+		for index in range(33):
+			var angle := TAU * float(index) / 32.0
+			_snare_ring.add_point(Vector2(cos(angle), sin(angle)) * 31.0)
+		_snare_ring.visible = true
+		_snare_ring.z_index = 3
+		add_child(_snare_ring)
+	if not is_instance_valid(_snare_label):
+		_snare_label = Label.new()
+		_snare_label.name = "SnaredLabel"
+		_snare_label.text = "Snared"
+		_snare_label.position = Vector2(-42, -58)
+		_snare_label.size = Vector2(84, 22)
+		_snare_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_snare_label.add_theme_color_override("font_color", Color.WHITE)
+		_snare_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		_snare_label.add_theme_constant_override("outline_size", 3)
+		_snare_label.z_index = 20
+		add_child(_snare_label)
+	_snare_ring.show()
+	_snare_label.show()
+
+
+func _hide_snare_visuals() -> void:
+	if is_instance_valid(_snare_ring):
+		_snare_ring.hide()
+	if is_instance_valid(_snare_label):
+		_snare_label.hide()
+
+
+func _play_snare_blocked_feedback() -> void:
+	if _snare_shake_tween and _snare_shake_tween.is_valid():
+		return
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_skill_unavailable()
+	var origin := fox_sprite.position
+	_snare_shake_tween = create_tween()
+	for offset in [Vector2(-4, 0), Vector2(4, 0), Vector2(-3, 0)]:
+		_snare_shake_tween.tween_property(fox_sprite, "position", origin + offset, 0.05)
+	_snare_shake_tween.tween_property(fox_sprite, "position", origin, 0.05)
+	_snare_shake_tween.finished.connect(func() -> void: _snare_shake_tween = null)
 
 
 func get_save_data() -> Array:
@@ -628,6 +1284,19 @@ func get_save_data() -> Array:
 	var cooldown_milliseconds: Array[int] = []
 	for cooldown in _weapon_cooldowns:
 		cooldown_milliseconds.append(maxi(0, roundi(float(cooldown) * 1000.0)))
+	var unlocked_skill_ids: Array[String] = []
+	for skill_id in unlocked_player_skills:
+		unlocked_skill_ids.append(str(skill_id))
+	var equipped_skill_ids: Array[String] = []
+	for skill_id in equipped_player_skills:
+		equipped_skill_ids.append(str(skill_id))
+	var skill_slot_mask := 0
+	for index in range(player_skill_slots_unlocked.size()):
+		if bool(player_skill_slots_unlocked[index]):
+			skill_slot_mask |= 1 << index
+	var skill_cooldown_milliseconds: Array[int] = []
+	for skill_id in PLAYER_SKILL_IDS:
+		skill_cooldown_milliseconds.append(maxi(0, roundi(float(_skill_cooldowns.get(skill_id, 0.0)) * 1000.0)))
 	return [
 		roundi(global_position.x), roundi(global_position.y), health, max_health,
 		passive_healing_amount, current_weapon_index, flattened_damage,
@@ -639,6 +1308,11 @@ func get_save_data() -> Array:
 		roundi(_spawn_position.x), roundi(_spawn_position.y),
 		merge_count, duplicate_equipment_tutorial_seen, auto_fight_unlocked, auto_fight_enabled,
 		_pack_items(trash_slots),
+		mana, max_mana, passive_mana_regeneration_amount, unlocked_skill_ids, equipped_skill_ids,
+		skill_slot_mask, skill_cooldown_milliseconds, maxi(0, roundi(_mana_regen_time_left * 1000.0)),
+		enemy_skill_move_tutorial_seen, cascading_sweep_skill_tutorial_seen,
+		inventory_slots.size(), equipment_slots_unlocked, skill_swap_tutorial_seen,
+		snare_without_quick_roll_tutorial_seen,
 	]
 
 
@@ -667,9 +1341,14 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 			damage_index += 1
 		damage_by_color.append(color_values)
 
-	inventory_slots = _unpack_items(data[7] as Array, 4)
+	var saved_inventory: Array = data[7] as Array
+	var inventory_slot_count := maxi(4, int(data[34])) if data.size() > 34 else maxi(4, saved_inventory.size())
+	inventory_slots = _unpack_items(saved_inventory, inventory_slot_count)
 	equipped_weapons = _unpack_items(data[8] as Array, 4)
 	equipped_armor = _unpack_items(data[9] as Array, 4)
+	equipment_slots_unlocked = clampi(int(data[35]), 1, 4) if data.size() > 35 else 1
+	skill_swap_tutorial_seen = bool(data[36]) if data.size() > 36 else false
+	snare_without_quick_roll_tutorial_seen = bool(data[37]) if data.size() > 37 else false
 	armor_ever_equipped = bool(data[16]) if data.size() > 16 else has_equipped_armor()
 	if data.size() > 18:
 		_spawn_position = Vector2(float(data[17]), float(data[18]))
@@ -679,6 +1358,40 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	auto_fight_enabled = bool(data[22]) if data.size() > 22 else false
 	var saved_trash: Array = data[23] as Array if data.size() > 23 and data[23] is Array else []
 	trash_slots = _unpack_items(saved_trash, 1)
+	max_mana = maxi(1, int(data[25])) if data.size() > 25 else 10
+	mana = clampi(int(data[24]), 0, max_mana) if data.size() > 24 else max_mana
+	passive_mana_regeneration_amount = maxi(1, int(data[26])) if data.size() > 26 else 1
+	unlocked_player_skills.clear()
+	var saved_unlocked_skills: Array = data[27] as Array if data.size() > 27 and data[27] is Array else []
+	for raw_skill_id in saved_unlocked_skills:
+		var skill_id := StringName(str(raw_skill_id))
+		if SKILL_DATA.has(skill_id) and not unlocked_player_skills.has(skill_id):
+			unlocked_player_skills.append(skill_id)
+	equipped_player_skills = [&"", &"", &"", &""]
+	var saved_equipped_skills: Array = data[28] as Array if data.size() > 28 and data[28] is Array else []
+	for index in range(mini(4, saved_equipped_skills.size())):
+		var skill_id := StringName(str(saved_equipped_skills[index]))
+		if unlocked_player_skills.has(skill_id):
+			equipped_player_skills[index] = skill_id
+	var skill_slot_mask := int(data[29]) if data.size() > 29 else 1
+	player_skill_slots_unlocked.clear()
+	for index in range(4):
+		player_skill_slots_unlocked.append((skill_slot_mask & (1 << index)) != 0)
+	_skill_cooldowns.clear()
+	var saved_skill_cooldowns: Array = data[30] as Array if data.size() > 30 and data[30] is Array else []
+	for index in range(PLAYER_SKILL_IDS.size()):
+		var saved_milliseconds := int(saved_skill_cooldowns[index]) if index < saved_skill_cooldowns.size() else 0
+		_skill_cooldowns[PLAYER_SKILL_IDS[index]] = maxf(0.0, float(saved_milliseconds - offline_seconds * 1000) / 1000.0)
+	var saved_mana_regeneration := int(data[31]) if data.size() > 31 else 3000
+	enemy_skill_move_tutorial_seen = bool(data[32]) if data.size() > 32 else false
+	cascading_sweep_skill_tutorial_seen = bool(data[33]) if data.size() > 33 else false
+	var mana_regeneration_milliseconds := saved_mana_regeneration - offline_seconds * 1000 * maxi(1, int(data[13]))
+	var mana_regeneration_interval_milliseconds := maxf(1.0, 3000.0 / float(maxi(1, passive_mana_regeneration_amount)))
+	if mana_regeneration_milliseconds <= 0:
+		var mana_ticks := 1 + floori(float(-mana_regeneration_milliseconds) / mana_regeneration_interval_milliseconds)
+		mana = mini(max_mana, mana + mana_ticks)
+		mana_regeneration_milliseconds += roundi(float(mana_ticks) * mana_regeneration_interval_milliseconds)
+	_mana_regen_time_left = maxf(0.001, float(mana_regeneration_milliseconds) / 1000.0)
 	var ever_equipped_mask := int(data[10])
 	weapon_ever_equipped = []
 	for index in range(4):
@@ -705,6 +1418,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	health_bar.max_value = max_health
 	health_bar.value = health
 	_update_health_label()
+	_update_mana_display()
 	damage_matrix_changed.emit()
 	equipment_changed.emit()
 	vitals_changed.emit()
@@ -712,6 +1426,8 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	equipment_changed.emit()
 	damage_matrix_changed.emit()
 	auto_fight_changed.emit()
+	skills_changed.emit()
+	mana_changed.emit()
 	return true
 
 
@@ -764,25 +1480,48 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		_update_walk_animation(0.0)
 		return
-	if not _dialogue_is_open():
-		for index in range(_weapon_cooldowns.size()):
-			_weapon_cooldowns[index] = maxf(0.0, _weapon_cooldowns[index] - delta)
+	if _dialogue_is_open():
+		velocity = Vector2.ZERO
+		_update_walk_animation(0.0)
+		return
+	for index in range(_weapon_cooldowns.size()):
+		_weapon_cooldowns[index] = maxf(0.0, _weapon_cooldowns[index] - delta)
+	for skill_id in _skill_cooldowns.keys():
+		_skill_cooldowns[skill_id] = maxf(0.0, float(_skill_cooldowns[skill_id]) - delta)
+	if _yellow_guard_time_left > 0.0:
+		_yellow_guard_time_left = maxf(0.0, _yellow_guard_time_left - delta)
+		if _yellow_guard_time_left <= 0.0 and is_instance_valid(_yellow_guard_ring):
+			_yellow_guard_ring.queue_free()
+			_yellow_guard_ring = null
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
-	if world is DungeonLevel:
-		if (world as DungeonLevel).is_current_room_clear() and health < max_health:
+	if world is DungeonLevel and (world as DungeonLevel).is_current_room_clear():
+		if health < max_health:
 			_heal_time_left -= delta
 			while _heal_time_left <= 0.0 and health < max_health:
 				heal(maxi(1, ceili(float(max_health) * 0.2)))
 				_heal_time_left += 0.10
 		else:
 			_heal_time_left = 0.10
-	else:
-		_heal_time_left -= delta * _get_healing_speed_multiplier()
-		while _heal_time_left <= 0.0:
-			heal(1)
-			_heal_time_left += _get_passive_heal_interval()
+		if mana < max_mana:
+			_mana_regen_time_left -= delta
+			while _mana_regen_time_left <= 0.0 and mana < max_mana:
+				restore_mana(maxi(1, ceili(float(max_mana) * 0.2)))
+				_mana_regen_time_left += 0.10
+		else:
+			_mana_regen_time_left = 0.10
+	elif not world is DungeonLevel:
+		_regenerate_vitals_normally(delta)
 	_update_campfire_healing_visual()
+	if _skill_casting:
+		velocity = Vector2.ZERO
+		return
+	if is_snared():
+		velocity = Vector2.ZERO
+		_path.clear()
+		_path_index = 0
+		_update_walk_animation(0.0)
+		return
 	_update_enemy_chase()
 	_move_along_path(delta)
 	_collect_pickups_on_current_tile()
@@ -862,6 +1601,8 @@ func _attack_nearby_enemy() -> void:
 				closest_distance = distance
 		automatic = target != null
 	if target:
+		if not _can_apply_enemy_attack(target, world, automatic):
+			return
 		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 		if audio:
 			audio.play_damage()
@@ -870,6 +1611,17 @@ func _attack_nearby_enemy() -> void:
 		_show_slash(target, ItemPickup.get_grade_color(ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])))
 		target.take_damage(get_damage_for_color(target.enemy_color), automatic)
 		_weapon_cooldowns[current_weapon_index] = attack_cooldown
+
+
+func _can_apply_enemy_attack(target: ChickenEnemy, world: WorldNavigation, automatic: bool) -> bool:
+	if not is_instance_valid(target) or target.health <= 0 or world == null or not world.belongs_to_world(target):
+		return false
+	if not automatic:
+		return world.are_adjacent(self, target)
+	if not auto_fight_enabled or is_moving() or is_instance_valid(_attack_target) or not target.can_be_auto_fought():
+		return false
+	var offset := world.world_to_cell(target.global_position) - world.world_to_cell(global_position)
+	return absi(offset.x) <= 2 and absi(offset.y) <= 2
 
 
 func _get_adjacent_enemy(world: WorldNavigation) -> ChickenEnemy:
@@ -925,6 +1677,18 @@ func _get_healing_speed_multiplier() -> float:
 	return 5.0 if _is_near_campfire() else 1.0
 
 
+func _regenerate_vitals_normally(delta: float) -> void:
+	var regeneration_delta := delta * _get_healing_speed_multiplier()
+	_heal_time_left -= regeneration_delta
+	while _heal_time_left <= 0.0:
+		heal(1)
+		_heal_time_left += _get_passive_heal_interval()
+	_mana_regen_time_left -= regeneration_delta
+	while _mana_regen_time_left <= 0.0:
+		restore_mana(1)
+		_mana_regen_time_left += _get_passive_mana_regeneration_interval()
+
+
 func _get_passive_heal_interval() -> float:
 	return 3.0 / float(maxi(1, passive_healing_amount))
 
@@ -935,6 +1699,18 @@ func get_passive_healing_per_second() -> float:
 
 func get_effective_passive_healing_per_second() -> float:
 	return get_passive_healing_per_second() * _get_healing_speed_multiplier()
+
+
+func _get_passive_mana_regeneration_interval() -> float:
+	return 3.0 / float(maxi(1, passive_mana_regeneration_amount))
+
+
+func get_passive_mana_regeneration_per_second() -> float:
+	return float(maxi(1, passive_mana_regeneration_amount)) / 3.0
+
+
+func get_effective_passive_mana_regeneration_per_second() -> float:
+	return get_passive_mana_regeneration_per_second() * _get_healing_speed_multiplier()
 
 
 static func get_healing_increase_per_second(amount: int) -> float:
@@ -1176,12 +1952,46 @@ func _update_health_label() -> void:
 	health_label.text = str(health)
 
 
-func _show_damage_popup(amount: int, color_index: int, blocked_damage: int) -> void:
+func _update_mana_display() -> void:
+	if not is_instance_valid(mana_bar) or not is_instance_valid(mana_label):
+		return
+	mana_bar.max_value = max_mana
+	mana_bar.value = mana
+	mana_label.text = "%d / %d" % [mana, max_mana]
+	var visible_for_skills := has_unlocked_player_skill()
+	mana_bar.visible = visible_for_skills
+	mana_label.visible = visible_for_skills
+
+
+func _show_damage_popup(amount: int, color_index: int, blocked_damage: int, skill_hit := false, impact_direction := Vector2.ZERO) -> void:
 	var popup := DAMAGE_POPUP_SCENE.instantiate() as DamagePopup
+	popup.name = "SkillDamagePopup" if skill_hit else "DamagePopup"
 	popup.position = global_position + Vector2(0, -38)
 	get_parent().add_child(popup)
-	popup.show_damage(amount, color_index, blocked_damage)
-	_play_hit_animation()
+	popup.show_damage(amount, color_index, blocked_damage, skill_hit)
+	if skill_hit:
+		_play_enemy_skill_hit_animation(color_index, impact_direction)
+	else:
+		_play_hit_animation()
+
+
+func _play_enemy_skill_hit_animation(color_index: int, impact_direction: Vector2) -> void:
+	if _hit_tween and _hit_tween.is_valid():
+		_hit_tween.kill()
+	_hit_visual_time_left = 0.32
+	var recoil_direction := impact_direction.normalized() if not impact_direction.is_zero_approx() else Vector2.RIGHT
+	var hit_color: Color = DAMAGE_COLORS[clampi(color_index, COLOR_RED, COLOR_BLUE)].lightened(0.25)
+	fox_sprite.position = recoil_direction * 11.0
+	fox_sprite.scale = Vector2(1.30, 0.70)
+	fox_sprite.rotation = 0.12 * signf(recoil_direction.x if absf(recoil_direction.x) > 0.01 else recoil_direction.y)
+	fox_sprite.modulate = hit_color
+	_hit_tween = create_tween()
+	_hit_tween.tween_interval(0.08)
+	_hit_tween.set_parallel(true)
+	_hit_tween.tween_property(fox_sprite, "position", Vector2.ZERO, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_hit_tween.tween_property(fox_sprite, "scale", Vector2.ONE, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_hit_tween.tween_property(fox_sprite, "rotation", 0.0, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_hit_tween.tween_property(fox_sprite, "modulate", Color.WHITE, 0.18)
 
 
 func _play_hit_animation() -> void:

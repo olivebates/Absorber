@@ -129,7 +129,7 @@ func drop_in_slot(source: ItemSlot, target: ItemSlot) -> void:
 func click_slot(_slot: ItemSlot) -> void:
 	if _slot.locked:
 		return
-	for index in range(4):
+	for index in range(_player.inventory_slots.size()):
 		var candidate := _player.get_slot_item("inventory", index)
 		if _player.can_merge(_slot.item, candidate) or candidate.is_empty():
 			_player.move_or_merge(_slot.storage, _slot.slot_index, "inventory", index)
@@ -153,8 +153,12 @@ func get_weapon_cooldown_ratio(index: int) -> float:
 	return _player.get_weapon_cooldown_ratio(index) if _player else 0.0
 
 
+func is_equipment_disabled() -> bool:
+	return _player != null and _player.is_in_dungeon()
+
+
 func _is_locked(storage: String, index: int) -> bool:
-	return index != 0 or (storage != "weapon" and storage != "armor")
+	return (storage != "weapon" and storage != "armor") or _player == null or not _player.is_equipment_slot_unlocked(index)
 
 
 func _shows_unarmed_damage(storage: String, index: int) -> bool:

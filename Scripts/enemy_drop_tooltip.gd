@@ -17,9 +17,12 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	var mouse := get_viewport().get_mouse_position()
 	_last_mouse_position = mouse
+	var active_world := _get_active_world()
 	var hovered: ChickenEnemy
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy is ChickenEnemy and is_instance_valid(enemy) and enemy.get_global_transform_with_canvas().origin.distance_to(mouse) <= 30.0:
+		if enemy is ChickenEnemy and is_instance_valid(enemy) and is_instance_valid(active_world) \
+				and active_world.belongs_to_world(enemy) \
+				and enemy.get_global_transform_with_canvas().origin.distance_to(mouse) <= 30.0:
 			hovered = enemy
 			break
 	var visible_drops: Array[Dictionary] = []
@@ -34,6 +37,13 @@ func _process(_delta: float) -> void:
 	else:
 		_shown_enemy = null
 		visible = false
+
+
+func _get_active_world() -> WorldNavigation:
+	var manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	if manager and manager.is_dungeon_active():
+		return manager.get_active_level()
+	return get_tree().current_scene as WorldNavigation
 
 
 func _place_inside_camera(mouse_position: Vector2) -> void:

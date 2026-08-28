@@ -43,6 +43,13 @@ func _init() -> void:
 	canvas.size = Vector2(900, 540)
 	assert(canvas._get_map_region() == expected_region, "The full map canvas must use visited dungeon bounds rather than navigation bounds")
 	canvas.free()
+	var minimap := Minimap.new()
+	minimap._world = level
+	var map_rect := Rect2(Vector2(5, 5), Vector2(172, 126))
+	var fixed_diameter := int(Minimap.VISIBLE_RADIUS_TILES * 2.0 + 1.0)
+	var expected_scale := minf(map_rect.size.x / fixed_diameter, map_rect.size.y / fixed_diameter)
+	assert(minimap._get_display_region().size == Vector2i.ONE * fixed_diameter and minimap._get_tile_scale(map_rect).is_equal_approx(Vector2.ONE * expected_scale), "The minimap must keep a fixed tile scale instead of zooming out to visited bounds")
+	minimap.free()
 	level.free()
 	print("Dungeon map smoke test passed")
 	quit()

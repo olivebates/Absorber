@@ -3,6 +3,7 @@ extends Node
 
 const TRIGGER_DISTANCE_TILES := 3
 const BULL_TRIGGER_DISTANCE_TILES := 6
+const MAD_COYOTE_TRIGGER_DISTANCE_TILES := 7
 const SAVE_FORMAT := "story_events_v3"
 const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
 const ASHA_PORTRAIT := preload("res://Sprites/FoxAsha.webp")
@@ -39,6 +40,7 @@ func _ready() -> void:
 	_dialogue_box = _world.get_node("HUD/DialogueBox") as DialogueBox
 	_dialogue_box.dialogue_finished.connect(_on_dialogue_finished)
 	_dialogue_box.line_shown.connect(_on_dialogue_line_shown)
+	get_tree().node_added.connect(_on_story_node_added)
 	call_deferred("_finish_setup")
 
 
@@ -67,6 +69,9 @@ func _finish_setup() -> void:
 func _process(_delta: float) -> void:
 	if not _initialized or _world == null or not is_instance_valid(_world.player):
 		return
+	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	if dungeon_manager and dungeon_manager.is_dungeon_active():
+		return
 	if _world.gameplay_paused:
 		return
 	if not is_instance_valid(_asha) or not is_instance_valid(_luca) or not is_instance_valid(_lio) or not is_instance_valid(_nia):
@@ -75,6 +80,8 @@ func _process(_delta: float) -> void:
 		return
 	if not _queued_events.is_empty():
 		_begin_event_dialogue(_queued_events.pop_front())
+		return
+	if _check_mad_coyote_proximity_event():
 		return
 	match completed_dialogues:
 		0:
@@ -344,6 +351,10 @@ func load_save_data(data: Array) -> void:
 			for event_id in data[9]:
 				if bool(data[9][event_id]):
 					_seen_events[StringName(event_id)] = true
+		# Players who already saw the former mouse-triggered version should not
+		# receive the same dialogue again after its trigger moves to Spider.
+		if _seen_events.has(&"first_mouse_killed"):
+			_seen_events[&"first_spider_killed"] = true
 	else:
 		# Map saves from the former seven-beat story onto the four retained beats.
 		if saved_progress >= 7:
@@ -573,6 +584,8 @@ func _on_dialogue_finished() -> void:
 		_enable_biome_music()
 	if finished_event == &"gate_tile":
 		_pan_camera_back()
+	if finished_event == &"mad_coyote_dungeon_warning":
+		_pan_camera_back()
 	if finished_event == &"asha_recruitment":
 		if is_instance_valid(_asha):
 			_asha.set_recruited(true, true)
@@ -651,14 +664,20 @@ func _enable_biome_music() -> void:
 
 
 func _on_dialogue_line_shown(index: int) -> void:
-	if _active_event != &"gate_tile" or index != 1:
+	if index != 1:
 		return
-	var boss_spawn := _world.get_node_or_null("ChickenSpawn35") as Node2D
+	var focus_target: Node2D
+	if _active_event == &"gate_tile":
+		focus_target = _world.get_node_or_null("ChickenSpawn35") as Node2D
+	elif _active_event == &"mad_coyote_dungeon_warning":
+		focus_target = _find_snakemouth_entrance()
+	else:
+		return
 	var camera := _world.player.get_node_or_null("Camera2D") as Camera2D
-	if boss_spawn == null or camera == null:
+	if focus_target == null or camera == null:
 		return
 	_dialogue_box.set_input_locked(true)
-	var target_offset := boss_spawn.global_position - _world.player.global_position
+	var target_offset := focus_target.global_position - _world.player.global_position
 	var tween := camera.create_tween()
 	tween.tween_property(camera, "position", target_offset, 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 	tween.finished.connect(_dialogue_box.set_input_locked.bind(false))
@@ -685,19 +704,59 @@ func _connect_enemy_story_signals() -> void:
 	for node in get_tree().get_nodes_in_group("enemy_spawns"):
 		if not node is EnemySpawnPoint:
 			continue
-		var spawn := node as EnemySpawnPoint
-		if spawn.enemy_type == 6 and not spawn.enemy_killed.is_connected(_on_evil_goat_killed):
-			spawn.enemy_killed.connect(_on_evil_goat_killed)
+		_connect_enemy_story_spawn(node as EnemySpawnPoint)
+
+
+func _on_story_node_added(node: Node) -> void:
+	if node is EnemySpawnPoint:
+		call_deferred("_connect_enemy_story_spawn", node as EnemySpawnPoint)
+
+
+func _connect_enemy_story_spawn(spawn: EnemySpawnPoint) -> void:
+	if not is_instance_valid(spawn):
+		return
+	if spawn.enemy_type == 25 and not spawn.enemy_killed.is_connected(_on_spider_killed):
+		spawn.enemy_killed.connect(_on_spider_killed)
+	if spawn.enemy_type == 6 and not spawn.enemy_killed.is_connected(_on_evil_goat_killed):
+		spawn.enemy_killed.connect(_on_evil_goat_killed)
 
 
 func _on_evil_goat_killed(_enemy: ChickenEnemy) -> void:
 	_trigger_event_once(&"evil_goat_killed")
 
 
+func _on_spider_killed(_enemy: ChickenEnemy) -> void:
+	_trigger_event_once(&"first_spider_killed")
+
+
 func _check_bull_proximity_event() -> bool:
 	if _has_seen(&"bull_proximity") or not is_instance_valid(_bull_spawn):
 		return false
 	return _trigger_event_once(&"bull_proximity") if _tile_distance_to(_bull_spawn) <= BULL_TRIGGER_DISTANCE_TILES else false
+
+
+func _check_mad_coyote_proximity_event() -> bool:
+	if _has_seen(&"mad_coyote_dungeon_warning"):
+		return false
+	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	var entrance := _find_snakemouth_entrance()
+	if entrance and dungeon_manager and dungeon_manager.is_cleared(entrance.dungeon_id):
+		return false
+	for node in get_tree().get_nodes_in_group("enemy_spawns"):
+		if node is EnemySpawnPoint and (node as EnemySpawnPoint).enemy_type == 13 \
+				and _tile_distance_to(node as Node2D) <= MAD_COYOTE_TRIGGER_DISTANCE_TILES:
+			return _trigger_event_once(&"mad_coyote_dungeon_warning")
+	return false
+
+
+func _find_snakemouth_entrance() -> DungeonEntrance:
+	for node in get_tree().get_nodes_in_group("dungeon_entrances"):
+		if not node is DungeonEntrance:
+			continue
+		var entrance := node as DungeonEntrance
+		if entrance.dungeon_scene and entrance.dungeon_scene.resource_path == "res://Scenes/dungeon1_Snakemouth.tscn":
+			return entrance
+	return _world.get_node_or_null("DungeonEntrance") as DungeonEntrance
 
 
 func _check_campfire_events() -> bool:
@@ -814,6 +873,11 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			return [_line("Mira", "Convenient.", PLAYER_PORTRAIT)]
 		&"evil_goat_killed":
 			return [_line("Mira", "Oh look, it dropped a shield!", PLAYER_PORTRAIT)]
+		&"first_spider_killed":
+			return [
+				_line("Mira", "Phew, that was a close one.", PLAYER_PORTRAIT),
+				_line("Mira", "I should keep an eye out on my mana!", PLAYER_PORTRAIT),
+			]
 		&"duplicate_equipment":
 			return [
 				_line("Mira", "Oh look, another one!", PLAYER_PORTRAIT),
@@ -823,5 +887,10 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			return [
 				_line("Mira", "I'll only be able to auto fight enemies I've fought once before.", PLAYER_PORTRAIT),
 				_line("Mira", "The new enemies scare me O///O", PLAYER_PORTRAIT),
+			]
+		&"mad_coyote_dungeon_warning":
+			return [
+				_line("Mira", "I’ve got a bad feeling about moving on just yet.", PLAYER_PORTRAIT),
+				_line("Mira", "I should probably clear this place out first.", PLAYER_PORTRAIT),
 			]
 	return []

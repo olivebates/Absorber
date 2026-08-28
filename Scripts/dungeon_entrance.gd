@@ -19,9 +19,12 @@ var _return_position := Vector2.ZERO
 var _tooltip_layer: CanvasLayer
 var _tooltip: PanelContainer
 var _tooltip_title: Label
+var _tooltip_cleared_label: Label
 var _tooltip_difficulty: Label
 var _tooltip_production: Label
-var _cleared_label: Label
+var _tooltip_meter: Control
+var _tooltip_production_row: HBoxContainer
+var _cleared_badge: Label
 var _manager: Node
 
 @onready var _sprite: Sprite2D = $Sprite2D
@@ -48,6 +51,11 @@ func _connect_manager() -> void:
 func request_interaction(player: FoxPlayer, world: WorldNavigation) -> void:
 	if player == null or world == null or _manager == null or not _manager.has_method("request_enter") \
 		or (_manager.has_method("is_dungeon_active") and bool(_manager.call("is_dungeon_active"))):
+		return
+	if _manager.has_method("is_cleared") and bool(_manager.call("is_cleared", dungeon_id)):
+		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+		if audio:
+			audio.play_skill_unavailable()
 		return
 	_pending_player = player
 	_pending_world = world
@@ -117,19 +125,27 @@ func _update_hover() -> void:
 
 
 func _build_cleared_label() -> void:
-	_cleared_label = Label.new()
-	_cleared_label.text = "Cleared"
-	_cleared_label.position = Vector2(-48, -66)
-	_cleared_label.size = Vector2(96, 26)
-	_cleared_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_cleared_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_cleared_label.add_theme_color_override("font_color", Color("b8f28b"))
-	_cleared_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	_cleared_label.add_theme_constant_override("outline_size", 4)
-	_cleared_label.add_theme_font_size_override("font_size", 17)
-	_cleared_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_cleared_label.hide()
-	add_child(_cleared_label)
+	_cleared_badge = Label.new()
+	_cleared_badge.name = "ClearedBadge"
+	_cleared_badge.text = "✓"
+	_cleared_badge.position = Vector2(-37, -38)
+	_cleared_badge.size = Vector2(24, 24)
+	_cleared_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_cleared_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_cleared_badge.add_theme_color_override("font_color", Color.WHITE)
+	_cleared_badge.add_theme_color_override("font_outline_color", Color.BLACK)
+	_cleared_badge.add_theme_constant_override("outline_size", 2)
+	_cleared_badge.add_theme_font_size_override("font_size", 16)
+	var cleared_style := StyleBoxFlat.new()
+	cleared_style.bg_color = Color("43a047")
+	cleared_style.border_color = Color("d9ffd9")
+	cleared_style.set_border_width_all(2)
+	cleared_style.set_corner_radius_all(12)
+	_cleared_badge.add_theme_stylebox_override("normal", cleared_style)
+	_cleared_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_cleared_badge.z_index = 5
+	_cleared_badge.hide()
+	add_child(_cleared_badge)
 
 
 func _build_tooltip() -> void:
@@ -157,46 +173,64 @@ func _build_tooltip() -> void:
 	_tooltip_title.add_theme_font_size_override("font_size", 18)
 	_tooltip_title.add_theme_color_override("font_color", Color("ffe082"))
 	content.add_child(_tooltip_title)
-	var meter := Control.new()
-	meter.custom_minimum_size = Vector2(184, 18)
-	content.add_child(meter)
+	_tooltip_cleared_label = Label.new()
+	_tooltip_cleared_label.text = "Cleared"
+	_tooltip_cleared_label.custom_minimum_size = Vector2(64, 22)
+	_tooltip_cleared_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tooltip_cleared_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_tooltip_cleared_label.add_theme_color_override("font_color", Color.WHITE)
+	var tooltip_cleared_style := StyleBoxFlat.new()
+	tooltip_cleared_style.bg_color = Color.TRANSPARENT
+	tooltip_cleared_style.border_color = Color.WHITE
+	tooltip_cleared_style.set_border_width_all(1)
+	tooltip_cleared_style.set_corner_radius_all(7)
+	_tooltip_cleared_label.add_theme_stylebox_override("normal", tooltip_cleared_style)
+	_tooltip_cleared_label.hide()
+	content.add_child(_tooltip_cleared_label)
+	_tooltip_meter = Control.new()
+	_tooltip_meter.custom_minimum_size = Vector2(104, 18)
+	content.add_child(_tooltip_meter)
 	var line := ColorRect.new()
 	line.position = Vector2(11, 8)
 	line.size = Vector2(160, 2)
 	line.color = Color(0.42, 0.43, 0.48, 1.0)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	meter.add_child(line)
+	_tooltip_meter.add_child(line)
+	line.hide()
 	var color: Color = DIFFICULTY_COLORS[difficulty - 1]
 	for index in range(6):
 		var dot := Label.new()
 		dot.text = "●"
-		dot.position = Vector2(index * 32, -5)
-		dot.size = Vector2(24, 24)
+		dot.position = Vector2(index * 16, -5)
+		dot.size = Vector2(18, 24)
 		dot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		dot.add_theme_font_size_override("font_size", 18)
 		dot.add_theme_color_override("font_color", color if index < difficulty else Color("555862"))
 		dot.add_theme_color_override("font_outline_color", Color.BLACK)
 		dot.add_theme_constant_override("outline_size", 2)
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		meter.add_child(dot)
+		_tooltip_meter.add_child(dot)
 	_tooltip_difficulty = Label.new()
 	_tooltip_difficulty.text = "Difficulty %d — %s" % [difficulty, DIFFICULTY_NAMES[difficulty - 1]]
 	_tooltip_difficulty.add_theme_color_override("font_color", color)
 	content.add_child(_tooltip_difficulty)
-	var production_row := HBoxContainer.new()
-	production_row.add_theme_constant_override("separation", 5)
-	content.add_child(production_row)
+	_tooltip_difficulty.text = DIFFICULTY_NAMES[difficulty - 1]
+	content.move_child(_tooltip_difficulty, 2)
+	_tooltip_production_row = HBoxContainer.new()
+	_tooltip_production_row.add_theme_constant_override("separation", 5)
+	content.add_child(_tooltip_production_row)
+	_tooltip_production_row.hide()
 	var production_icon := TextureRect.new()
 	production_icon.texture = CAVE_MOSS_ICON
 	production_icon.custom_minimum_size = Vector2(20, 20)
 	production_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	production_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	production_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	production_row.add_child(production_icon)
+	_tooltip_production_row.add_child(production_icon)
 	_tooltip_production = Label.new()
 	_tooltip_production.text = "Clear to produce Cave Moss"
 	_tooltip_production.add_theme_color_override("font_color", Color("aeb3c1"))
-	production_row.add_child(_tooltip_production)
+	_tooltip_production_row.add_child(_tooltip_production)
 	_tooltip.hide()
 
 
@@ -208,8 +242,16 @@ func _on_dungeon_state_changed(changed_id: StringName) -> void:
 func _refresh_state() -> void:
 	var cleared := _manager != null and _manager.has_method("is_cleared") \
 		and bool(_manager.call("is_cleared", dungeon_id))
-	if is_instance_valid(_cleared_label):
-		_cleared_label.visible = cleared
+	if is_instance_valid(_cleared_badge):
+		_cleared_badge.visible = cleared
+	if is_instance_valid(_tooltip_cleared_label):
+		_tooltip_cleared_label.visible = cleared
+	if is_instance_valid(_tooltip_meter):
+		_tooltip_meter.visible = not cleared
+	if is_instance_valid(_tooltip_difficulty):
+		_tooltip_difficulty.visible = not cleared
+	if is_instance_valid(_tooltip_production_row):
+		_tooltip_production_row.visible = cleared
 	if is_instance_valid(_tooltip_production):
 		_tooltip_production.text = "Produces 1 Cave Moss / 10 min" if cleared else "Clear to produce Cave Moss"
 		_tooltip_production.add_theme_color_override("font_color", Color("8bd66d") if cleared else Color("aeb3c1"))

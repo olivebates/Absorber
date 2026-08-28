@@ -18,6 +18,7 @@ var _icon: TextureRect
 var _empty_icon: TextureRect
 var _cooldown_overlay: ColorRect
 var _lock_icon: TextureRect
+var _disabled_line: Line2D
 var _was_dragged := false
 var _merge_tween: Tween
 
@@ -42,6 +43,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		add_child(_icon)
 	_icon.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", ""))) if not item.is_empty() else null
 	_icon.visible = not item.is_empty()
+	_icon.modulate = Color.WHITE.lerp(Color("fbc02d"), 0.30) if not item.is_empty() and ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
 	if _empty_icon == null:
 		_empty_icon = TextureRect.new()
 		_empty_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -66,6 +68,17 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		_lock_icon.z_index = 3
 		add_child(_lock_icon)
 	_lock_icon.visible = locked
+	if _disabled_line == null:
+		_disabled_line = Line2D.new()
+		_disabled_line.name = "DungeonEquipmentDisabled"
+		_disabled_line.points = PackedVector2Array([Vector2(0, 42), Vector2(42, 0)])
+		_disabled_line.width = 3.0
+		_disabled_line.default_color = Color("dc2626")
+		_disabled_line.antialiased = true
+		_disabled_line.z_index = 5
+		add_child(_disabled_line)
+	_disabled_line.visible = not item.is_empty() and (storage == "weapon" or storage == "armor") and owner_ui != null \
+		and bool(owner_ui.call("is_equipment_disabled"))
 	_update_cooldown_overlay()
 
 
@@ -76,6 +89,9 @@ func _process(_delta: float) -> void:
 func _update_cooldown_overlay() -> void:
 	if _cooldown_overlay == null:
 		return
+	if _disabled_line:
+		_disabled_line.visible = not item.is_empty() and (storage == "weapon" or storage == "armor") and owner_ui != null \
+			and bool(owner_ui.call("is_equipment_disabled"))
 	var ratio := 0.0
 	if storage == "weapon" and (not item.is_empty() or shows_unarmed_damage) and owner_ui:
 		ratio = float(owner_ui.call("get_weapon_cooldown_ratio", slot_index))
@@ -103,6 +119,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	owner_ui.call("begin_slot_drag", self)
 	var preview := TextureRect.new()
 	preview.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", "")))
+	preview.modulate = Color.WHITE.lerp(Color("fbc02d"), 0.30) if ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
 	preview.custom_minimum_size = Vector2(32, 32)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

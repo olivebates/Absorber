@@ -224,6 +224,23 @@ func play_smooch_animation() -> void:
 	tween.parallel().tween_property(fox_sprite, "rotation", 0.0, 0.18)
 
 
+func play_roll_animation(delay := 0.2) -> void:
+	if not _recruited or not is_instance_valid(fox_sprite):
+		return
+	var tween := fox_sprite.create_tween()
+	if delay > 0.0:
+		tween.tween_interval(delay)
+	tween.tween_property(fox_sprite, "rotation", fox_sprite.rotation + TAU, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(fox_sprite):
+			fox_sprite.rotation = 0.0
+	)
+
+
+func get_smooch_cooldown_ratio() -> float:
+	return clampf(_smooch_cooldown_left / 8.0, 0.0, 1.0)
+
+
 func _play_recruitment_celebration() -> void:
 	var hud := _world.get_node_or_null("HUD") as CanvasLayer if _world else null
 	if hud == null:

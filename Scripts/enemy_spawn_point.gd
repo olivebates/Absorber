@@ -22,6 +22,13 @@ const ENEMY_SCENES: Array[String] = [
 	"res://Scenes/bunny_enemy.tscn",
 	"res://Scenes/evil_raccoon_enemy.tscn",
 	"res://Scenes/evil_owl_enemy.tscn",
+	"res://Scenes/bat_enemy.tscn",
+	"res://Scenes/millipede_enemy.tscn",
+	"res://Scenes/evil_scorpion_enemy.tscn",
+	"res://Scenes/toad_enemy.tscn",
+	"res://Scenes/dung_beetle_enemy.tscn",
+	"res://Scenes/spider_enemy.tscn",
+	"res://Scenes/salamander_enemy.tscn",
 ]
 
 signal enemy_killed(enemy: ChickenEnemy)
@@ -34,7 +41,7 @@ const SPAWN_RADIUS_TILES := 2
 @export var area_id := 1
 @export_category("Rewards")
 @export_range(0, 999, 1) var stat_reward_amount := 1
-@export_enum("Damage", "Health", "Resource", "Regenerate", "Defense") var reward_type := ChickenEnemy.REWARD_DAMAGE
+@export_enum("Damage", "Health", "Resource", "Regenerate", "Defense", "Mana", "Mana Regenerate") var reward_type := ChickenEnemy.REWARD_DAMAGE
 @export_enum("Red", "Yellow", "Blue") var damage_reward_color := FoxPlayer.COLOR_RED
 @export_enum("Red", "Yellow", "Blue") var defense_reward_color := FoxPlayer.COLOR_RED
 @export var reward_resource_id: StringName = &"gold_ore"
@@ -46,9 +53,32 @@ const SPAWN_RADIUS_TILES := 2
 @export var aggressive := false
 @export var boss := false
 @export var dungeon_once := false
+@export_category("Enemy Skills")
+## Damage 0 uses the skill's default of five times this spawn's enemy damage.
+@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)") var enemy_skill_1 := ChickenEnemy.SKILL_NONE
+@export_range(0, 999, 1) var enemy_skill_1_damage := 0
+@export_enum("Red", "Yellow", "Blue") var enemy_skill_1_damage_type := FoxPlayer.COLOR_RED
+## Cooldown 0 uses the selected skill's default cooldown.
+@export_range(0.0, 999.0, 0.1) var enemy_skill_1_cooldown := 0.0
+## Delay before this skill's first use in each engagement. Its regular cooldown begins after use.
+@export_range(0.0, 999.0, 0.1) var enemy_skill_1_initial_cooldown_offset := 0.0
+@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)") var enemy_skill_2 := ChickenEnemy.SKILL_NONE
+@export_range(0, 999, 1) var enemy_skill_2_damage := 0
+@export_enum("Red", "Yellow", "Blue") var enemy_skill_2_damage_type := FoxPlayer.COLOR_RED
+@export_range(0.0, 999.0, 0.1) var enemy_skill_2_cooldown := 0.0
+## Delay before this skill's first use in each engagement. Its regular cooldown begins after use.
+@export_range(0.0, 999.0, 0.1) var enemy_skill_2_initial_cooldown_offset := 0.0
+@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)") var enemy_skill_3 := ChickenEnemy.SKILL_NONE
+@export_range(0, 999, 1) var enemy_skill_3_damage := 0
+@export_enum("Red", "Yellow", "Blue") var enemy_skill_3_damage_type := FoxPlayer.COLOR_RED
+@export_range(0.0, 999.0, 0.1) var enemy_skill_3_cooldown := 0.0
+## Delay before this skill's first use in each engagement. Its regular cooldown begins after use.
+@export_range(0.0, 999.0, 0.1) var enemy_skill_3_initial_cooldown_offset := 0.0
 @export_category("Spawning")
-@export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse", "Kangaroo Rat", "Mad Coyote", "Squirrel", "Deer", "Porcupine", "Bunny", "Evil Raccoon", "Evil Owl") var enemy_type := 0
+@export_enum("Chicken", "Cow", "Bull", "Mole", "Mole 2", "Goat", "Evil Goat", "Crab", "Snake", "Camel", "Crocodile", "Mouse", "Kangaroo Rat", "Mad Coyote", "Squirrel", "Deer", "Porcupine", "Bunny", "Evil Raccoon", "Evil Owl", "Bat", "Millipede", "Evil Scorpion", "Toad", "Dung Beetle", "Spider", "Salamander") var enemy_type := 0
 @export var enemy_scene: PackedScene
+## Mirrors this spawn's enemies relative to their normal facing direction.
+@export var flip_enemy_sprites_horizontally := false
 @export_category("Drops")
 ## Add one EnemyDropEntry per possible item. Each entry exposes a simple item,
 ## chance, and grade picker in the Inspector.
@@ -91,14 +121,14 @@ func _physics_process(delta: float) -> void:
 	_update_respawn_indicator()
 
 
-func _spawn_enemy() -> bool:
+func _spawn_enemy(rewards_enabled := true) -> bool:
 	var world := _get_navigation_world()
 	if world == null:
 		return false
 	var spawn_cell := _get_available_spawn_cell(world)
 	if spawn_cell == Vector2i(-1, -1):
 		return false
-	var enemy := _create_enemy(world, world.cell_to_world(spawn_cell), spawn_cell)
+	var enemy := _create_enemy(world, world.cell_to_world(spawn_cell), spawn_cell, [], rewards_enabled)
 	if enemy and _initial_spawn_complete:
 		enemy_respawned.emit(enemy)
 	return enemy != null
@@ -112,11 +142,12 @@ func get_active_enemies() -> Array[ChickenEnemy]:
 	return result
 
 
-func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector2i, saved_data: Array = []) -> ChickenEnemy:
+func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector2i, saved_data: Array = [], rewards_enabled := true) -> ChickenEnemy:
 	var enemy := _get_enemy_scene().instantiate() as ChickenEnemy
 	enemy.spawn_point = self
+	enemy.rewards_enabled = rewards_enabled
 	enemy.global_position = spawn_position
-	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor, defense_reward_color, aggressive)
+	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor, defense_reward_color, aggressive, _get_enemy_skills(), flip_enemy_sprites_horizontally)
 	enemy.died.connect(_on_spawned_enemy_died)
 	get_parent().add_child(enemy)
 	if not saved_data.is_empty():
@@ -142,6 +173,54 @@ func clear_for_load() -> void:
 	_initial_spawn_complete = true
 	_was_empty = true
 	_was_full = false
+
+
+func respawn_all_immediately() -> void:
+	# Preserve the reward carried by every survivor. Only missing wave members
+	# represent enemies the player already killed, so only those replacements
+	# are rewardless.
+	var surviving_reward_flags: Array[bool] = []
+	for enemy in _spawned_enemies:
+		if is_instance_valid(enemy):
+			if enemy.health > 0:
+				surviving_reward_flags.append(enemy.rewards_enabled)
+			enemy.free()
+	_spawned_enemies.clear()
+	emptied_once = false
+	_initial_spawn_complete = true
+	_was_empty = true
+	_was_full = false
+	for index in range(maxi(0, max_enemies)):
+		var rewards_enabled := surviving_reward_flags[index] if index < surviving_reward_flags.size() else false
+		if not _spawn_enemy(rewards_enabled):
+			break
+	_respawn_time_left = respawn_time
+	_was_empty = _spawned_enemies.is_empty()
+	_was_full = _spawned_enemies.size() >= max_enemies
+	_update_respawn_indicator()
+
+
+func ensure_initial_wave_spawned() -> void:
+	if emptied_once:
+		return
+	var active_enemies: Array[ChickenEnemy] = []
+	for enemy in _spawned_enemies:
+		if is_instance_valid(enemy) and enemy.health > 0:
+			active_enemies.append(enemy)
+	_spawned_enemies = active_enemies
+	if _spawned_enemies.size() >= max_enemies:
+		return
+	# A dungeon room outside the initial navigation region cannot spawn during
+	# _ready(). Treat this as the rest of its initial wave, not as a respawn.
+	_initial_spawn_complete = false
+	while _spawned_enemies.size() < max_enemies:
+		if not _spawn_enemy():
+			break
+	_initial_spawn_complete = true
+	_was_empty = _spawned_enemies.is_empty()
+	_was_full = _spawned_enemies.size() >= max_enemies
+	_respawn_time_left = respawn_time
+	_update_respawn_indicator()
 
 
 func load_save_data(data: Array, offline_seconds: int) -> bool:
@@ -203,7 +282,7 @@ func _ready() -> void:
 
 
 func _spawn_starting_enemies() -> void:
-	for _index in range(maxi(0, max_enemies)):
+	while _spawned_enemies.size() < maxi(0, max_enemies):
 		if not _spawn_enemy():
 			break
 	_initial_spawn_complete = true
@@ -234,6 +313,27 @@ func _get_drop_table() -> Array[Dictionary]:
 				result.append(entry.to_drop_dictionary())
 		return result
 	return drop_table.duplicate(true)
+
+
+func _get_enemy_skills() -> Array[Dictionary]:
+	var skills: Array[Dictionary] = []
+	var configured := [
+		[enemy_skill_1, enemy_skill_1_damage, enemy_skill_1_damage_type, enemy_skill_1_cooldown, enemy_skill_1_initial_cooldown_offset],
+		[enemy_skill_2, enemy_skill_2_damage, enemy_skill_2_damage_type, enemy_skill_2_cooldown, enemy_skill_2_initial_cooldown_offset],
+		[enemy_skill_3, enemy_skill_3_damage, enemy_skill_3_damage_type, enemy_skill_3_cooldown, enemy_skill_3_initial_cooldown_offset],
+	]
+	for values in configured:
+		var skill_id := int(values[0])
+		if skill_id == ChickenEnemy.SKILL_NONE:
+			continue
+		skills.append({
+			"skill_id": skill_id,
+			"damage": maxi(0, int(values[1])),
+			"damage_type": clampi(int(values[2]), FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE),
+			"cooldown": maxf(0.0, float(values[3])),
+			"initial_offset": maxf(0.0, float(values[4])),
+		})
+	return skills
 
 
 func _get_enemy_scene() -> PackedScene:

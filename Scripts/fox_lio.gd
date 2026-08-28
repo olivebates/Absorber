@@ -281,7 +281,11 @@ func _process_hunting(delta: float) -> void:
 			var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 			if audio:
 				audio.play_lio_fight(global_position)
-			attacked_enemy.take_hunter_damage(self)
+			# Revalidate at the actual damage point so a target displaced or moved to
+			# another gameplay context cannot receive a stale remote hit.
+			if is_instance_valid(attacked_enemy) and _is_eligible_enemy(attacked_enemy) \
+					and _world.belongs_to_world(attacked_enemy) and _world.are_adjacent(self, attacked_enemy):
+				attacked_enemy.take_hunter_damage(self)
 			if not is_instance_valid(attacked_enemy) or attacked_enemy.health <= 0:
 				_hunt_target = null
 		return
@@ -487,7 +491,9 @@ func _get_reward_price_text() -> String:
 
 func _update_helper_tooltip() -> void:
 	var hovering := Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
-	var should_show := hovering and is_waiting_at_campfire() and not _collected_rewards.is_empty() and not _dialogue_is_open()
+	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	var should_show := hovering and is_waiting_at_campfire() and not _collected_rewards.is_empty() and not _dialogue_is_open() \
+		and not (dungeon_manager and dungeon_manager.is_dungeon_active())
 	var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
 	if not should_show:
 		if _helper_tooltip_visible and tooltip:

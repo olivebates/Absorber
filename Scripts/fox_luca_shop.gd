@@ -6,6 +6,7 @@ const LUCA_UPGRADES := [
 	{"resource_id": &"fish", "base_price": 10, "fixed_price": true, "purchase_slot": 1, "amount": 3, "display_amount": "+3", "stat_icon": REGENERATION_ICON, "stat": &"regeneration", "name": "Regeneration", "description": "Increase regeneration by 3."},
 	{"resource_id": &"wood", "base_price": 10, "fixed_price": true, "purchase_slot": 2, "amount": 60, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 60."},
 	{"resource_id": &"fish", "base_price": 7, "fixed_price": true, "purchase_slot": 3, "amount": 1, "stat_icon": preload("res://Sprites/PotionRope.webp"), "stat": &"item", "item_id": "potion_rope", "name": "Upgraded Potion", "description": "Consume to heal 100 HP."},
+	{"resource_id": &"jewels", "base_price": 20, "fixed_price": true, "visible_by_default": true, "purchase_slot": 4, "amount": 1, "stat_icon": preload("res://Sprites/SwordIcon.webp"), "stat": &"auto_fight", "name": "Auto Fight", "description": "Automatically fight previously defeated enemies within range."},
 ]
 
 

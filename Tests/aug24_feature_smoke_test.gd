@@ -15,6 +15,7 @@ func _run() -> void:
 	assert(FoxLucaShop.LUCA_UPGRADES[1]["amount"] == 3 and FoxLucaShop.LUCA_UPGRADES[1]["resource_id"] == &"fish")
 	assert(FoxLucaShop.LUCA_UPGRADES[2]["amount"] == 60 and FoxLucaShop.LUCA_UPGRADES[2]["resource_id"] == &"wood")
 	assert(FoxLucaShop.LUCA_UPGRADES[3]["item_id"] == "potion_rope" and FoxLucaShop.LUCA_UPGRADES[3]["base_price"] == 7)
+	assert(FoxLucaShop.LUCA_UPGRADES[4]["stat"] == &"auto_fight" and FoxLucaShop.LUCA_UPGRADES[4]["base_price"] == 20 and FoxLucaShop.LUCA_UPGRADES[4]["resource_id"] == &"jewels")
 
 	var fox := load("res://Scenes/fox.tscn").instantiate() as FoxPlayer
 	root.add_child(fox)
@@ -62,8 +63,15 @@ func _run() -> void:
 	assert(occupied.has(jaw_origin) and occupied.has(jaw_origin + Vector2i(1, 1)))
 	var auto_fight := world.get_node("HUD/AutoFight") as AutoFightControl
 	assert(not auto_fight.visible)
-	auto_fight._on_first_boss_killed(null)
-	await create_timer(0.8).timeout
+	var luca := world.get_node("FoxLuca") as FoxLuca
+	luca.open_shop()
+	var luca_shop := luca._shop as FoxLucaShop
+	var resources := world.get_node("ResourceManager") as ResourceManager
+	var gem_capacity := Node.new()
+	world.add_child(gem_capacity)
+	resources.register_capacity_bonus(gem_capacity, &"jewels", 10)
+	resources.fill_all_to_maximum()
+	assert(luca_shop.get_upgrade_price(4) == 20 and luca_shop.buy_upgrade(4))
 	assert(world.player.auto_fight_unlocked and auto_fight.visible)
 	auto_fight._toggle.button_pressed = true
 	assert(world.player.auto_fight_enabled and world.player._auto_fight_range_fill.visible)

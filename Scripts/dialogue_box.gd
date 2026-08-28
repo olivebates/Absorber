@@ -11,6 +11,10 @@ const OPEN_DURATION := 0.16
 const INPUT_DELAY := 0.8
 const BOTTOM_TOP := -174.0
 const BOTTOM_BOTTOM := -24.0
+const SKILL_TOOLBAR_OFFSET := 64.0
+const ACTION_NONE := &""
+const ACTION_TILE_CHOICE := &"tile_choice"
+const ACTION_KEY := &"key"
 
 var _lines: Array[Dictionary] = []
 var _line_index := 0
@@ -31,6 +35,12 @@ var _speaker_tween: Tween
 var _portrait_bob_time := 0.0
 var _input_delay_left := 0.0
 var _externally_locked := false
+var _action_mode: StringName = ACTION_NONE
+var _action_callback := Callable()
+var _action_key := Key.KEY_NONE
+var _tile_choice_world: WorldNavigation
+var _tile_choice_cells: Array[Vector2i] = []
+var _tile_choice_buttons: Array[Button] = []
 
 
 func _ready() -> void:
@@ -44,6 +54,39 @@ func _ready() -> void:
 
 
 func play(lines: Array[Dictionary]) -> bool:
+	_clear_action_mode()
+	return _play_internal(lines)
+
+
+func play_tile_choice(lines: Array[Dictionary], world: WorldNavigation, cells: Array[Vector2i], action: Callable) -> bool:
+	if not is_instance_valid(world) or cells.is_empty() or not action.is_valid():
+		return false
+	_clear_action_mode()
+	_action_mode = ACTION_TILE_CHOICE
+	_action_callback = action
+	_tile_choice_world = world
+	_tile_choice_cells = cells.duplicate()
+	if not _play_internal(lines):
+		_clear_action_mode()
+		return false
+	_build_tile_choice_buttons()
+	return true
+
+
+func play_key_action(lines: Array[Dictionary], key: Key, action: Callable) -> bool:
+	if key == Key.KEY_NONE or not action.is_valid():
+		return false
+	_clear_action_mode()
+	_action_mode = ACTION_KEY
+	_action_key = key
+	_action_callback = action
+	if not _play_internal(lines):
+		_clear_action_mode()
+		return false
+	return true
+
+
+func _play_internal(lines: Array[Dictionary]) -> bool:
 	if lines.is_empty() or visible:
 		return false
 	_lines = lines.duplicate(true)
@@ -58,7 +101,7 @@ func play(lines: Array[Dictionary]) -> bool:
 
 
 func advance() -> void:
-	if not visible:
+	if not visible or _action_mode != ACTION_NONE:
 		return
 	if is_typing():
 		finish_typing()
@@ -75,6 +118,7 @@ func close() -> void:
 		return
 	hide()
 	_lines.clear()
+	_clear_action_mode()
 	dialogue_finished.emit()
 
 
@@ -84,6 +128,7 @@ func cancel() -> void:
 	hide()
 	_lines.clear()
 	_externally_locked = false
+	_clear_action_mode()
 
 
 func is_open() -> bool:
@@ -116,6 +161,8 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	_input_delay_left = maxf(0.0, _input_delay_left - delta)
+	if _action_mode == ACTION_TILE_CHOICE:
+		_update_tile_choice_buttons()
 	_portrait_bob_time += delta * 3.2
 	if _speaker_tween == null or not _speaker_tween.is_running():
 		_portrait.position.y = -1.0 + sin(_portrait_bob_time) * 1.4
@@ -138,14 +185,16 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	var key_event := event as InputEventKey
 	var key := key_event.physical_keycode if key_event.physical_keycode != 0 else key_event.keycode
-	if not _externally_locked and _input_delay_left <= 0.0 and (key == KEY_SPACE or key == KEY_ENTER or key == KEY_KP_ENTER):
+	if _action_mode == ACTION_KEY and key == _action_key:
+		_try_complete_action()
+	elif _action_mode == ACTION_NONE and not _externally_locked and _input_delay_left <= 0.0 and (key == KEY_SPACE or key == KEY_ENTER or key == KEY_KP_ENTER):
 		advance()
 	get_viewport().set_input_as_handled()
 
 
 func _on_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		if not _externally_locked and _input_delay_left <= 0.0:
+		if _action_mode == ACTION_NONE and not _externally_locked and _input_delay_left <= 0.0:
 			advance()
 		accept_event()
 
@@ -168,7 +217,14 @@ func _show_current_line() -> void:
 	# when an NPC portrait is displayed on the right.
 	_text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_continue_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_continue_label.text = "▼"
+	if _action_mode == ACTION_TILE_CHOICE:
+		_continue_label.text = "Click a glowing tile"
+	elif _action_mode == ACTION_KEY:
+		_continue_label.text = "Press %s" % OS.get_keycode_string(_action_key)
+	elif line.has("continue_hint"):
+		_continue_label.text = str(line.get("continue_hint", ""))
+	else:
+		_continue_label.text = "▼"
 	_continue_label.visible = true
 	_continue_label.modulate.a = 0.0
 	_continue_label.scale = Vector2.ONE
@@ -179,15 +235,16 @@ func _show_current_line() -> void:
 
 
 func _build_interface() -> void:
+	var vertical_offsets := _get_vertical_offsets()
 	_bottom = MarginContainer.new()
 	_bottom.anchor_left = 0.5
 	_bottom.anchor_top = 1.0
 	_bottom.anchor_right = 0.5
 	_bottom.anchor_bottom = 1.0
 	_bottom.offset_left = -410.0
-	_bottom.offset_top = BOTTOM_TOP
+	_bottom.offset_top = vertical_offsets.x
 	_bottom.offset_right = 410.0
-	_bottom.offset_bottom = BOTTOM_BOTTOM
+	_bottom.offset_bottom = vertical_offsets.y
 	_bottom.add_theme_constant_override("margin_left", 12)
 	_bottom.add_theme_constant_override("margin_top", 12)
 	_bottom.add_theme_constant_override("margin_right", 12)
@@ -284,17 +341,25 @@ func _fit_width_to_conversation() -> void:
 func _animate_open() -> void:
 	if _open_tween and _open_tween.is_valid():
 		_open_tween.kill()
+	var vertical_offsets := _get_vertical_offsets()
 	_bottom.pivot_offset = _bottom.size * Vector2(0.5, 1.0)
 	_bottom.scale = Vector2(0.96, 0.96)
 	_bottom.modulate.a = 0.0
-	_bottom.offset_top = BOTTOM_TOP + 16.0
-	_bottom.offset_bottom = BOTTOM_BOTTOM + 16.0
+	_bottom.offset_top = vertical_offsets.x + 16.0
+	_bottom.offset_bottom = vertical_offsets.y + 16.0
 	_open_tween = create_tween().set_parallel(true)
 	_open_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	_open_tween.tween_property(_bottom, "scale", Vector2.ONE, OPEN_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_open_tween.tween_property(_bottom, "modulate:a", 1.0, 0.10)
-	_open_tween.tween_property(_bottom, "offset_top", BOTTOM_TOP, OPEN_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	_open_tween.tween_property(_bottom, "offset_bottom", BOTTOM_BOTTOM, OPEN_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_open_tween.tween_property(_bottom, "offset_top", vertical_offsets.x, OPEN_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_open_tween.tween_property(_bottom, "offset_bottom", vertical_offsets.y, OPEN_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+func _get_vertical_offsets() -> Vector2:
+	var player := get_tree().get_first_node_in_group("player") as FoxPlayer
+	var toolbar_unlocked := is_instance_valid(player) and player.has_unlocked_player_skill()
+	var offset := SKILL_TOOLBAR_OFFSET if toolbar_unlocked else 0.0
+	return Vector2(BOTTOM_TOP - offset, BOTTOM_BOTTOM - offset)
 
 
 func _animate_speaker() -> void:
@@ -318,6 +383,78 @@ func _show_continue_indicator() -> void:
 	_continue_label.modulate.a = 1.0
 	_continue_time = 0.0
 	_continue_label.pivot_offset = _continue_label.size * 0.5
+
+
+func _build_tile_choice_buttons() -> void:
+	for cell in _tile_choice_cells:
+		var button := Button.new()
+		button.name = "TutorialTile_%d_%d" % [cell.x, cell.y]
+		button.text = ""
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.set_meta(&"tutorial_cell", cell)
+		var normal := StyleBoxFlat.new()
+		normal.bg_color = Color(1.0, 0.82, 0.08, 0.34)
+		normal.border_color = Color(1.0, 0.91, 0.28, 1.0)
+		normal.set_border_width_all(4)
+		normal.set_corner_radius_all(6)
+		var hover := normal.duplicate() as StyleBoxFlat
+		hover.bg_color = Color(1.0, 0.88, 0.16, 0.58)
+		hover.set_border_width_all(5)
+		button.add_theme_stylebox_override("normal", normal)
+		button.add_theme_stylebox_override("hover", hover)
+		button.add_theme_stylebox_override("pressed", hover)
+		button.pressed.connect(_on_tile_choice_pressed.bind(cell))
+		add_child(button)
+		move_child(button, 0)
+		_tile_choice_buttons.append(button)
+	_update_tile_choice_buttons()
+
+
+func _update_tile_choice_buttons() -> void:
+	if not is_instance_valid(_tile_choice_world):
+		return
+	var canvas_transform := _tile_choice_world.get_viewport().get_canvas_transform()
+	var tile_size := Vector2(
+		WorldNavigation.TILE_SIZE * canvas_transform.x.length(),
+		WorldNavigation.TILE_SIZE * canvas_transform.y.length()
+	)
+	var pulse := 0.86 + sin(Time.get_ticks_msec() * 0.008) * 0.14
+	for button in _tile_choice_buttons:
+		if not is_instance_valid(button):
+			continue
+		var cell: Vector2i = button.get_meta(&"tutorial_cell", Vector2i.ZERO)
+		var screen_center := canvas_transform * _tile_choice_world.cell_to_world(cell)
+		button.position = screen_center - tile_size * 0.5
+		button.size = tile_size
+		button.modulate.a = pulse
+
+
+func _on_tile_choice_pressed(cell: Vector2i) -> void:
+	if _action_mode != ACTION_TILE_CHOICE or not _tile_choice_cells.has(cell):
+		return
+	_try_complete_action(cell)
+
+
+func _try_complete_action(argument: Variant = null) -> void:
+	if not _action_callback.is_valid():
+		return
+	var result: Variant = _action_callback.call(argument) if _action_mode == ACTION_TILE_CHOICE else _action_callback.call()
+	if result is bool and not bool(result):
+		return
+	close()
+
+
+func _clear_action_mode() -> void:
+	for button in _tile_choice_buttons:
+		if is_instance_valid(button):
+			button.queue_free()
+	_tile_choice_buttons.clear()
+	_tile_choice_cells.clear()
+	_tile_choice_world = null
+	_action_callback = Callable()
+	_action_key = Key.KEY_NONE
+	_action_mode = ACTION_NONE
 
 
 func _punctuation_pause(character: String) -> float:

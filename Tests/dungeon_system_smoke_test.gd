@@ -79,15 +79,33 @@ func _run() -> void:
 	game_audio._update_biome_music()
 	assert(game_audio._active_biome == GameAudio.Biome.DUNGEON and not game_audio._dungeon_player.stream_paused, "Entering a dungeon must crossfade to the Dungeon1/Dungeon2 playlist")
 	assert(world.player.get_parent() == active, "The shared player must move into the isolated dungeon viewport")
-	assert(world.player.max_health == 1 and world.player.passive_healing_amount == 1, "A first dungeon visit must reset temporary stats to one")
+	assert(active.world_to_cell(world.player.global_position) == active._get_entry_spawn_cell(), "Entering a dungeon must place Mira three tiles right of its authored entry cell, or on the nearest safe floor")
+	assert(world.player.health == 10 and world.player.max_health == 10 and world.player.passive_healing_amount == 1, "A first dungeon visit must start Mira at ten health while resetting the other temporary stats")
 	world.player.add_max_health(2)
+	var save_system := world.get_node("SaveSystem") as SaveSystem
+	var live_save_state := save_system._decode_state(save_system.create_save_string(1000))
+	var saved_overworld_player := live_save_state[2] as Array
+	assert(int(saved_overworld_player[0]) == roundi(manager._overworld_position.x) and int(saved_overworld_player[1]) == roundi(manager._overworld_position.y) and int(saved_overworld_player[3]) == original_health, "Saving inside a dungeon must retain Mira's overworld load position and stats")
+	var live_dungeon_states := (live_save_state[15] as Array)[1] as Dictionary
+	var live_dungeon_state := live_dungeon_states["mossroot_grotto"] as Dictionary
+	assert(int((live_dungeon_state.get("stats", {}) as Dictionary).get("max_health", 0)) == 12 and not (live_dungeon_state.get("level", {}) as Dictionary).is_empty(), "A save made during an unfinished dungeon must contain its live stats and level snapshot")
 	assert(active.current_room == Vector2i.ZERO and active.explored_cells.has(active.entry_cell), "Dungeon fog must begin with the entry room explored")
 	assert(active.get_map_region() == Rect2i(Vector2i.ZERO, active.room_size_tiles), "Dungeon maps must initially fit only the visited entry room")
 	assert(active.get_map_cells().size() == active.room_size_tiles.x * active.room_size_tiles.y, "Dungeon maps must expose the complete visited room and no predefined unvisited rooms")
 	assert(active.get_node("EntryGuard") is EnemySpawnPoint, "Dungeon must instantiate room enemies")
+	assert(not active.is_current_room_clear(), "The entry guard must keep the starting room occupied for the regeneration check")
+	world.player.health = world.player.max_health - 2
+	world.player.mana = world.player.max_mana - 2
+	world.player._heal_time_left = 0.01
+	world.player._mana_regen_time_left = 0.01
+	world.player._physics_process(0.02)
+	assert(world.player.health == world.player.max_health - 2 and world.player.mana == world.player.max_mana - 2, "Health and mana must not regenerate while enemies remain in a dungeon room")
 	assert(active.get_node("RoomDoor") is DungeonDoor, "Dungeon must contain a room-clear door")
 	assert(active.get_node("LockedDoor") is DungeonDoorLocked, "Dungeon must contain a keyed door")
+	assert(DungeonDoorLocked.PLAYER_PORTRAIT.resource_path == "res://Sprites/Fox.webp", "The locked-door key reminder must use Mira's standard dialogue portrait")
 	assert(active.get_node("KeyChest") is DungeonChest, "Dungeon must contain a reward chest")
+	var initially_locked_chest := active.get_node("KeyChest") as DungeonChest
+	assert(initially_locked_chest.visible and not initially_locked_chest._sprite.visible and not initially_locked_chest.is_in_group("dungeon_interactables") and not initially_locked_chest.is_in_group("solid_walls"), "A hidden dungeon chest must show only its dotted tile outline and remain non-blocking while enemies are alive in its room")
 	var authored_wall_cells := active.wall_layer.get_used_cells()
 	assert(not authored_wall_cells.is_empty(), "The test dungeon must contain authored wall tiles")
 	var authored_wall_cell := authored_wall_cells[0]
@@ -173,7 +191,23 @@ func _run() -> void:
 			(child as EnemySpawnPoint).emptied_once = true
 	var snapshot := active.capture_snapshot()
 	assert(snapshot.has("spawns") and snapshot.has("chests") and snapshot.has("locked_doors"), "Dungeon snapshots must include enemies, chests, and keyed doors")
-	assert(bool(snapshot.get("cleared", false)), "Killing the boss and opening every chest must clear the dungeon")
+	assert(bool(snapshot.get("cleared", false)), "Opening every chest must clear the dungeon")
+	var incomplete_snapshot := snapshot.duplicate(true)
+	incomplete_snapshot["cleared"] = false
+	var reset_stats := manager._make_reset_stats()
+	manager.dungeon_states["stale_dungeon"] = {"level": {"stale": true}}
+	assert(manager.load_save_data([true, {
+		"mossroot_grotto": {
+			"keys": 1,
+			"stats": reset_stats.duplicate(true),
+			"transferred_stats": reset_stats.duplicate(true),
+			"level": incomplete_snapshot,
+			"cleared": false,
+		},
+		"no_snapshot": {"stats": reset_stats.duplicate(true), "cleared": false},
+	}, int(Time.get_unix_time_from_system()), false], 0), "Dungeon save data must load")
+	assert(not manager.dungeon_states.has("stale_dungeon") and not manager.dungeon_states.has("no_snapshot"), "Loading must reset stale dungeons and entries without snapshots")
+	assert(((manager.dungeon_states["mossroot_grotto"] as Dictionary).get("level", {}) as Dictionary) == incomplete_snapshot, "Loading must restore an unfinished dungeon snapshot")
 
 	await manager.leave_dungeon()
 	assert(not manager.is_dungeon_active(), "Leaving from the map action must close the dungeon")
@@ -187,16 +221,13 @@ func _run() -> void:
 	dialogue.close()
 	await create_timer(0.65).timeout
 	assert(world.player.max_health == original_health + 2, "New dungeon stat gains must fly into and permanently increase restored overworld stats")
-	assert((manager.dungeon_states["mossroot_grotto"] as Dictionary).has("level"), "Leaving must retain a dungeon snapshot for re-entry")
+	assert((manager.dungeon_states["mossroot_grotto"] as Dictionary) == {"cleared": true}, "Clearing a dungeon must discard its live snapshot and retain only completion")
 	assert((manager.get_save_data()[1] as Dictionary).has("mossroot_grotto"), "Dungeon state must be included in save data")
+	assert(((manager.get_save_data()[1] as Dictionary)["mossroot_grotto"] as Dictionary) == {"cleared": true}, "A cleared dungeon save must contain only its completion flag")
 	assert(manager.is_cleared(&"mossroot_grotto"), "Cleared state must persist on the entrance")
 	assert(bool(manager.get_save_data()[3]), "The first-exit reaction state must persist in dungeon save data")
 	await manager._begin_entry(entrance_one)
-	assert(manager.is_dungeon_active(), "A saved dungeon must support re-entry")
-	var restored_level := manager.get_active_level()
-	assert((restored_level.get_node("KeyChest") as DungeonChest).opened, "Re-entry must restore opened chests without touching freed nodes from the prior instance")
-	assert((restored_level.get_node("LockedDoor") as DungeonDoorLocked).unlocked, "Re-entry must restore unlocked doors")
-	await manager.leave_dungeon()
+	assert(not manager.is_dungeon_active(), "A cleared dungeon must not be re-enterable")
 	assert(not dialogue.is_open(), "The first-exit reaction must not repeat on later exits")
 	var resources := world.get_node("ResourceManager") as ResourceManager
 	assert(is_equal_approx(resources.get_definition(&"cave_moss").production_speed, 1.0 / 600.0), "Each cleared dungeon must produce one Cave Moss per ten minutes")

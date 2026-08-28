@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://Scripts/fox_player.gd" id="1_player"]
 [ext_resource type="Texture2D" path="res://Sprites/Fox.webp" id="2_fox"]
@@ -21,6 +21,25 @@ corner_radius_bottom_left = 3
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_health_fill"]
 bg_color = Color(0.16, 0.82, 0.25, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_mana_background"]
+bg_color = Color(0.04, 0.08, 0.16, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0, 0, 0, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_mana_fill"]
+bg_color = Color(0.08, 0.55, 0.96, 1)
 corner_radius_top_left = 2
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
@@ -57,6 +76,31 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 3
 theme_override_font_sizes/font_size = 11
+text = "10 / 10"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ManaBar" type="ProgressBar" parent="."]
+visible = false
+offset_left = -25.0
+offset_top = -34.0
+offset_right = 25.0
+offset_bottom = -24.0
+show_percentage = false
+theme_override_styles/background = SubResource("StyleBox_mana_background")
+theme_override_styles/fill = SubResource("StyleBox_mana_fill")
+
+[node name="ManaLabel" type="Label" parent="."]
+visible = false
+offset_left = -28.0
+offset_top = -38.0
+offset_right = 28.0
+offset_bottom = -20.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.55, 0.94, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 10
 text = "10 / 10"
 horizontal_alignment = 1
 vertical_alignment = 1

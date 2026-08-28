@@ -13,6 +13,8 @@ const VERTICAL_TRANSITION_INSET := 1
 const LEFT_ENTRY_DEPTH := 3
 const RIGHT_ENTRY_DEPTH := 4
 const VERTICAL_ENTRY_DEPTH := 2
+const ENTRY_SPAWN_OFFSET := Vector2i(3, 0)
+const ITEM_PICKUP_SCENE := preload("res://Scenes/item_pickup.tscn")
 
 @export var dungeon_id: StringName = &"test_dungeon"
 @export var display_name := "Test Dungeon"
@@ -43,7 +45,7 @@ func _ready() -> void:
 	game_audio = get_tree().get_first_node_in_group("game_audio") as GameAudio
 	_navigation_rooms.append(cell_to_room(entry_cell))
 	_build_dungeon_navigation()
-	var safe_entry_cell := _get_safe_walkable_cell(entry_cell)
+	var safe_entry_cell := _get_entry_spawn_cell()
 	current_room = cell_to_room(safe_entry_cell)
 	previous_room = current_room
 	_previous_room_entry_position = cell_to_world(safe_entry_cell)
@@ -57,7 +59,7 @@ func attach_player(dungeon_player: FoxPlayer, dungeon_camera: Camera2D, dungeon_
 	player = dungeon_player
 	manager = dungeon_manager
 	_camera = dungeon_camera
-	var safe_entry_cell := _get_safe_walkable_cell(entry_cell)
+	var safe_entry_cell := _get_entry_spawn_cell()
 	player.global_position = cell_to_world(safe_entry_cell)
 	current_room = cell_to_room(safe_entry_cell)
 	previous_room = current_room
@@ -137,6 +139,7 @@ func _get_interactable_at(world_position: Vector2) -> Node2D:
 
 func _transition_to_room(next_room: Vector2i, move_player_through_edge := false) -> bool:
 	var old_room := current_room
+	var abandoned_with_enemies := has_room_enemies(old_room)
 	_ensure_room_available(next_room)
 	var destination_cell := world_to_cell(player.global_position)
 	if move_player_through_edge:
@@ -151,6 +154,8 @@ func _transition_to_room(next_room: Vector2i, move_player_through_edge := false)
 	if move_player_through_edge:
 		player.global_position = cell_to_world(destination_cell)
 	current_room = next_room
+	if abandoned_with_enemies:
+		_respawn_room_enemies(old_room)
 	_edge_transition_armed = false
 	_blocked_return_direction = old_room - next_room
 	_reveal_room(current_room)
@@ -188,10 +193,21 @@ func _get_transition_neighbor(cell: Vector2i, movement_direction := Vector2i.ZER
 
 func _ensure_room_available(room: Vector2i) -> void:
 	if _navigation_rooms.has(room):
+		_activate_room_spawns(room)
 		return
 	_navigation_rooms.append(room)
 	_build_dungeon_navigation()
+	_activate_room_spawns(room)
 	queue_redraw()
+
+
+func _activate_room_spawns(room: Vector2i) -> void:
+	var room_spawns: Array[EnemySpawnPoint] = []
+	for child in get_children():
+		if child is EnemySpawnPoint and cell_to_room(world_to_cell(child.global_position)) == room:
+			room_spawns.append(child as EnemySpawnPoint)
+	for spawn in room_spawns:
+		spawn.ensure_initial_wave_spawned()
 
 
 func _get_transition_destination(source_cell: Vector2i, direction: Vector2i, next_room: Vector2i) -> Vector2i:
@@ -262,6 +278,10 @@ func _get_safe_walkable_cell(preferred_cell: Vector2i) -> Vector2i:
 	return closest_cell
 
 
+func _get_entry_spawn_cell() -> Vector2i:
+	return _get_safe_walkable_cell(entry_cell + ENTRY_SPAWN_OFFSET)
+
+
 func _safe_entry_position_for_room(room: Vector2i, toward_room: Vector2i) -> Vector2:
 	var center_cell := room * room_size_tiles + room_size_tiles / 2
 	var direction := toward_room - room
@@ -278,11 +298,36 @@ func is_actor_in_active_room(actor: Node2D) -> bool:
 
 
 func has_current_room_enemies() -> bool:
+	return has_room_enemies(current_room)
+
+
+func has_room_enemies(room: Vector2i) -> bool:
 	for node in get_tree().get_nodes_in_group("enemies"):
 		if is_instance_valid(node) and node is ChickenEnemy and belongs_to_world(node) \
-			and node.health > 0 and is_actor_in_active_room(node):
+			and node.health > 0 and cell_to_room(world_to_cell(node.global_position)) == room:
 			return true
 	return false
+
+
+func notify_chest_opened() -> void:
+	var found_chest := false
+	for node in get_tree().get_nodes_in_group("dungeon_chests"):
+		if not is_instance_valid(node) or not node is DungeonChest or not belongs_to_world(node):
+			continue
+		found_chest = true
+		if not (node as DungeonChest).opened:
+			return
+	if found_chest and is_instance_valid(manager) and manager.has_method("request_completed_dungeon_exit"):
+		manager.call("request_completed_dungeon_exit")
+
+
+func _respawn_room_enemies(room: Vector2i) -> void:
+	var room_spawns: Array[EnemySpawnPoint] = []
+	for child in get_children():
+		if child is EnemySpawnPoint and cell_to_room(world_to_cell(child.global_position)) == room:
+			room_spawns.append(child as EnemySpawnPoint)
+	for spawn in room_spawns:
+		spawn.respawn_all_immediately()
 
 
 func is_current_room_clear() -> bool:
@@ -345,9 +390,11 @@ func capture_snapshot() -> Dictionary:
 				has_boss = true
 				boss_killed = boss_killed and spawn.emptied_once and spawn.get_active_enemies().is_empty()
 	var chests: Dictionary = {}
+	var found_chest := false
 	var all_chests_open := true
 	for node in get_tree().get_nodes_in_group("dungeon_chests"):
 		if is_instance_valid(node) and node is DungeonChest and belongs_to_world(node):
+			found_chest = true
 			chests[str(node.name)] = node.get_save_data()
 			all_chests_open = all_chests_open and node.opened
 	var locked_doors: Dictionary = {}
@@ -360,15 +407,25 @@ func capture_snapshot() -> Dictionary:
 	var visited_rooms: Array = []
 	for room in _visited_rooms:
 		visited_rooms.append([room.x, room.y])
+	var pickups: Array = []
+	for node in get_tree().get_nodes_in_group("item_pickups"):
+		if node is ItemPickup and is_instance_valid(node) and belongs_to_world(node) and not node._collecting:
+			var pickup := node as ItemPickup
+			pickups.append([roundi(pickup.global_position.x), roundi(pickup.global_position.y), pickup.item_id, pickup.grade])
 	return {
+		"player_position": [roundi(player.global_position.x), roundi(player.global_position.y)] if is_instance_valid(player) else [],
+		"current_room": [current_room.x, current_room.y],
+		"previous_room": [previous_room.x, previous_room.y],
+		"previous_room_entry_position": [roundi(_previous_room_entry_position.x), roundi(_previous_room_entry_position.y)],
 		"spawns": spawns,
 		"chests": chests,
 		"locked_doors": locked_doors,
 		"explored": explored,
 		"visited_rooms": visited_rooms,
+		"pickups": pickups,
 		"boss_killed": has_boss and boss_killed,
-		"all_chests_open": all_chests_open,
-		"cleared": has_boss and boss_killed and all_chests_open,
+		"all_chests_open": found_chest and all_chests_open,
+		"cleared": found_chest and all_chests_open,
 	}
 
 
@@ -393,6 +450,17 @@ func load_snapshot(snapshot: Dictionary) -> void:
 	for node in get_tree().get_nodes_in_group("dungeon_locked_doors"):
 		if is_instance_valid(node) and node is DungeonDoorLocked and belongs_to_world(node) and saved_doors.has(str(node.name)):
 			node.load_opened(bool(saved_doors[str(node.name)]))
+	if snapshot.has("pickups"):
+		for node in get_tree().get_nodes_in_group("item_pickups"):
+			if node is ItemPickup and is_instance_valid(node) and belongs_to_world(node):
+				node.free()
+		for raw_pickup in snapshot.get("pickups", []) as Array:
+			if not raw_pickup is Array or raw_pickup.size() < 4 or not ItemPickup.ITEM_DATA.has(str(raw_pickup[2])):
+				continue
+			var pickup := ITEM_PICKUP_SCENE.instantiate() as ItemPickup
+			pickup.setup(str(raw_pickup[2]), int(raw_pickup[3]))
+			pickup.global_position = Vector2(float(raw_pickup[0]), float(raw_pickup[1]))
+			add_child(pickup)
 	var saved_visited_rooms := snapshot.get("visited_rooms", []) as Array
 	var navigation_expanded := false
 	for raw_room in saved_visited_rooms:
@@ -406,7 +474,38 @@ func load_snapshot(snapshot: Dictionary) -> void:
 	if navigation_expanded:
 		_build_dungeon_navigation()
 		queue_redraw()
+	_restore_player_snapshot(snapshot)
 	_update_room_objects()
+
+
+func _restore_player_snapshot(snapshot: Dictionary) -> void:
+	if not is_instance_valid(player):
+		return
+	var saved_position := snapshot.get("player_position", []) as Array
+	if saved_position.size() < 2:
+		return
+	var candidate := Vector2(float(saved_position[0]), float(saved_position[1]))
+	var candidate_cell := world_to_cell(candidate)
+	if not is_walkable(candidate_cell) or is_cell_occupied(candidate_cell, player):
+		return
+	player.global_position = cell_to_world(candidate_cell)
+	current_room = cell_to_room(candidate_cell)
+	var saved_current_room := snapshot.get("current_room", []) as Array
+	if saved_current_room.size() >= 2:
+		current_room = Vector2i(int(saved_current_room[0]), int(saved_current_room[1]))
+	previous_room = current_room
+	var saved_previous_room := snapshot.get("previous_room", []) as Array
+	if saved_previous_room.size() >= 2:
+		previous_room = Vector2i(int(saved_previous_room[0]), int(saved_previous_room[1]))
+	_previous_room_entry_position = player.global_position
+	var saved_respawn_position := snapshot.get("previous_room_entry_position", []) as Array
+	if saved_respawn_position.size() >= 2:
+		_previous_room_entry_position = Vector2(float(saved_respawn_position[0]), float(saved_respawn_position[1]))
+	_edge_transition_armed = true
+	_blocked_return_direction = Vector2i.ZERO
+	if is_instance_valid(_camera):
+		_camera.global_position = get_room_center(current_room)
+		_camera.reset_smoothing()
 
 
 func _restore_explored_cells(explored: Array, infer_visited_rooms := true, rebuild_navigation := true) -> void:

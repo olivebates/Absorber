@@ -43,9 +43,6 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not _automatic_saves_enabled:
 		return
-	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
-	if dungeon_manager and dungeon_manager.is_dungeon_active():
-		return
 	_auto_save_time_left -= delta
 	if _auto_save_time_left <= 0.0:
 		_auto_save_time_left = AUTO_SAVE_INTERVAL
@@ -209,9 +206,6 @@ func _write_backup_state(state: Dictionary) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
-	if dungeon_manager and dungeon_manager.is_dungeon_active():
-		return
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 	var key_event := event as InputEventKey
@@ -273,6 +267,7 @@ func load_save_string(encoded: String, loaded_at_unix := -1) -> bool:
 
 func _capture_state(timestamp: int) -> Array:
 	var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+	var dungeon_manager := _get_dungeon_manager()
 	var spawn_data: Array = []
 	for spawn in _get_spawns():
 		spawn_data.append([str(spawn.name), spawn.get_save_data()])
@@ -286,7 +281,7 @@ func _capture_state(timestamp: int) -> Array:
 			gate_mask |= 1 << index
 	var pickup_data: Array = []
 	for node in get_tree().get_nodes_in_group("item_pickups"):
-		if node is ItemPickup and is_instance_valid(node):
+		if node is ItemPickup and is_instance_valid(node) and _world.belongs_to_world(node):
 			var pickup := node as ItemPickup
 			pickup_data.append([roundi(pickup.global_position.x), roundi(pickup.global_position.y), pickup.item_id, pickup.grade])
 	var building_data: Array = []
@@ -294,7 +289,7 @@ func _capture_state(timestamp: int) -> Array:
 		if node is GoldShack and is_instance_valid(node):
 			building_data.append([roundi(node.global_position.x), roundi(node.global_position.y), node.building_type])
 	return [
-		SAVE_VERSION, timestamp, _world.player.get_save_data(),
+		SAVE_VERSION, timestamp, dungeon_manager.get_player_save_data_for_save() if dungeon_manager else _world.player.get_save_data(),
 		resource_manager.get_save_data() if resource_manager else [],
 		spawn_data, ore_data, gate_mask, pickup_data, building_data,
 		_get_shopkeeper().get_save_data() if _get_shopkeeper() else [],
@@ -303,13 +298,17 @@ func _capture_state(timestamp: int) -> Array:
 		_get_luca().get_save_data() if _get_luca() else [],
 		_get_deru().get_save_data() if _get_deru() else [],
 		_world.version_number,
-		_get_dungeon_manager().get_save_data() if _get_dungeon_manager() else [],
+		dungeon_manager.get_save_data() if dungeon_manager else [],
 	]
 
 
 func _apply_state(state: Array, offline_seconds: int) -> bool:
 	if _world == null or not is_instance_valid(_world.player):
 		return false
+	var dungeon_manager := _get_dungeon_manager()
+	if dungeon_manager:
+		dungeon_manager.prepare_for_save_load()
+		dungeon_manager.reset_for_save_load()
 	var spawns := _get_spawns()
 	for spawn in spawns:
 		spawn.clear_for_load()
@@ -365,7 +364,6 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 	var deru: FoxAsha = _get_deru()
 	if deru:
 		deru.load_save_data(state[13] as Array if state.size() > 13 and state[13] is Array else [])
-	var dungeon_manager := _get_dungeon_manager()
 	if dungeon_manager:
 		dungeon_manager.load_save_data(state[15] as Array if state.size() > 15 and state[15] is Array else [], offline_seconds)
 	var spawn_data := state[4] as Array
