@@ -9,11 +9,12 @@ const SKILL_ROLL_CLOCKWISE := &"roll_clockwise"
 const SKILL_YELLOW_GUARD := &"yellow_guard"
 const SKILL_ROLL_BACK := &"roll_back"
 const SKILL_ROLL_ARC := &"roll_arc"
-const PLAYER_SKILL_IDS: Array[StringName] = [SKILL_ROLL_CLOCKWISE, SKILL_YELLOW_GUARD, SKILL_ROLL_BACK, SKILL_ROLL_ARC]
+const SKILL_BULWARK := &"bulwark"
+const PLAYER_SKILL_IDS: Array[StringName] = [SKILL_ROLL_CLOCKWISE, SKILL_YELLOW_GUARD, SKILL_ROLL_BACK, SKILL_ROLL_ARC, SKILL_BULWARK]
 const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 const SKILL_DATA := {
 	SKILL_ROLL_CLOCKWISE: {
-		"name": "Quick Roll", "description": "Roll clockwise to the next tile around your target, or counter-clockwise if that tile is blocked. You cannot take damage during the roll.",
+		"name": "Quick Roll", "description": "* Rolls 90 degrees around your target.\n* Invulnerable while rolling.\n* Increases Yellow damage by 2 for two seconds.",
 		"icon": preload("res://Sprites/skillRoll.webp"), "mana": 5, "cooldown": 4.0,
 	},
 	SKILL_YELLOW_GUARD: {
@@ -27,6 +28,10 @@ const SKILL_DATA := {
 	SKILL_ROLL_ARC: {
 		"name": "Arc Roll", "description": "Roll clockwise around your target to the opposite tile. You cannot take damage during the roll.",
 		"icon": preload("res://Sprites/skillRoll.webp"), "mana": 5, "cooldown": 4.0,
+	},
+	SKILL_BULWARK: {
+		"name": "Bulwark", "description": "Gain 20 Yellow armor for 3 seconds.",
+		"icon": preload("res://Sprites/skillBulwark.webp"), "mana": 5, "cooldown": 8.0,
 	},
 }
 
@@ -80,6 +85,7 @@ var cascading_sweep_skill_tutorial_seen := false
 var snare_without_quick_roll_tutorial_seen := false
 var auto_fight_unlocked := false
 var auto_fight_enabled := false
+var auto_fight_range_bonus := 0
 var _weapon_cooldowns := [0.0, 0.0, 0.0, 0.0]
 var _heal_time_left := 3.0
 var _path := PackedVector2Array()
@@ -110,6 +116,9 @@ var _skill_casting := false
 var _skill_invulnerable := false
 var _yellow_guard_time_left := 0.0
 var _yellow_guard_ring: Line2D
+var _bulwark_time_left := 0.0
+var _bulwark_ring: Line2D
+var _quick_roll_damage_time_left := 0.0
 var _skill_visual_tween: Tween
 var _last_skill_cast_failure := ""
 var _roll_start := Vector2.ZERO
@@ -409,7 +418,7 @@ func complete_skill_swap_tutorial() -> void:
 
 func equip_player_skill(slot_index: int, skill_id: StringName) -> bool:
 	if slot_index < 0 or slot_index >= equipped_player_skills.size() or not bool(player_skill_slots_unlocked[slot_index]) \
-		or not unlocked_player_skills.has(skill_id):
+		or not unlocked_player_skills.has(skill_id) or is_in_combat():
 		return false
 	var existing_slot := equipped_player_skills.find(skill_id)
 	if existing_slot >= 0 and existing_slot != slot_index:
@@ -422,7 +431,7 @@ func equip_player_skill(slot_index: int, skill_id: StringName) -> bool:
 
 func swap_player_skill_slots(first: int, second: int) -> bool:
 	if first < 0 or second < 0 or first >= 4 or second >= 4 \
-		or not bool(player_skill_slots_unlocked[first]) or not bool(player_skill_slots_unlocked[second]):
+		or not bool(player_skill_slots_unlocked[first]) or not bool(player_skill_slots_unlocked[second]) or is_in_combat():
 		return false
 	var first_skill := equipped_player_skills[first]
 	equipped_player_skills[first] = equipped_player_skills[second]
@@ -469,7 +478,7 @@ func cast_player_skill_slot(slot_index: int) -> bool:
 		if _last_skill_cast_failure.is_empty():
 			_last_skill_cast_failure = "No Target"
 		return _fail_player_skill_cast(_last_skill_cast_failure)
-	if skill_id != SKILL_YELLOW_GUARD:
+	if skill_id != SKILL_YELLOW_GUARD and skill_id != SKILL_BULWARK:
 		break_snare()
 		var skill_target := cast_plan.get("target") as ChickenEnemy
 		if is_instance_valid(skill_target):
@@ -481,6 +490,8 @@ func cast_player_skill_slot(slot_index: int) -> bool:
 	mana_changed.emit()
 	if skill_id == SKILL_YELLOW_GUARD:
 		_begin_yellow_guard()
+	elif skill_id == SKILL_BULWARK:
+		_begin_bulwark()
 	else:
 		_begin_player_roll(cast_plan)
 	return true
@@ -515,7 +526,7 @@ func get_last_skill_cast_failure() -> String:
 
 
 func _build_player_skill_cast_plan(skill_id: StringName) -> Dictionary:
-	if skill_id == SKILL_YELLOW_GUARD:
+	if skill_id == SKILL_YELLOW_GUARD or skill_id == SKILL_BULWARK:
 		return {"guard": true}
 	var world := _get_navigation_world()
 	var target := _get_player_skill_target(world)
@@ -575,6 +586,12 @@ func _begin_player_roll(plan: Dictionary) -> void:
 		audio.play_player_roll()
 	_skill_casting = true
 	_skill_invulnerable = true
+	if StringName(plan.get("skill_id", &"")) == SKILL_ROLL_CLOCKWISE:
+		_quick_roll_damage_time_left = 2.0
+		damage_matrix_changed.emit()
+		var quick_roll_target := plan.get("target") as ChickenEnemy
+		if is_instance_valid(quick_roll_target) and not is_in_dungeon():
+			quick_roll_target.delay_player_attacks(2.0)
 	_cancel_combat_visual_tweens()
 	if _skill_visual_tween and _skill_visual_tween.is_valid():
 		_skill_visual_tween.kill()
@@ -739,6 +756,29 @@ func _begin_yellow_guard() -> void:
 	var fade := _yellow_guard_ring.create_tween()
 	fade.tween_interval(0.78)
 	fade.tween_property(_yellow_guard_ring, "modulate:a", 0.0, 0.20)
+
+
+func _begin_bulwark() -> void:
+	_bulwark_time_left = 3.0
+	_skill_casting = true
+	_cancel_combat_visual_tweens()
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	if is_instance_valid(_bulwark_ring):
+		_bulwark_ring.queue_free()
+	_bulwark_ring = _create_combat_ring(Color("fbc02d"))
+	_bulwark_ring.name = "BulwarkArmor"
+	_bulwark_ring.width = 6.0
+	_bulwark_ring.position = Vector2(0, 10)
+	_bulwark_ring.visible = true
+	_bulwark_ring.scale = Vector2(0.35, 0.35)
+	add_child(_bulwark_ring)
+	fox_sprite.modulate = Color("ffe780")
+	_skill_visual_tween = create_tween().set_parallel(true)
+	_skill_visual_tween.tween_property(_bulwark_ring, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(fox_sprite, "modulate", Color.WHITE, 0.16)
+	_skill_visual_tween.finished.connect(_finish_guard_cast)
+	damage_matrix_changed.emit()
 
 
 func _finish_guard_cast() -> void:
@@ -1070,6 +1110,12 @@ func set_auto_fight_enabled(enabled: bool) -> void:
 	auto_fight_changed.emit()
 
 
+func increase_auto_fight_range(amount := 1) -> void:
+	auto_fight_range_bonus = maxi(0, auto_fight_range_bonus + amount)
+	_create_auto_fight_range()
+	auto_fight_changed.emit()
+
+
 func set_auto_fight_range_visible(value: bool) -> void:
 	if is_instance_valid(_auto_fight_range_fill):
 		_auto_fight_range_fill.visible = value
@@ -1078,7 +1124,11 @@ func set_auto_fight_range_visible(value: bool) -> void:
 
 
 func _create_auto_fight_range() -> void:
-	var half_extent := 2.5 * 64.0
+	if is_instance_valid(_auto_fight_range_fill):
+		_auto_fight_range_fill.queue_free()
+	if is_instance_valid(_auto_fight_range_border):
+		_auto_fight_range_border.queue_free()
+	var half_extent := (2.5 + float(auto_fight_range_bonus)) * 64.0
 	var points := PackedVector2Array([
 		Vector2(-half_extent, -half_extent), Vector2(half_extent, -half_extent),
 		Vector2(half_extent, half_extent), Vector2(-half_extent, half_extent),
@@ -1170,7 +1220,8 @@ func get_damage_for_weapon_color(color_index: int, weapon_index: int) -> int:
 		return 0
 	var equipment_bonus := ItemPickup.get_damage_bonus(equipped_weapons[weapon_index]) \
 		if color_index == COLOR_YELLOW and not is_in_dungeon() else 0
-	return damage_by_color[color_index][weapon_index] + equipment_bonus
+	var quick_roll_bonus := 2 if color_index == COLOR_YELLOW and _quick_roll_damage_time_left > 0.0 else 0
+	return damage_by_color[color_index][weapon_index] + equipment_bonus + quick_roll_bonus
 
 
 func get_total_block() -> int:
@@ -1185,6 +1236,8 @@ func get_base_defense_for_color(color_index: int) -> int:
 
 func get_defense_for_color(color_index: int) -> int:
 	var total := get_base_defense_for_color(color_index)
+	if color_index == COLOR_YELLOW and _bulwark_time_left > 0.0:
+		total += 20
 	if color_index == COLOR_YELLOW and not is_in_dungeon():
 		for item in equipped_armor:
 			total += ItemPickup.get_block_amount(item)
@@ -1193,6 +1246,17 @@ func get_defense_for_color(color_index: int) -> int:
 
 func is_in_dungeon() -> bool:
 	return _get_navigation_world() is DungeonLevel
+
+
+func is_in_combat() -> bool:
+	var world := _get_navigation_world()
+	if world == null:
+		return false
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if node is ChickenEnemy and is_instance_valid(node) and world.belongs_to_world(node) \
+				and node.health > 0 and node.is_player_combat_sequence_active():
+			return true
+	return false
 
 
 func set_snared_by(source: Object, enabled: bool) -> void:
@@ -1313,6 +1377,7 @@ func get_save_data() -> Array:
 		enemy_skill_move_tutorial_seen, cascading_sweep_skill_tutorial_seen,
 		inventory_slots.size(), equipment_slots_unlocked, skill_swap_tutorial_seen,
 		snare_without_quick_roll_tutorial_seen,
+		auto_fight_range_bonus,
 	]
 
 
@@ -1349,6 +1414,9 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	equipment_slots_unlocked = clampi(int(data[35]), 1, 4) if data.size() > 35 else 1
 	skill_swap_tutorial_seen = bool(data[36]) if data.size() > 36 else false
 	snare_without_quick_roll_tutorial_seen = bool(data[37]) if data.size() > 37 else false
+	auto_fight_range_bonus = maxi(0, int(data[38])) if data.size() > 38 else 0
+	_bulwark_time_left = 0.0
+	_quick_roll_damage_time_left = 0.0
 	armor_ever_equipped = bool(data[16]) if data.size() > 16 else has_equipped_armor()
 	if data.size() > 18:
 		_spawn_position = Vector2(float(data[17]), float(data[18]))
@@ -1425,6 +1493,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	inventory_changed.emit()
 	equipment_changed.emit()
 	damage_matrix_changed.emit()
+	_create_auto_fight_range()
 	auto_fight_changed.emit()
 	skills_changed.emit()
 	mana_changed.emit()
@@ -1493,6 +1562,17 @@ func _physics_process(delta: float) -> void:
 		if _yellow_guard_time_left <= 0.0 and is_instance_valid(_yellow_guard_ring):
 			_yellow_guard_ring.queue_free()
 			_yellow_guard_ring = null
+	if _bulwark_time_left > 0.0:
+		_bulwark_time_left = maxf(0.0, _bulwark_time_left - delta)
+		if _bulwark_time_left <= 0.0:
+			if is_instance_valid(_bulwark_ring):
+				_bulwark_ring.queue_free()
+			_bulwark_ring = null
+			damage_matrix_changed.emit()
+	if _quick_roll_damage_time_left > 0.0:
+		_quick_roll_damage_time_left = maxf(0.0, _quick_roll_damage_time_left - delta)
+		if _quick_roll_damage_time_left <= 0.0:
+			damage_matrix_changed.emit()
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
 	if world is DungeonLevel and (world as DungeonLevel).is_current_room_clear():
@@ -1596,7 +1676,8 @@ func _attack_nearby_enemy() -> void:
 				continue
 			var offset := world.world_to_cell(enemy.global_position) - player_cell
 			var distance := Vector2(offset).length_squared()
-			if absi(offset.x) <= 2 and absi(offset.y) <= 2 and distance < closest_distance:
+			var auto_fight_radius := 2 + auto_fight_range_bonus
+			if absi(offset.x) <= auto_fight_radius and absi(offset.y) <= auto_fight_radius and distance < closest_distance:
 				target = enemy
 				closest_distance = distance
 		automatic = target != null
@@ -1621,7 +1702,8 @@ func _can_apply_enemy_attack(target: ChickenEnemy, world: WorldNavigation, autom
 	if not auto_fight_enabled or is_moving() or is_instance_valid(_attack_target) or not target.can_be_auto_fought():
 		return false
 	var offset := world.world_to_cell(target.global_position) - world.world_to_cell(global_position)
-	return absi(offset.x) <= 2 and absi(offset.y) <= 2
+	var auto_fight_radius := 2 + auto_fight_range_bonus
+	return absi(offset.x) <= auto_fight_radius and absi(offset.y) <= auto_fight_radius
 
 
 func _get_adjacent_enemy(world: WorldNavigation) -> ChickenEnemy:

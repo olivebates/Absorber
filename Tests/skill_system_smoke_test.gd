@@ -28,10 +28,8 @@ func _run() -> void:
 
 	var entrance := world.get_node("MossrootGrottoEntrance") as DungeonEntrance
 	assert(entrance._tooltip_difficulty.text == entrance.DIFFICULTY_NAMES[entrance.difficulty - 1], "Dungeon hover cards must show only the named difficulty")
-	assert(entrance._tooltip_cleared_label.get_index() == 1 and entrance._tooltip_difficulty.get_index() == 2, "The cleared badge must sit directly under the dungeon title and above its difficulty")
-	var cleared_style := entrance._tooltip_cleared_label.get_theme_stylebox("normal") as StyleBoxFlat
-	assert(cleared_style.border_width_left == 1 and cleared_style.corner_radius_top_left > 0 and cleared_style.border_color == Color.WHITE, "The cleared badge must use a rounded one-pixel white outline")
-	var meter := entrance._tooltip_difficulty.get_parent().get_child(3) as Control
+	assert(entrance._tooltip_cleared_label == null and entrance._tooltip_difficulty.get_index() == 2, "Dungeon hover cards must omit the old Cleared badge")
+	var meter := entrance._tooltip_difficulty.get_parent().get_child(1) as Control
 	var connector := meter.get_child(0) as ColorRect
 	assert(not connector.visible and is_equal_approx((meter.get_child(2) as Label).position.x - (meter.get_child(1) as Label).position.x, 16.0), "Difficulty dots must have no connector and use the tighter spacing")
 	assert(not entrance._tooltip_production.get_parent().visible, "The Cave Moss instruction row must be removed from the visible dungeon tooltip")

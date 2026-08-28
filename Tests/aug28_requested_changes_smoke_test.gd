@@ -16,7 +16,7 @@ func _run() -> void:
 	await process_frame
 	player.equipped_weapons[0] = ItemPickup.make_item("weathered_sword")
 	player.equipped_armor[0] = ItemPickup.make_item("weathered_armor")
-	assert(player.get_damage_for_color(FoxPlayer.COLOR_YELLOW) == player.get_base_damage_for_color(FoxPlayer.COLOR_YELLOW) + 3)
+	assert(player.get_damage_for_color(FoxPlayer.COLOR_YELLOW) == player.get_base_damage_for_color(FoxPlayer.COLOR_YELLOW) + 2)
 	assert(player.get_damage_for_color(FoxPlayer.COLOR_RED) == player.get_base_damage_for_color(FoxPlayer.COLOR_RED))
 	assert(player.get_defense_for_color(FoxPlayer.COLOR_YELLOW) == player.get_base_defense_for_color(FoxPlayer.COLOR_YELLOW) + 2)
 	assert(player.get_defense_for_color(FoxPlayer.COLOR_BLUE) == player.get_base_defense_for_color(FoxPlayer.COLOR_BLUE))
@@ -24,8 +24,8 @@ func _run() -> void:
 	var slot := ItemSlot.new()
 	root.add_child(slot)
 	slot.configure(null, "inventory", 0, ItemPickup.make_item("weathered_sword"))
-	var expected_tint := Color.WHITE.lerp(Color("fbc02d"), 0.30)
-	assert(slot._icon.modulate.is_equal_approx(expected_tint), "Equipment icons must carry a thirty-percent yellow tint")
+	var expected_tint := ItemSlot.EQUIPMENT_YELLOW_TINT
+	assert(slot._icon.modulate.is_equal_approx(expected_tint), "Equipment icons must carry a twenty-percent yellow tint")
 
 	var drop := EnemyDropEntry.new()
 	drop.item_type = EnemyDropEntry.ItemType.WEATHERED_SWORD
@@ -45,7 +45,7 @@ func _run() -> void:
 	assert(not flipped_enemy.chicken_sprite.flip_h, "Mirrored enemies must retain inverted facing while turning")
 	flipped_enemy.free()
 
-	var auto_upgrade: Dictionary = FoxLucaShop.LUCA_UPGRADES[-1]
+	var auto_upgrade: Dictionary = FoxLucaShop.LUCA_UPGRADES[4]
 	assert(auto_upgrade["stat"] == &"auto_fight" and auto_upgrade["resource_id"] == &"jewels" and auto_upgrade["base_price"] == 20)
 	var auto_control := AutoFightControl.new()
 	assert(not auto_control.has_method("_on_first_boss_killed"), "Boss kills must no longer unlock auto-combat")
@@ -90,10 +90,16 @@ func _run() -> void:
 	dungeon_manager.dungeon_states["mossroot_grotto"] = {"cleared": true}
 	dungeon_manager.dungeon_state_changed.emit(&"mossroot_grotto")
 	assert(snakemouth._cleared_badge.visible and snakemouth._tooltip_production_row.visible)
+	assert(snakemouth._tooltip_cleared_label == null, "Cleared dungeon tooltips must not contain a Cleared badge")
+	var cleared_style := snakemouth._cleared_badge.get_theme_stylebox("normal") as StyleBoxFlat
+	assert(snakemouth._cleared_badge.size.x == snakemouth._cleared_badge.size.y and cleared_style.corner_radius_top_left * 2 == roundi(snakemouth._cleared_badge.size.x), "The entrance checkmark must have a circular badge: %s / %d" % [snakemouth._cleared_badge.size, cleared_style.corner_radius_top_left])
 	assert(not snakemouth._tooltip_meter.visible and not snakemouth._tooltip_difficulty.visible)
+	live_story._seen_events.erase(&"mad_coyote_dungeon_warning")
+	assert(not live_story._check_mad_coyote_proximity_event(), "The coyote warning must stay suppressed after Snakemouth is cleared")
 	var audio := world.get_node("GameAudio") as GameAudio
 	var audio_children_before := audio.get_child_count()
 	snakemouth.request_interaction(world.player, world)
+	assert(snakemouth._cleared_shake_tween != null and is_equal_approx(snakemouth._cleared_shake_tween.get_total_elapsed_time(), 0.0), "A cleared entrance must start the player shake")
 	assert(audio.get_child_count() == audio_children_before + 1, "A cleared entrance must play the unavailable-skill sound")
 	var unavailable_player := audio.get_child(audio.get_child_count() - 1) as AudioStreamPlayer
 	assert(unavailable_player.stream == GameAudio.SKILL_UNAVAILABLE_SFX)

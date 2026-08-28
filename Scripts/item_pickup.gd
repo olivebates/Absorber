@@ -38,7 +38,7 @@ const GRADES := [
 
 const ITEM_DATA := {
 	"weathered_armor": {"block": 2, "slot": "armor", "color": FoxPlayer.COLOR_YELLOW},
-	"weathered_sword": {"damage": 3, "slot": "weapon", "color": FoxPlayer.COLOR_YELLOW},
+	"weathered_sword": {"damage": 2, "slot": "weapon", "color": FoxPlayer.COLOR_YELLOW},
 	"potion_basic": {"healing": 40, "slot": "consumable"},
 	"potion_rope": {"healing": 100, "slot": "consumable"},
 	"potion_bronze": {"healing": 240, "slot": "consumable"},

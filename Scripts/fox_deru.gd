@@ -7,6 +7,7 @@ const BROKEN_CART_TEXTURE := preload("res://Sprites/BrokenCart.webp")
 const FIXED_CART_TEXTURE := preload("res://Sprites/FixedCart.webp")
 const DERU_REWARD_FEE := {&"jewels": 3}
 const DERU_HUNT_DAMAGE := 7
+const DERU_SHOP_SCRIPT := preload("res://Scripts/fox_deru_shop.gd")
 
 var _repaired := false
 
@@ -41,14 +42,31 @@ func _apply_repair_visuals() -> void:
 
 func interact() -> void:
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
+	if story and (not story.is_deru_quest_started() \
+			or is_instance_valid(_player) and _player.has_inventory_item("spare_cart_parts") \
+			or is_waiting_at_campfire()):
+		if story.interact_with(&"deru"):
+			return
+	if is_instance_valid(_player) and _player.has_unlocked_player_skill() \
+			and not _player.unlocked_player_skills.has(FoxPlayer.SKILL_BULWARK):
+		open_shop()
+		return
 	if story:
 		story.interact_with(&"deru")
 
 
 func open_shop() -> void:
-	# Repairing the cart changes Deru into a field helper permanently; he never
-	# opens the former post-quest shop.
-	pass
+	if not is_instance_valid(_player) or not _player.has_unlocked_player_skill() \
+			or _player.unlocked_player_skills.has(FoxPlayer.SKILL_BULWARK):
+		return
+	var hud := _world.get_node_or_null("HUD") as CanvasLayer if _world else null
+	if hud == null:
+		return
+	if not is_instance_valid(_shop):
+		_shop = DERU_SHOP_SCRIPT.new()
+		hud.add_child(_shop)
+		_shop.setup(self)
+	_shop.open()
 
 
 func load_save_data(data: Array) -> bool:

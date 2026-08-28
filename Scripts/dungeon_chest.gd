@@ -1,12 +1,13 @@
 class_name DungeonChest
 extends Node2D
 
-enum RewardType { ITEM, DAMAGE, HEALTH, REGENERATION, DEFENSE, KEY, RESOURCE, SKILL, MANA, MANA_REGENERATION, INVENTORY_SLOT, EQUIPMENT_SLOT, SKILL_SLOT }
+enum RewardType { ITEM, DAMAGE, HEALTH, REGENERATION, DEFENSE, KEY, RESOURCE, SKILL, MANA, MANA_REGENERATION, INVENTORY_SLOT, EQUIPMENT_SLOT, SKILL_SLOT, BOSS_KEY }
 
 const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
 const CLOSED_TEXTURE := preload("res://Sprites/ChestClosed.webp")
 const OPEN_TEXTURE := preload("res://Sprites/ChestOpen.webp")
 const KEY_ICON := preload("res://Sprites/IconKey.webp")
+const BOSS_KEY_ICON := preload("res://Sprites/bossKey.webp")
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 const HEALTH_ICON := preload("res://Sprites/Heart.webp")
 const REGEN_ICON := preload("res://Sprites/RecoveryHeart.webp")
@@ -22,7 +23,7 @@ const HIDDEN_OUTLINE_INSET := 3.0
 const HIDDEN_OUTLINE_SPACING := 8.0
 const HIDDEN_OUTLINE_RADIUS := 1.5
 
-@export_enum("Item", "Damage", "Health", "Regeneration", "Defense", "Key", "Resource", "Skill", "Mana", "Mana Regeneration", "Inventory Slot", "Equipment Slot", "Skill Slot") var reward_type: int = RewardType.KEY
+@export_enum("Item", "Damage", "Health", "Regeneration", "Defense", "Key", "Resource", "Skill", "Mana", "Mana Regeneration", "Inventory Slot", "Equipment Slot", "Skill Slot", "Boss Key") var reward_type: int = RewardType.KEY
 @export_range(1, 999, 1) var reward_amount := 1
 @export_enum("Red", "Yellow", "Blue") var reward_color := FoxPlayer.COLOR_RED
 @export var item_id := "weathered_sword"
@@ -215,6 +216,10 @@ func _grant_reward(player: FoxPlayer) -> String:
 		RewardType.SKILL_SLOT:
 			var unlocked := player.unlock_next_player_skill_slots(reward_amount)
 			return "%d skill slot%s" % [unlocked, "" if unlocked == 1 else "s"]
+		RewardType.BOSS_KEY:
+			if _level and _level.manager and _level.manager.has_method("add_boss_key"):
+				_level.manager.call("add_boss_key", reward_amount)
+			return "%d boss key%s" % [reward_amount, "" if reward_amount == 1 else "s"]
 	return "a reward"
 
 
@@ -248,6 +253,8 @@ func _get_reward_icon() -> Texture2D:
 			return EQUIPMENT_SLOT_ICON
 		RewardType.SKILL_SLOT:
 			return SKILL_BOOK_ICON
+		RewardType.BOSS_KEY:
+			return BOSS_KEY_ICON
 	return null
 
 

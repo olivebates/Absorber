@@ -26,6 +26,7 @@ var _tooltip_meter: Control
 var _tooltip_production_row: HBoxContainer
 var _cleared_badge: Label
 var _manager: Node
+var _cleared_shake_tween: Tween
 
 @onready var _sprite: Sprite2D = $Sprite2D
 
@@ -56,6 +57,7 @@ func request_interaction(player: FoxPlayer, world: WorldNavigation) -> void:
 		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 		if audio:
 			audio.play_skill_unavailable()
+		_play_cleared_interaction_shake(player)
 		return
 	_pending_player = player
 	_pending_world = world
@@ -129,7 +131,8 @@ func _build_cleared_label() -> void:
 	_cleared_badge.name = "ClearedBadge"
 	_cleared_badge.text = "✓"
 	_cleared_badge.position = Vector2(-37, -38)
-	_cleared_badge.size = Vector2(24, 24)
+	_cleared_badge.custom_minimum_size = Vector2(28, 28)
+	_cleared_badge.size = Vector2(28, 28)
 	_cleared_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_cleared_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_cleared_badge.add_theme_color_override("font_color", Color.WHITE)
@@ -140,8 +143,9 @@ func _build_cleared_label() -> void:
 	cleared_style.bg_color = Color("43a047")
 	cleared_style.border_color = Color("d9ffd9")
 	cleared_style.set_border_width_all(2)
-	cleared_style.set_corner_radius_all(12)
+	cleared_style.set_corner_radius_all(14)
 	_cleared_badge.add_theme_stylebox_override("normal", cleared_style)
+	_cleared_badge.clip_contents = true
 	_cleared_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cleared_badge.z_index = 5
 	_cleared_badge.hide()
@@ -173,20 +177,6 @@ func _build_tooltip() -> void:
 	_tooltip_title.add_theme_font_size_override("font_size", 18)
 	_tooltip_title.add_theme_color_override("font_color", Color("ffe082"))
 	content.add_child(_tooltip_title)
-	_tooltip_cleared_label = Label.new()
-	_tooltip_cleared_label.text = "Cleared"
-	_tooltip_cleared_label.custom_minimum_size = Vector2(64, 22)
-	_tooltip_cleared_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_tooltip_cleared_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_tooltip_cleared_label.add_theme_color_override("font_color", Color.WHITE)
-	var tooltip_cleared_style := StyleBoxFlat.new()
-	tooltip_cleared_style.bg_color = Color.TRANSPARENT
-	tooltip_cleared_style.border_color = Color.WHITE
-	tooltip_cleared_style.set_border_width_all(1)
-	tooltip_cleared_style.set_corner_radius_all(7)
-	_tooltip_cleared_label.add_theme_stylebox_override("normal", tooltip_cleared_style)
-	_tooltip_cleared_label.hide()
-	content.add_child(_tooltip_cleared_label)
 	_tooltip_meter = Control.new()
 	_tooltip_meter.custom_minimum_size = Vector2(104, 18)
 	content.add_child(_tooltip_meter)
@@ -255,3 +245,20 @@ func _refresh_state() -> void:
 	if is_instance_valid(_tooltip_production):
 		_tooltip_production.text = "Produces 1 Cave Moss / 10 min" if cleared else "Clear to produce Cave Moss"
 		_tooltip_production.add_theme_color_override("font_color", Color("8bd66d") if cleared else Color("aeb3c1"))
+
+
+func _play_cleared_interaction_shake(player: FoxPlayer) -> void:
+	if player == null or not is_instance_valid(player.fox_sprite):
+		return
+	if _cleared_shake_tween and _cleared_shake_tween.is_valid():
+		_cleared_shake_tween.kill()
+	var sprite := player.fox_sprite
+	var origin := sprite.position
+	_cleared_shake_tween = sprite.create_tween()
+	for offset in [-4.0, 4.0, -3.0, 0.0]:
+		_cleared_shake_tween.tween_property(sprite, "position:x", origin.x + offset, 0.05)
+	_cleared_shake_tween.finished.connect(func() -> void:
+		if is_instance_valid(sprite):
+			sprite.position = origin
+		_cleared_shake_tween = null
+	)

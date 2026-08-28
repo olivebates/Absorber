@@ -2,10 +2,11 @@ class_name FoxLuca
 extends FoxAsha
 
 const LUCA_SHOP_SCRIPT := preload("res://Scripts/fox_luca_shop.gd")
+const LUCA_SAVE_FORMAT := "luca_shop_v2"
 
 
 func _ready() -> void:
-	purchase_counts = [0, 0, 0, 0, 0]
+	purchase_counts = [0, 0, 0, 0, 0, 0, 0, 0]
 	super._ready()
 
 
@@ -28,18 +29,22 @@ func open_shop() -> void:
 
 
 func get_save_data() -> Array:
-	var data: Array = purchase_counts.duplicate()
-	data.append(roundi(global_position.x))
-	data.append(roundi(global_position.y))
-	return data
+	return [LUCA_SAVE_FORMAT, purchase_counts.duplicate()]
 
 
 func load_save_data(data: Array) -> bool:
 	purchase_counts = []
-	var old_order := data.size() >= 8
-	var count_indices := [3, 5, 1, 2, -1] if old_order else [0, 1, 2, 3, 4]
-	for index in count_indices:
-		purchase_counts.append(maxi(0, int(data[index])) if index >= 0 and index < data.size() else 0)
+	if data.size() >= 2 and str(data[0]) == LUCA_SAVE_FORMAT and data[1] is Array:
+		var saved_counts := data[1] as Array
+		for index in range(FoxLucaShop.LUCA_UPGRADES.size()):
+			purchase_counts.append(maxi(0, int(saved_counts[index])) if index < saved_counts.size() else 0)
+	else:
+		var old_order := data.size() >= 8
+		var count_indices := [3, 5, 1, 2, -1] if old_order else [0, 1, 2, 3, 4]
+		for index in count_indices:
+			purchase_counts.append(maxi(0, int(data[index])) if index >= 0 and index < data.size() else 0)
+		while purchase_counts.size() < FoxLucaShop.LUCA_UPGRADES.size():
+			purchase_counts.append(0)
 	# Keep Luca at the position authored in the current scene. Saved coordinates
 	# are deliberately ignored so map edits take effect for existing saves.
 	_stop_patrol()

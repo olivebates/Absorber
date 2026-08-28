@@ -71,6 +71,7 @@ var _hit_tween: Tween
 var _walk_time := 0.0
 var _attack_visual_time_left := 0.0
 var _hit_visual_time_left := 0.0
+var _player_attack_pause_left := 0.0
 var _combat_ring: Line2D
 var _health_regen_delay_left := HEALTH_REGEN_DELAY
 var _health_regen_tick_left := 0.0
@@ -293,6 +294,7 @@ func _physics_process(delta: float) -> void:
 	if _skill_tutorial_paused:
 		_resume_skill_telegraph_tweens()
 	_attack_time_left = maxf(0.0, _attack_time_left - delta)
+	_player_attack_pause_left = maxf(0.0, _player_attack_pause_left - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
 	_hit_visual_time_left = maxf(0.0, _hit_visual_time_left - delta)
 	var player_in_combat := _is_in_combat()
@@ -375,7 +377,7 @@ func _update_enemy_skill_cooldowns(delta: float, combat_sequence_active: bool) -
 
 
 func _try_begin_enemy_skill(player_in_combat: bool) -> bool:
-	if not player_in_combat or _active_skill_slot >= 0 or not _combat_skills_initialized:
+	if not player_in_combat or _player_attack_pause_left > 0.0 or _active_skill_slot >= 0 or not _combat_skills_initialized:
 		return false
 	for index in range(enemy_skills.size()):
 		if index < _skill_cooldowns.size() and _skill_cooldowns[index] <= 0.0:
@@ -1141,7 +1143,7 @@ func _choose_patrol_path() -> void:
 
 
 func _attack_player(in_combat_override: Variant = null) -> void:
-	if _attack_time_left > 0.0:
+	if _attack_time_left > 0.0 or _player_attack_pause_left > 0.0:
 		return
 	var in_combat := _is_in_combat() if in_combat_override == null else bool(in_combat_override)
 	if in_combat and _player and _can_emit_combat_feedback():
@@ -1153,6 +1155,11 @@ func _attack_player(in_combat_override: Variant = null) -> void:
 		_show_slash(_player)
 		_player.take_damage(attack_damage, enemy_color)
 		_attack_time_left = attack_cooldown
+
+
+func delay_player_attacks(duration: float) -> void:
+	_player_attack_pause_left = maxf(_player_attack_pause_left, maxf(0.0, duration))
+	_attack_time_left = maxf(_attack_time_left, maxf(0.0, duration))
 
 
 func _attack_hunter() -> void:

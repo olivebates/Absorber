@@ -8,6 +8,7 @@ const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 var _player: FoxPlayer
 var _grid: GridContainer
 var _color_target_cells: Dictionary = {}
+var _dungeon_visibility_reference: Array = []
 
 
 func _ready() -> void:
@@ -36,6 +37,16 @@ func get_color_target_screen_position(color_index: int) -> Vector2:
 	return get_global_rect().position + Vector2(22.0, 49.5 + clamped_color_index * 28.0)
 
 
+func set_dungeon_visibility_reference(damage_values: Array) -> void:
+	_dungeon_visibility_reference = damage_values.duplicate(true)
+	_refresh()
+
+
+func clear_dungeon_visibility_reference() -> void:
+	_dungeon_visibility_reference.clear()
+	_refresh()
+
+
 func _refresh() -> void:
 	if _player == null:
 		return
@@ -61,20 +72,29 @@ func _refresh() -> void:
 		if color_index != FoxPlayer.COLOR_RED:
 			var has_base_color_upgrade := false
 			for weapon_index in range(weapon_count):
-				if int(_player.damage_by_color[color_index][weapon_index]) > 1:
+				var reference_value := int((_dungeon_visibility_reference[color_index] as Array)[weapon_index]) \
+					if color_index < _dungeon_visibility_reference.size() and _dungeon_visibility_reference[color_index] is Array \
+					and weapon_index < (_dungeon_visibility_reference[color_index] as Array).size() else int(_player.damage_by_color[color_index][weapon_index])
+				if reference_value > 1:
 					has_base_color_upgrade = true
 					break
 			if not has_base_color_upgrade:
 				continue
 		for weapon_index in range(weapon_count):
-			if int(damage_values[color_index][weapon_index]) > 1:
+			var reference_value := int((_dungeon_visibility_reference[color_index] as Array)[weapon_index]) \
+				if color_index < _dungeon_visibility_reference.size() and _dungeon_visibility_reference[color_index] is Array \
+				and weapon_index < (_dungeon_visibility_reference[color_index] as Array).size() else int(damage_values[color_index][weapon_index])
+			if reference_value > 1:
 				shown_color_indices.append(color_index)
 				break
 
 	var shown_weapon_indices: Array[int] = []
 	for weapon_index in range(weapon_count):
 		for color_index in shown_color_indices:
-			if int(damage_values[color_index][weapon_index]) > 1:
+			var reference_value := int((_dungeon_visibility_reference[color_index] as Array)[weapon_index]) \
+				if color_index < _dungeon_visibility_reference.size() and _dungeon_visibility_reference[color_index] is Array \
+				and weapon_index < (_dungeon_visibility_reference[color_index] as Array).size() else int(damage_values[color_index][weapon_index])
+			if reference_value > 1:
 				shown_weapon_indices.append(weapon_index)
 				break
 
@@ -92,7 +112,11 @@ func _refresh() -> void:
 		_color_target_cells[color_index] = color_cell
 		for weapon_index in shown_weapon_indices:
 			var damage := int(damage_values[color_index][weapon_index])
-			if damage > 1:
+			var was_visible := damage > 1
+			if color_index < _dungeon_visibility_reference.size() and _dungeon_visibility_reference[color_index] is Array \
+					and weapon_index < (_dungeon_visibility_reference[color_index] as Array).size():
+				was_visible = int((_dungeon_visibility_reference[color_index] as Array)[weapon_index]) > 1
+			if was_visible:
 				_add_number_cell(damage)
 			else:
 				_add_hidden_damage_cell()

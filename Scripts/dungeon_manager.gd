@@ -5,6 +5,7 @@ signal dungeon_entered(dungeon_id: StringName)
 signal dungeon_left(dungeon_id: StringName)
 signal dungeon_state_changed(dungeon_id: StringName)
 signal dungeon_keys_changed(dungeon_id: StringName, amount: int)
+signal dungeon_boss_keys_changed(dungeon_id: StringName, amount: int)
 signal dungeons_reset_for_save_load
 
 const WARNING_TEXT := "You're about to enter a dungeon.\n\nIn a dungeon your stats are temporarily reset.\nYou will keep any rewards you gain during the dungeon.\nYour stats will be restored once you leave the dungeon again.\n\nLeave at any time through the map by pressing M/TAB."
@@ -24,6 +25,7 @@ const DEFENSE_ICON := preload("res://Sprites/ShieldIcon.webp")
 const MANA_ICON := preload("res://Sprites/IconMana.webp")
 const MANA_REGEN_ICON := preload("res://Sprites/iconManaRegen.webp")
 const KEY_ICON := preload("res://Sprites/IconKey.webp")
+const BOSS_KEY_ICON := preload("res://Sprites/bossKey.webp")
 const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
 const FIRST_EXIT_TEXT := "Phew, that was intense! But fun!"
 
@@ -48,6 +50,7 @@ var _container: SubViewportContainer
 var _subviewport: SubViewport
 var _key_panel: PanelContainer
 var _key_label: Label
+var _boss_key_label: Label
 var _tutorial_layer: CanvasLayer
 var _tutorial_overlay: Control
 var _tutorial_button: Button
@@ -162,6 +165,7 @@ func _open_dungeon(entrance: DungeonEntrance) -> void:
 	_hide_overworld_popups()
 	_active_id = entrance.dungeon_id
 	_overworld_stats = _capture_stats(player)
+	_set_dungeon_stat_visibility_references()
 	_player_parent = player.get_parent()
 	_player_sibling_index = player.get_index()
 	_camera = player.get_node_or_null("Camera2D") as Camera2D
@@ -294,6 +298,7 @@ func leave_dungeon(dungeon_animation_remaining := 0.0) -> void:
 		_camera.reset_smoothing()
 		_camera.force_update_scroll()
 	_apply_stats(player, _overworld_stats)
+	_clear_dungeon_stat_visibility_references()
 	player.health = clampi(int(_overworld_stats.get("health", player.max_health)), 1, player.max_health)
 	player.health_bar.value = player.health
 	player._update_health_label()
@@ -432,6 +437,13 @@ func get_key_count(dungeon_id: StringName = &"") -> int:
 	return int(_get_or_create_state(id).get("keys", 0))
 
 
+func get_boss_key_count(dungeon_id: StringName = &"") -> int:
+	var id := _active_id if dungeon_id.is_empty() else dungeon_id
+	if id.is_empty():
+		return 0
+	return int(_get_or_create_state(id).get("boss_keys", 0))
+
+
 func add_key(amount := 1) -> void:
 	if _active_id.is_empty() or amount <= 0:
 		return
@@ -453,6 +465,27 @@ func consume_key() -> bool:
 	return true
 
 
+func add_boss_key(amount := 1) -> void:
+	if _active_id.is_empty() or amount <= 0:
+		return
+	var state := _get_or_create_state(_active_id)
+	state["boss_keys"] = int(state.get("boss_keys", 0)) + amount
+	dungeon_states[str(_active_id)] = state
+	_update_key_hud()
+	dungeon_boss_keys_changed.emit(_active_id, int(state.get("boss_keys", 0)))
+
+
+func consume_boss_key() -> bool:
+	if get_boss_key_count() <= 0:
+		return false
+	var state := _get_or_create_state(_active_id)
+	state["boss_keys"] = int(state.get("boss_keys", 0)) - 1
+	dungeon_states[str(_active_id)] = state
+	_update_key_hud()
+	dungeon_boss_keys_changed.emit(_active_id, int(state.get("boss_keys", 0)))
+	return true
+
+
 func is_cleared(dungeon_id: StringName) -> bool:
 	return bool(_get_or_create_state(dungeon_id).get("cleared", false))
 
@@ -461,6 +494,12 @@ func reset_for_save_load() -> void:
 	# Clear every live snapshot before any incoming player/world state is applied,
 	# then let that save's dungeon payload repopulate only the runs it contains.
 	dungeon_states.clear()
+	tutorial_seen = false
+	_tutorial_pending_entrance = null
+	if is_instance_valid(_tutorial_overlay):
+		_tutorial_overlay.hide()
+	if is_instance_valid(_world) and not is_dungeon_active():
+		_world.interaction_locked = false
 	_last_moss_timestamp = int(Time.get_unix_time_from_system())
 	dungeons_reset_for_save_load.emit()
 
@@ -489,6 +528,7 @@ func prepare_for_save_load() -> void:
 		_camera.reset_smoothing()
 		_camera.force_update_scroll()
 	_key_panel.hide()
+	_clear_dungeon_stat_visibility_references()
 	_container.hide()
 	_subviewport.remove_child(_active_level)
 	_active_level.free()
@@ -617,6 +657,7 @@ func _get_or_create_state(dungeon_id: StringName) -> Dictionary:
 		var reset := _make_reset_stats()
 		dungeon_states[key] = {
 			"keys": 0,
+			"boss_keys": 0,
 			"stats": reset.duplicate(true),
 			"transferred_stats": reset.duplicate(true),
 			"level": {},
@@ -924,6 +965,19 @@ func _build_key_hud() -> void:
 	_key_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_key_label.add_theme_constant_override("outline_size", 2)
 	row.add_child(_key_label)
+	var boss_icon := TextureRect.new()
+	boss_icon.name = "BossKeyIcon"
+	boss_icon.texture = BOSS_KEY_ICON
+	boss_icon.custom_minimum_size = Vector2(20, 20)
+	boss_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	boss_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(boss_icon)
+	_boss_key_label = Label.new()
+	_boss_key_label.name = "BossKeyAmount"
+	_boss_key_label.add_theme_color_override("font_color", Color.WHITE)
+	_boss_key_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_boss_key_label.add_theme_constant_override("outline_size", 2)
+	row.add_child(_boss_key_label)
 	_key_panel.hide()
 	_world.get_node("HUD").add_child(_key_panel)
 
@@ -931,6 +985,29 @@ func _build_key_hud() -> void:
 func _update_key_hud() -> void:
 	if is_instance_valid(_key_label):
 		_key_label.text = str(get_key_count())
+	if is_instance_valid(_boss_key_label):
+		_boss_key_label.text = str(get_boss_key_count())
+
+
+func _set_dungeon_stat_visibility_references() -> void:
+	var damage_grid := _world.get_node_or_null("HUD/DamageGrid") as DamageGrid
+	if damage_grid:
+		damage_grid.set_dungeon_visibility_reference(_overworld_stats.get("damage", []) as Array)
+	var armor_grid := _world.get_node_or_null("HUD/ArmorGrid") as ArmorGrid
+	if armor_grid:
+		armor_grid.set_dungeon_visibility_reference(
+			_overworld_stats.get("defense", []) as Array,
+			armor_grid.visible
+		)
+
+
+func _clear_dungeon_stat_visibility_references() -> void:
+	var damage_grid := _world.get_node_or_null("HUD/DamageGrid") as DamageGrid
+	if damage_grid:
+		damage_grid.clear_dungeon_visibility_reference()
+	var armor_grid := _world.get_node_or_null("HUD/ArmorGrid") as ArmorGrid
+	if armor_grid:
+		armor_grid.clear_dungeon_visibility_reference()
 
 
 func _refresh_cave_moss_production() -> void:

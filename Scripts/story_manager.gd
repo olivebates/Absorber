@@ -740,6 +740,8 @@ func _check_mad_coyote_proximity_event() -> bool:
 		return false
 	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
 	var entrance := _find_snakemouth_entrance()
+	# A completed Snakemouth run permanently suppresses this proximity warning,
+	# including immediately after loading a save near the coyote.
 	if entrance and dungeon_manager and dungeon_manager.is_cleared(entrance.dungeon_id):
 		return false
 	for node in get_tree().get_nodes_in_group("enemy_spawns"):

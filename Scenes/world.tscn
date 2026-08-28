@@ -22,6 +22,7 @@
 [ext_resource type="Script" uid="uid://bajq5rtwimyqj" path="res://Scripts/minimap.gd" id="14_minimap"]
 [ext_resource type="PackedScene" path="res://Scenes/campfire.tscn" id="15_campfire"]
 [ext_resource type="Script" uid="uid://b7nd0l1skhgw0" path="res://Scripts/build_mine_tooltip.gd" id="16_mine_tooltip"]
+[ext_resource type="Script" uid="uid://cd0pekaifnq4k" path="res://Scripts/enemy_drop_entry.gd" id="19_13n8b"]
 [ext_resource type="PackedScene" path="res://Scenes/gate.tscn" id="21_pyn1s"]
 [ext_resource type="Script" uid="uid://cjot0nktc67mk" path="res://Scripts/save_system.gd" id="22_save"]
 [ext_resource type="Script" uid="uid://7frmalk1fc5e" path="res://Scripts/debug_stat_menu.gd" id="23_debug_menu"]
@@ -308,6 +309,34 @@ sources/1 = SubResource("TileSetAtlasSource_1cojt")
 sources/2 = SubResource("TileSetAtlasSource_pyn1s")
 sources/3 = SubResource("TileSetAtlasSource_xbk3s")
 
+[sub_resource type="Resource" id="Resource_l33cg"]
+script = ExtResource("19_13n8b")
+metadata/_custom_type_script = "uid://cd0pekaifnq4k"
+
+[sub_resource type="Resource" id="Resource_13n8b"]
+script = ExtResource("19_13n8b")
+item_type = 1
+chance = 0.1
+metadata/_custom_type_script = "uid://cd0pekaifnq4k"
+
+[sub_resource type="Resource" id="Resource_uqdn7"]
+script = ExtResource("19_13n8b")
+item_type = 1
+chance = 0.1
+metadata/_custom_type_script = "uid://cd0pekaifnq4k"
+
+[sub_resource type="Resource" id="Resource_v5t50"]
+script = ExtResource("19_13n8b")
+item_type = 1
+chance = 0.1
+metadata/_custom_type_script = "uid://cd0pekaifnq4k"
+
+[sub_resource type="Resource" id="Resource_gwaj6"]
+script = ExtResource("19_13n8b")
+item_type = 2
+chance = 0.2
+metadata/_custom_type_script = "uid://cd0pekaifnq4k"
+
 [node name="World" type="Node2D" unique_id=1129400803]
 script = ExtResource("1_world")
 
@@ -566,6 +595,7 @@ enemy_damage = 11
 enemy_damage_color = 1
 aggressive = true
 enemy_type = 21
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_l33cg")])
 
 [node name="ChickenSpawn39" parent="." unique_id=454940025 instance=ExtResource("4_spawn")]
 position = Vector2(4640, 2080)
@@ -604,10 +634,15 @@ reward_type = 1
 damage_reward_color = 1
 defense_reward_color = 1
 reward_resource_id = &"jewels"
-enemy_health = 500
-enemy_damage = 13
+enemy_health = 600
+enemy_damage = 15
 enemy_damage_color = 1
 boss = true
+enemy_skill_1 = 2
+enemy_skill_1_damage = 50
+enemy_skill_1_damage_type = 1
+enemy_skill_1_cooldown = 9.0
+enemy_skill_1_initial_cooldown_offset = 3.0
 enemy_type = 13
 
 [node name="ChickenSpawn34" parent="." unique_id=587052680 instance=ExtResource("4_spawn")]
@@ -624,6 +659,7 @@ enemy_health = 160
 enemy_damage = 12
 enemy_damage_color = 1
 enemy_type = 9
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
 
 [node name="ChickenSpawn38" parent="." unique_id=1968417412 instance=ExtResource("4_spawn")]
 position = Vector2(1440, 3488)
@@ -639,6 +675,7 @@ enemy_health = 160
 enemy_damage = 12
 enemy_damage_color = 1
 enemy_type = 9
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
 
 [node name="ChickenSpawn28" parent="." unique_id=722446106 instance=ExtResource("4_spawn")]
 position = Vector2(2912, 3424)
@@ -652,6 +689,7 @@ reward_resource_id = &"jewels"
 enemy_health = 80
 enemy_damage = 7
 enemy_damage_color = 1
+enemy_skill_1_damage_type = 1
 enemy_type = 8
 
 [node name="ChickenSpawn29" parent="." unique_id=1515625858 instance=ExtResource("4_spawn")]
@@ -680,7 +718,7 @@ enemy_damage_color = 1
 enemy_type = 4
 
 [node name="ChickenSpawn40" parent="." unique_id=259780493 instance=ExtResource("4_spawn")]
-position = Vector2(3232, 1824)
+position = Vector2(2912, 3872)
 respawn_time = 1800.0
 area_id = 2
 reward_type = 3
@@ -706,6 +744,7 @@ enemy_health = 160
 enemy_damage = 12
 enemy_damage_color = 1
 enemy_type = 9
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_uqdn7")])
 
 [node name="ChickenSpawn24" parent="." unique_id=1751302336 instance=ExtResource("4_spawn")]
 position = Vector2(1568, 2976)
@@ -720,6 +759,22 @@ enemy_health = 160
 enemy_damage = 14
 enemy_damage_color = 1
 enemy_type = 9
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
+
+[node name="ChickenSpawn27" parent="." unique_id=599286039 instance=ExtResource("4_spawn")]
+position = Vector2(3232, 1696)
+respawn_time = 900.0
+area_id = 2
+stat_reward_amount = 4
+reward_type = 1
+damage_reward_color = 1
+defense_reward_color = 1
+reward_resource_id = &"jewels"
+enemy_health = 160
+enemy_damage = 14
+enemy_damage_color = 1
+enemy_type = 9
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
 
 [node name="ChickenSpawn41" parent="." unique_id=1914977612 instance=ExtResource("4_spawn")]
 position = Vector2(3232, 2336)
@@ -734,6 +789,7 @@ enemy_health = 160
 enemy_damage = 14
 enemy_damage_color = 1
 enemy_type = 9
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_v5t50")])
 
 [node name="ChickenSpawn25" parent="." unique_id=455699342 instance=ExtResource("4_spawn")]
 position = Vector2(1312, 4128)
@@ -749,6 +805,7 @@ enemy_damage = 17
 enemy_damage_color = 1
 aggressive = true
 enemy_type = 10
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_gwaj6")])
 
 [node name="ChickenSpawn32" parent="." unique_id=1259942674 instance=ExtResource("4_spawn")]
 position = Vector2(3808, 1376)
@@ -764,6 +821,7 @@ enemy_damage = 17
 enemy_damage_color = 1
 aggressive = true
 enemy_type = 10
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_gwaj6")])
 
 [node name="ChickenSpawn33" parent="." unique_id=667975427 instance=ExtResource("4_spawn")]
 position = Vector2(4128, 1696)
@@ -779,6 +837,7 @@ enemy_damage = 17
 enemy_damage_color = 1
 aggressive = true
 enemy_type = 10
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_gwaj6")])
 
 [node name="ChickenSpawn26" parent="." unique_id=899008041 instance=ExtResource("4_spawn")]
 position = Vector2(1120, 4000)
@@ -793,6 +852,7 @@ enemy_damage = 17
 enemy_damage_color = 1
 aggressive = true
 enemy_type = 10
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_gwaj6")])
 
 [node name="ChickenSpawn18" parent="." unique_id=1758918705 instance=ExtResource("4_spawn")]
 position = Vector2(160, 2016)

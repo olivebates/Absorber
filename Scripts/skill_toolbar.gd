@@ -61,6 +61,8 @@ func _process(_delta: float) -> void:
 		_update_cursor_skill_drag(get_viewport().get_mouse_position())
 	if _player == null:
 		return
+	if _arranging_skills and _player.is_in_combat():
+		_close_picker_for_combat()
 	visible = _player.has_unlocked_player_skill()
 	if not visible:
 		_picker.hide()
@@ -279,6 +281,9 @@ func _refresh_picker() -> void:
 
 
 func _toggle_picker() -> void:
+	if _player != null and _player.is_in_combat():
+		_play_combat_switch_failure()
+		return
 	if _swap_tutorial_active and _swap_tutorial_dialogue_active:
 		_swap_tutorial_dialogue_active = false
 		_stop_picker_button_glow()
@@ -437,7 +442,7 @@ func end_skill_drag() -> void:
 
 
 func can_drop_skill(data: Variant, target: SkillSlot) -> bool:
-	if not data is Dictionary or target == null or target.locked:
+	if not data is Dictionary or target == null or target.locked or _player == null or _player.is_in_combat():
 		return false
 	var skill_id: StringName = data.get("skill_id", &"")
 	if target.skill_id == skill_id:
@@ -448,6 +453,48 @@ func can_drop_skill(data: Variant, target: SkillSlot) -> bool:
 		return not _swap_tutorial_dialogue_active and skill_id == FoxPlayer.SKILL_ROLL_BACK \
 			and target.source_kind == "player" and target.slot_index == _tutorial_target_slot
 	return _player != null and _player.unlocked_player_skills.has(skill_id)
+
+
+func _close_picker_for_combat() -> void:
+	if _drag_active and is_instance_valid(_cursor_drag_preview):
+		_cancel_cursor_skill_drag()
+	_arranging_skills = false
+	_active_drag_data.clear()
+	_hovered_target = null
+	_picker.hide()
+	hide_skill_tooltip()
+	_refresh()
+	_play_combat_switch_failure()
+
+
+func _play_combat_switch_failure() -> void:
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_skill_unavailable()
+	if not is_instance_valid(_picker_button):
+		return
+	_picker_button.pivot_offset = _picker_button.size * 0.5
+	_picker_button.modulate = Color("ff6b6b")
+	var shake := _picker_button.create_tween()
+	for angle in [-0.12, 0.12, -0.08, 0.08]:
+		shake.tween_property(_picker_button, "rotation", angle, 0.035)
+	shake.tween_property(_picker_button, "rotation", 0.0, 0.045)
+	shake.parallel().tween_property(_picker_button, "modulate", Color.WHITE, 0.12)
+	var feedback := Label.new()
+	feedback.text = "In Combat"
+	feedback.size = Vector2(120, 22)
+	feedback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	feedback.add_theme_color_override("font_color", Color("ff6262"))
+	feedback.add_theme_color_override("font_outline_color", Color.BLACK)
+	feedback.add_theme_constant_override("outline_size", 3)
+	feedback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	feedback.z_index = 80
+	add_child(feedback)
+	feedback.global_position = _picker_button.get_global_rect().get_center() - Vector2(60, 30)
+	var rise := feedback.create_tween().set_parallel(true)
+	rise.tween_property(feedback, "global_position:y", feedback.global_position.y - 16.0, 0.55)
+	rise.tween_property(feedback, "modulate:a", 0.0, 0.55).set_delay(0.16)
+	rise.chain().tween_callback(feedback.queue_free)
 
 
 func drop_skill(data: Variant, target: SkillSlot) -> void:

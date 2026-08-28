@@ -7,6 +7,8 @@ const SHIELD_ICON := preload("res://Sprites/ShieldIcon.webp")
 var _player: FoxPlayer
 var _damage_grid: DamageGrid
 var _grid: GridContainer
+var _dungeon_visibility_reference: Array = []
+var _dungeon_force_visible := false
 
 
 func _ready() -> void:
@@ -40,17 +42,30 @@ func _refresh() -> void:
 	_grid.add_theme_constant_override("h_separation", 4)
 	_grid.add_theme_constant_override("v_separation", 3)
 	add_child(_grid)
-	visible = _player.armor_ever_equipped or _player.has_equipped_armor() or _has_color_defense()
+	visible = _dungeon_force_visible or _player.armor_ever_equipped or _player.has_equipped_armor() or _has_color_defense()
 	if not visible:
 		return
 	_add_blank_header()
 	_add_shield_header()
 	for color_index in range(3):
-		if color_index != FoxPlayer.COLOR_RED and _player.get_base_defense_for_color(color_index) < 1:
+		var reference_defense := int(_dungeon_visibility_reference[color_index]) if color_index < _dungeon_visibility_reference.size() else 0
+		if color_index != FoxPlayer.COLOR_RED and _player.get_base_defense_for_color(color_index) < 1 and reference_defense < 1:
 			continue
 		_add_color_header(color_index)
 		_add_number_cell(_player.get_defense_for_color(color_index))
 	call_deferred("_fit_beside_damage_grid")
+
+
+func set_dungeon_visibility_reference(defense_values: Array, was_visible: bool) -> void:
+	_dungeon_visibility_reference = defense_values.duplicate()
+	_dungeon_force_visible = was_visible
+	_refresh()
+
+
+func clear_dungeon_visibility_reference() -> void:
+	_dungeon_visibility_reference.clear()
+	_dungeon_force_visible = false
+	_refresh()
 
 
 func _has_color_defense() -> bool:
@@ -64,7 +79,8 @@ func get_color_target_screen_position(color_index: int) -> Vector2:
 	if is_instance_valid(_grid):
 		var visible_row := 0
 		for candidate in range(3):
-			if candidate != FoxPlayer.COLOR_RED and _player.get_base_defense_for_color(candidate) < 1:
+			var reference_defense := int(_dungeon_visibility_reference[candidate]) if candidate < _dungeon_visibility_reference.size() else 0
+			if candidate != FoxPlayer.COLOR_RED and _player.get_base_defense_for_color(candidate) < 1 and reference_defense < 1:
 				continue
 			if candidate == color_index:
 				var cell_index := 2 + visible_row * 2

@@ -6,6 +6,7 @@ const SWORD_ICON := preload("res://Sprites/SwordIcon.webp")
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 const TRASH_ICON := preload("res://Sprites/IconTrash.webp")
 const SPRITE_BASE_SIZE := Vector2(32, 32)
+const EQUIPMENT_YELLOW_TINT := Color(0.99686, 0.95059, 0.83529, 1.0)
 
 var owner_ui: Control
 var storage := "inventory"
@@ -43,7 +44,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		add_child(_icon)
 	_icon.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", ""))) if not item.is_empty() else null
 	_icon.visible = not item.is_empty()
-	_icon.modulate = Color.WHITE.lerp(Color("fbc02d"), 0.30) if not item.is_empty() and ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
+	_icon.modulate = EQUIPMENT_YELLOW_TINT if not item.is_empty() and ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
 	if _empty_icon == null:
 		_empty_icon = TextureRect.new()
 		_empty_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -119,7 +120,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	owner_ui.call("begin_slot_drag", self)
 	var preview := TextureRect.new()
 	preview.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", "")))
-	preview.modulate = Color.WHITE.lerp(Color("fbc02d"), 0.30) if ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
+	preview.modulate = EQUIPMENT_YELLOW_TINT if ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
 	preview.custom_minimum_size = Vector2(32, 32)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

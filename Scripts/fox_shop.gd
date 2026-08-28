@@ -198,6 +198,12 @@ func _apply_upgrade(upgrade: Dictionary) -> void:
 			_player.collect_item(str(upgrade["item_id"]))
 		&"auto_fight":
 			_player.unlock_auto_fight()
+		&"auto_fight_range":
+			_player.increase_auto_fight_range(amount)
+		&"inventory_slot":
+			_player.unlock_inventory_slots(amount)
+		&"skill":
+			_player.unlock_player_skill(StringName(upgrade.get("skill_id", &"")))
 
 
 func _get_upgrade_current_value(upgrade_index: int) -> Variant:
@@ -220,6 +226,12 @@ func _get_upgrade_current_value(upgrade_index: int) -> Variant:
 			return count
 		&"auto_fight":
 			return 1 if _player.auto_fight_unlocked else 0
+		&"auto_fight_range":
+			return _player.auto_fight_range_bonus
+		&"inventory_slot":
+			return _player.inventory_slots.size()
+		&"skill":
+			return 1 if _player.unlocked_player_skills.has(StringName(upgrade.get("skill_id", &""))) else 0
 	return 0
 
 
@@ -646,6 +658,15 @@ func _refresh() -> void:
 func _is_upgrade_available(_index: int, upgrade: Dictionary) -> bool:
 	if StringName(upgrade.get("stat", &"")) == &"auto_fight":
 		return _player == null or not _player.auto_fight_unlocked
+	if StringName(upgrade.get("stat", &"")) == &"auto_fight_range":
+		return _player != null and _player.auto_fight_unlocked and _player.auto_fight_range_bonus < int(upgrade.get("amount", 1))
+	if StringName(upgrade.get("stat", &"")) == &"skill":
+		return _player != null and _player.has_unlocked_player_skill() \
+			and not _player.unlocked_player_skills.has(StringName(upgrade.get("skill_id", &"")))
+	if bool(upgrade.get("one_time", false)):
+		var purchase_slot := int(upgrade.get("purchase_slot", _index))
+		return _shopkeeper == null or purchase_slot >= _shopkeeper.purchase_counts.size() \
+			or _shopkeeper.purchase_counts[purchase_slot] == 0
 	if str(upgrade.get("item_id", "")) != "spare_cart_parts":
 		return true
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
