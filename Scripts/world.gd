@@ -20,7 +20,7 @@ var explored_cells: Dictionary = {}
 var _exploration_map_revision := 0
 var visited_campfires: Dictionary = {}
 var second_campfire_tab_prompt_dismissed := false
-var map_show_enemies := false
+var map_show_enemies := true
 var map_show_buildings := true
 var interaction_locked := false
 var gameplay_paused := false
@@ -162,7 +162,7 @@ func load_exploration_save_data(data: Array) -> void:
 				visited_campfires[Vector2i(int(raw_cell[0]), int(raw_cell[1]))] = true
 	_exploration_map_revision += 1
 	second_campfire_tab_prompt_dismissed = bool(data[2]) if data.size() > 2 else false
-	map_show_enemies = bool(data[3]) if data.size() > 3 else false
+	map_show_enemies = bool(data[3]) if data.size() > 3 else true
 	map_show_buildings = true
 	if is_instance_valid(_tab_prompt):
 		_tab_prompt.visible = false
@@ -302,10 +302,18 @@ func find_path(from_world: Vector2, to_world: Vector2, moving_actor: Node2D = nu
 	occupied.erase(start)
 	if occupied.has(goal):
 		return PackedVector2Array()
-	for cell in occupied:
+	var blocked_pathfinder_cells: Array[Vector2i] = []
+	for raw_cell in occupied:
+		var cell := raw_cell as Vector2i
+		# Dungeon snapshots can restore enemies in rooms that are not part of the
+		# currently active navigation rectangle. They still count as occupied in
+		# the world, but must not be submitted to this room's AStar grid.
+		if not _pathfinder.region.has_point(cell):
+			continue
 		_pathfinder.set_point_solid(cell, true)
+		blocked_pathfinder_cells.append(cell)
 	var result := _center_and_compress(_pathfinder.get_id_path(start, goal))
-	for cell in occupied:
+	for cell in blocked_pathfinder_cells:
 		_pathfinder.set_point_solid(cell, false)
 	return result
 

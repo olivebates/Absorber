@@ -2,8 +2,8 @@ class_name ItemPickup
 extends Area2D
 
 const ITEM_NAMES := {
-	"weathered_armor": "Weathered Armor",
-	"weathered_sword": "Weathered Sword",
+	"weathered_armor": "Orange Shield",
+	"weathered_sword": "Yellow Sword",
 	"potion_basic": "Basic Potion",
 	"potion_rope": "Upgraded Potion",
 	"potion_bronze": "Bronze Potion",
@@ -43,8 +43,8 @@ const RAINBOW_CYCLES_PER_SECOND := 0.28
 const MAX_SCALED_STAT := 0x7fffffffffffffff
 
 const ITEM_DATA := {
-	"weathered_armor": {"block": 2, "slot": "armor", "color": FoxPlayer.COLOR_YELLOW},
-	"weathered_sword": {"damage": 2, "slot": "weapon", "color": FoxPlayer.COLOR_YELLOW},
+	"weathered_armor": {"block": 2, "slot": "armor", "colors": [FoxPlayer.COLOR_RED, FoxPlayer.COLOR_YELLOW]},
+	"weathered_sword": {"damage": 5, "slot": "weapon", "color": FoxPlayer.COLOR_YELLOW},
 	"potion_basic": {"healing": 40, "slot": "consumable"},
 	"potion_rope": {"healing": 100, "slot": "consumable"},
 	"potion_bronze": {"healing": 240, "slot": "consumable"},
@@ -144,12 +144,41 @@ static func get_item_grade(item: Dictionary) -> int:
 	return maxi(int(item.get("grade", 0)), 0)
 
 
+static func get_merge_amount(item: Dictionary) -> int:
+	if item.is_empty():
+		return 0
+	if item.has("merges"):
+		return maxi(1, int(item.get("merges", 1)))
+	# Old saves stored only a grade. Treat that grade as its exact milestone so
+	# loading never lowers the item's power or its next upgrade threshold.
+	var amount := 1
+	for _step in range(mini(get_item_grade(item), 62)):
+		amount *= 2
+	return amount
+
+
+static func get_grade_for_merge_amount(merge_amount: int) -> int:
+	var amount := maxi(1, merge_amount)
+	var result := 0
+	while amount >= 2 and result < 62:
+		amount = int(amount / 2)
+		result += 1
+	return result
+
+
 static func get_damage_bonus(item: Dictionary) -> int:
 	return _scaled_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("damage", 0)), get_item_grade(item))
 
 
 static func get_block_amount(item: Dictionary) -> int:
 	return _scaled_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("block", 0)), get_item_grade(item))
+
+
+static func get_block_colors(item: Dictionary) -> Array:
+	var data := ITEM_DATA.get(str(item.get("item_id", "")), {}) as Dictionary
+	if data.has("colors") and data["colors"] is Array:
+		return (data["colors"] as Array).duplicate()
+	return [clampi(int(data.get("color", FoxPlayer.COLOR_RED)), FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)]
 
 
 static func get_stat_color(item: Dictionary) -> int:
@@ -188,8 +217,18 @@ static func is_full_heal(item: Dictionary) -> bool:
 	return bool(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("full_heal", false))
 
 
-static func make_item(new_item_id: String, new_grade := 0) -> Dictionary:
-	return {"item_id": new_item_id, "grade": maxi(new_grade, 0)}
+static func make_item(new_item_id: String, new_grade := 0, merge_amount := -1) -> Dictionary:
+	var normalized_grade := maxi(new_grade, 0)
+	var normalized_merges := merge_amount
+	if normalized_merges < 1:
+		normalized_merges = 1
+		for _step in range(mini(normalized_grade, 62)):
+			normalized_merges *= 2
+	return {
+		"item_id": new_item_id,
+		"grade": get_grade_for_merge_amount(normalized_merges),
+		"merges": normalized_merges,
+	}
 
 
 static func _scaled_stat(base_amount: int, grade: int) -> int:

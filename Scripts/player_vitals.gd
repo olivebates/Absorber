@@ -132,6 +132,13 @@ func _add_stat_cell(parent_row: HBoxContainer, cell_name: String, texture: Textu
 	cell.name = "%sCell" % cell_name
 	cell.custom_minimum_size = Vector2(74, 29)
 	cell.add_theme_stylebox_override("panel", _make_cell_style())
+	var tooltip_titles := {
+		"Health": "Health",
+		"Regeneration": "Health Regeneration",
+		"Mana": "Mana",
+		"ManaRegeneration": "Mana Regeneration",
+	}
+	_connect_stat_tooltip(cell, str(tooltip_titles.get(cell_name, cell_name)))
 	parent_row.add_child(cell)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -154,6 +161,19 @@ func _add_stat_cell(parent_row: HBoxContainer, cell_name: String, texture: Textu
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(label)
 	return label
+
+
+func _connect_stat_tooltip(control: Control, title: String) -> void:
+	control.mouse_entered.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip:
+			tooltip.show_description(null, title, "")
+	)
+	control.mouse_exited.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip:
+			tooltip.hide_item()
+	)
 
 
 func _make_cell_style() -> StyleBoxFlat:

@@ -305,6 +305,9 @@ func _capture_state(timestamp: int) -> Array:
 func _apply_state(state: Array, offline_seconds: int) -> bool:
 	if _world == null or not is_instance_valid(_world.player):
 		return false
+	var story := _get_story_manager()
+	if story:
+		story.reset_dialogue_flags_before_load()
 	var dungeon_manager := _get_dungeon_manager()
 	if dungeon_manager:
 		dungeon_manager.prepare_for_save_load()
@@ -352,7 +355,6 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 	if saved_world_version != _world.version_number:
 		_world.player.reset_to_beginning()
 	_world.load_exploration_save_data(state[10] as Array if state.size() > 10 and state[10] is Array else [])
-	var story := _get_story_manager()
 	if story:
 		story.load_save_data(state[11] as Array if state.size() > 11 and state[11] is Array else [])
 	var shopkeeper := _get_shopkeeper()

@@ -50,6 +50,7 @@
 [ext_resource type="PackedScene" path="res://Scenes/dungeon_entrance.tscn" id="47_dungeon_entrance"]
 [ext_resource type="PackedScene" uid="uid://cy2w0af4uuhto" path="res://Scenes/dungeon1_Snakemouth.tscn" id="53_g44x5"]
 [ext_resource type="Script" uid="uid://b2fvg70vc3lbe" path="res://Scripts/skill_toolbar.gd" id="54_skill_toolbar"]
+[ext_resource type="Script" uid="uid://urfxb30a5c3m" path="res://Scripts/quest_log.gd" id="55_quest_log"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_floor_variation"]
 shader = ExtResource("45_floor_variation")
@@ -309,6 +310,7 @@ sources/3 = SubResource("TileSetAtlasSource_xbk3s")
 
 [sub_resource type="Resource" id="Resource_l33cg"]
 script = ExtResource("19_13n8b")
+chance = 0.2
 metadata/_custom_type_script = "uid://cd0pekaifnq4k"
 
 [sub_resource type="Resource" id="Resource_13n8b"]
@@ -657,6 +659,7 @@ reward_resource_id = &"jewels"
 enemy_health = 80
 enemy_damage = 12
 enemy_damage_color = 1
+aggressive = true
 enemy_type = 8
 
 [node name="ChickenSpawn35" parent="." unique_id=153576044 instance=ExtResource("4_spawn")]
@@ -1015,6 +1018,15 @@ offset_bottom = 196.0
 grow_horizontal = 0
 grow_vertical = 0
 script = ExtResource("14_minimap")
+
+[node name="QuestLog" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("55_quest_log")
 
 [node name="SettingsMenu" type="Control" parent="HUD" unique_id=2124534503]
 layout_mode = 3

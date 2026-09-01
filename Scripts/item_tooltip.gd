@@ -5,6 +5,8 @@ var _icon: TextureRect
 var _rank: Label
 var _stat_icon: TextureRect
 var _stat: Label
+var _secondary_stat_icon: TextureRect
+var _secondary_stat: Label
 var _target_position := Vector2.ZERO
 var _displayed_grade := -1
 var _panel_style: StyleBoxFlat
@@ -27,21 +29,32 @@ func _ready() -> void:
 	_rank.add_theme_color_override("font_outline_color", Color.BLACK)
 	_rank.add_theme_constant_override("outline_size", 2)
 	content.add_child(_rank)
-	var stat_row := HBoxContainer.new()
-	stat_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	content.add_child(stat_row)
-	_stat_icon = TextureRect.new()
-	_stat_icon.custom_minimum_size = Vector2(16, 16)
-	_stat_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_stat_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	stat_row.add_child(_stat_icon)
-	_stat = Label.new()
-	_stat.add_theme_color_override("font_color", Color.WHITE)
-	_stat.add_theme_color_override("font_outline_color", Color.BLACK)
-	_stat.add_theme_constant_override("outline_size", 2)
-	stat_row.add_child(_stat)
+	var stat_row := _make_stat_row(content)
+	_stat_icon = stat_row[0] as TextureRect
+	_stat = stat_row[1] as Label
+	var secondary_row := _make_stat_row(content)
+	_secondary_stat_icon = secondary_row[0] as TextureRect
+	_secondary_stat = secondary_row[1] as Label
+	_secondary_stat_icon.get_parent().hide()
 	visible = false
 	set_process(true)
+
+
+func _make_stat_row(parent: VBoxContainer) -> Array:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	parent.add_child(row)
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = Vector2(16, 16)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(icon)
+	var label := Label.new()
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 2)
+	row.add_child(label)
+	return [icon, label]
 
 
 func _process(delta: float) -> void:
@@ -57,6 +70,7 @@ func _process(delta: float) -> void:
 
 func show_item(item: Dictionary) -> void:
 	_displayed_grade = -1
+	_hide_secondary_stat()
 	var item_id := str(item.get("item_id", ""))
 	if not ItemPickup.ITEM_DATA.has(item_id):
 		return
@@ -73,12 +87,12 @@ func show_item(item: Dictionary) -> void:
 		_stat.add_theme_color_override("font_color", Color.WHITE)
 		_stat.visible = true
 		_set_style(Color("b71c1c") if ItemPickup.is_protected(item_id) else Color("777777"))
-		visible = true
-		reset_size()
-		_place_inside_camera()
+		_show_and_place()
 		return
+	var grade := ItemPickup.get_item_grade(item)
+	var full_name := "%s %s" % [ItemPickup.get_grade_name(grade), str(ItemPickup.ITEM_NAMES.get(item_id, item_id.capitalize()))]
 	if ItemPickup.is_consumable(item_id):
-		_rank.text = str(ItemPickup.ITEM_NAMES.get(item_id, item_id.capitalize()))
+		_rank.text = full_name
 		_rank.visible = true
 		_rank.add_theme_color_override("font_color", Color.WHITE)
 		_stat_icon.texture = preload("res://Sprites/Heart.webp")
@@ -87,29 +101,32 @@ func show_item(item: Dictionary) -> void:
 		_stat.add_theme_color_override("font_color", Color.WHITE)
 		_stat.visible = true
 		_set_style(Color("777777"))
-		visible = true
-		reset_size()
-		_place_inside_camera()
+		_show_and_place()
 		return
-	var grade := ItemPickup.get_item_grade(item)
 	_displayed_grade = grade
-	_rank.text = "Grade %d · %s" % [grade, ItemPickup.get_grade_name(grade)]
+	_rank.text = full_name
 	_rank.visible = true
 	_rank.add_theme_color_override("font_color", ItemPickup.get_grade_color(grade))
-	_stat_icon.texture = preload("res://Sprites/DamageIcon.webp") if is_weapon else preload("res://Sprites/ArmorIcon.webp")
+	_stat_icon.texture = preload("res://Sprites/DamageIcon.webp") if is_weapon else preload("res://Sprites/ShieldIcon.webp")
 	_stat_icon.visible = true
 	_stat.text = "+%d" % (ItemPickup.get_damage_bonus(item) if is_weapon else ItemPickup.get_block_amount(item))
 	var stat_colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
-	_stat.add_theme_color_override("font_color", stat_colors[ItemPickup.get_stat_color(item)])
+	_stat.add_theme_color_override("font_color", stat_colors[ItemPickup.get_stat_color(item) if is_weapon else FoxPlayer.COLOR_RED])
 	_stat.visible = true
+	if not is_weapon:
+		_secondary_stat_icon.texture = preload("res://Sprites/ShieldIcon.webp")
+		_secondary_stat_icon.visible = true
+		_secondary_stat.text = "+%d" % ItemPickup.get_block_amount(item)
+		_secondary_stat.add_theme_color_override("font_color", stat_colors[FoxPlayer.COLOR_YELLOW])
+		_secondary_stat.visible = true
+		_secondary_stat_icon.get_parent().show()
 	_set_style(ItemPickup.get_grade_color(grade))
-	visible = true
-	reset_size()
-	_place_inside_camera()
+	_show_and_place()
 
 
 func show_description(icon: Texture2D, title: String, description: String) -> void:
 	_displayed_grade = -1
+	_hide_secondary_stat()
 	_icon.texture = icon
 	_icon.visible = icon != null
 	_rank.text = title
@@ -120,9 +137,21 @@ func show_description(icon: Texture2D, title: String, description: String) -> vo
 	_stat.add_theme_color_override("font_color", Color.WHITE)
 	_stat.visible = not description.is_empty()
 	_set_style(Color("777777"))
+	_show_and_place()
+
+
+func _show_and_place() -> void:
 	visible = true
 	reset_size()
 	_place_inside_camera()
+
+
+func _hide_secondary_stat() -> void:
+	if is_instance_valid(_secondary_stat_icon):
+		_secondary_stat_icon.visible = false
+		_secondary_stat_icon.get_parent().hide()
+	if is_instance_valid(_secondary_stat):
+		_secondary_stat.visible = false
 
 
 func hide_item() -> void:

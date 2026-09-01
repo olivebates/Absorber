@@ -42,6 +42,7 @@ signal equipment_changed
 signal enemy_health_absorbed(amount: int)
 signal merge_targets_changed(dragged_item: Dictionary, source_storage: String, source_index: int)
 signal merge_completed(merged_item: Dictionary, target_storage: String, target_index: int)
+signal item_use_failed(slot_index: int, message: String)
 signal duplicate_equipment_found
 signal auto_fight_changed
 signal skills_changed
@@ -502,6 +503,8 @@ func _fail_player_skill_cast(reason: String) -> bool:
 	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 	if audio:
 		audio.play_skill_unavailable()
+	if reason == "Cooling Down" or reason == "No Mana":
+		_show_status_popup(reason, Color("ef4444"), 28)
 	return false
 
 
@@ -862,11 +865,19 @@ func add_color_defense(color_index: int, amount: int) -> void:
 func collect_item(item_id: String, grade := 0) -> bool:
 	if not ItemPickup.ITEM_DATA.has(item_id):
 		return false
+	return collect_item_data(ItemPickup.make_item(item_id, grade))
+
+
+func collect_item_data(item: Dictionary) -> bool:
+	var item_id := str(item.get("item_id", ""))
+	if not ItemPickup.ITEM_DATA.has(item_id):
+		return false
+	var normalized_item := ItemPickup.make_item(item_id, ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item))
 	var equipment_storage := "weapon" if ItemPickup.is_weapon(item_id) else "armor" if ItemPickup.is_armor(item_id) else ""
 	if not equipment_storage.is_empty():
 		var equipment_slots := _get_slots(equipment_storage)
 		if equipment_slots[0].is_empty():
-			equipment_slots[0] = ItemPickup.make_item(item_id, grade)
+			equipment_slots[0] = normalized_item
 			if equipment_storage == "weapon":
 				weapon_ever_equipped[0] = true
 			else:
@@ -878,7 +889,7 @@ func collect_item(item_id: String, grade := 0) -> bool:
 			return true
 	for index in range(inventory_slots.size()):
 		if inventory_slots[index].is_empty():
-			inventory_slots[index] = ItemPickup.make_item(item_id, grade)
+			inventory_slots[index] = normalized_item
 			inventory_changed.emit()
 			_check_duplicate_equipment_tutorial()
 			return true
@@ -973,7 +984,7 @@ func remove_quest_item(item_id: String) -> bool:
 	return false
 
 
-func move_or_merge(source_storage: String, source_index: int, target_storage: String, target_index: int) -> bool:
+func move_or_merge(source_storage: String, source_index: int, target_storage: String, target_index: int, allow_merge := true) -> bool:
 	if source_storage == target_storage and source_index == target_index:
 		return false
 	var source_slots := _get_slots(source_storage)
@@ -996,8 +1007,10 @@ func move_or_merge(source_storage: String, source_index: int, target_storage: St
 		damage_matrix_changed.emit()
 		return true
 	var merged_item: Dictionary = {}
-	if can_merge(source_item, target_item):
-		target_item["grade"] = ItemPickup.get_item_grade(target_item) + 1
+	if allow_merge and can_merge(source_item, target_item):
+		var total_merges := ItemPickup.get_merge_amount(source_item) + ItemPickup.get_merge_amount(target_item)
+		target_item["merges"] = total_merges
+		target_item["grade"] = ItemPickup.get_grade_for_merge_amount(total_merges)
 		target_slots[target_index] = target_item
 		source_slots[source_index] = {}
 		merged_item = target_item.duplicate()
@@ -1077,8 +1090,7 @@ func merge_inventory_pair(source_index: int, target_index: int) -> bool:
 func can_merge(first: Dictionary, second: Dictionary) -> bool:
 	return not first.is_empty() and not second.is_empty() \
 		and ItemPickup.is_equipment(str(first.get("item_id", ""))) \
-		and str(first.get("item_id", "")) == str(second.get("item_id", "")) \
-		and ItemPickup.get_item_grade(first) == ItemPickup.get_item_grade(second)
+		and str(first.get("item_id", "")) == str(second.get("item_id", ""))
 
 
 func consume_inventory_item(index: int) -> bool:
@@ -1086,7 +1098,14 @@ func consume_inventory_item(index: int) -> bool:
 		return false
 	var item := inventory_slots[index]
 	var healing := ItemPickup.get_healing_amount(item)
-	if healing <= 0 or health >= max_health:
+	if healing <= 0:
+		return false
+	if health >= max_health:
+		item_use_failed.emit(index, "Full Health")
+		_show_status_popup("Full Health", Color("ef4444"))
+		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+		if audio:
+			audio.play_skill_unavailable()
 		return false
 	inventory_slots[index] = {}
 	heal(max_health if ItemPickup.is_full_heal(item) else healing)
@@ -1095,6 +1114,27 @@ func consume_inventory_item(index: int) -> bool:
 	if audio:
 		audio.play_eating()
 	return true
+
+
+func _show_status_popup(copy: String, color: Color, font_size := 18) -> void:
+	var popup := Label.new()
+	popup.name = "ItemStatusPopup"
+	popup.text = copy
+	var popup_width := 220.0 if font_size >= 24 else 128.0
+	popup.position = Vector2(-popup_width * 0.5, -66 if font_size >= 24 else -58)
+	popup.size = Vector2(popup_width, 36 if font_size >= 24 else 28)
+	popup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	popup.add_theme_font_size_override("font_size", font_size)
+	popup.add_theme_color_override("font_color", color)
+	popup.add_theme_color_override("font_outline_color", Color.BLACK)
+	popup.add_theme_constant_override("outline_size", 4)
+	popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	popup.z_index = 50
+	add_child(popup)
+	var tween := popup.create_tween().set_parallel(true)
+	tween.tween_property(popup, "position:y", popup.position.y - 34.0, 0.75).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(popup, "modulate:a", 0.0, 0.75).set_delay(0.28)
+	tween.finished.connect(popup.queue_free)
 
 
 func unlock_auto_fight() -> void:
@@ -1237,9 +1277,10 @@ func get_defense_for_color(color_index: int) -> int:
 	var total := get_base_defense_for_color(color_index)
 	if color_index == COLOR_YELLOW and _bulwark_time_left > 0.0:
 		total += 20
-	if color_index == COLOR_YELLOW and not is_in_dungeon():
+	if not is_in_dungeon():
 		for item in equipped_armor:
-			total += ItemPickup.get_block_amount(item)
+			if ItemPickup.get_block_colors(item).has(color_index):
+				total += ItemPickup.get_block_amount(item)
 	return total
 
 
@@ -1502,7 +1543,9 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 func _pack_items(items: Array[Dictionary]) -> Array:
 	var packed: Array = []
 	for item in items:
-		packed.append([] if item.is_empty() else [str(item.get("item_id", "")), ItemPickup.get_item_grade(item)])
+		packed.append([] if item.is_empty() else [
+			str(item.get("item_id", "")), ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item),
+		])
 	return packed
 
 
@@ -1511,7 +1554,11 @@ func _unpack_items(packed: Array, expected_size: int) -> Array[Dictionary]:
 	for index in range(expected_size):
 		var packed_item := packed[index] as Array if index < packed.size() and packed[index] is Array else []
 		var item_id := str(packed_item[0]) if not packed_item.is_empty() else ""
-		items.append(ItemPickup.make_item(item_id, int(packed_item[1]) if packed_item.size() > 1 else 0) if ItemPickup.ITEM_DATA.has(item_id) else {})
+		items.append(ItemPickup.make_item(
+			item_id,
+			int(packed_item[1]) if packed_item.size() > 1 else 0,
+			int(packed_item[2]) if packed_item.size() > 2 else -1
+		) if ItemPickup.ITEM_DATA.has(item_id) else {})
 	return items
 
 

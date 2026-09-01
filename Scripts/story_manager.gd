@@ -162,8 +162,8 @@ func interact_with(character_id: StringName) -> bool:
 		_reopen_shop_after_dialogue = true
 		_shop_to_reopen = _luca
 		if _play_default_dialogue([
-			_line("Luca", "Whoa, another traveller?", LUCA_PORTRAIT),
-			_line("Luca", "Let me see what I can find for you.", LUCA_PORTRAIT),
+			_line("Lucie", "Whoa, another traveller?", LUCA_PORTRAIT),
+			_line("Lucie", "Let me see what I can find for you.", LUCA_PORTRAIT),
 		]):
 			return true
 		_seen_events.erase(&"luca_intro")
@@ -230,7 +230,9 @@ func interact_with(character_id: StringName) -> bool:
 			_shop_to_reopen = null
 			return false
 		if _has_seen(&"lio_intro"):
-			return false
+			return _play_default_dialogue([
+				_line("Lio", "If only I had a way to automate this gold digging business.", LIO_PORTRAIT),
+			])
 		_seen_events[&"lio_intro"] = true
 		_reopen_shop_after_dialogue = true
 		_shop_to_reopen = _lio
@@ -322,6 +324,57 @@ func is_asha_recruited() -> bool:
 
 func has_seen_event(event_id: StringName) -> bool:
 	return _has_seen(event_id)
+
+
+func get_quest_log_entries() -> Array[Dictionary]:
+	var quests: Array[Dictionary] = []
+	if _has_seen(&"lio_intro"):
+		var first_mine_built := is_instance_valid(_lio) and _lio.has_first_gold_mine()
+		var all_mines_built := is_instance_valid(_lio) and _lio.has_required_gold_mines()
+		var lio_completed := _has_seen(&"lio_recruited")
+		quests.append({
+			"id": &"lio_automation",
+			"title": "Automating Lio's Gold Mines",
+			"location": "Tiny Woods",
+			"completed": lio_completed,
+			"steps": [
+				{"text": "Talk to Lio.", "completed": true},
+				{"text": "Build the first Gold Mine beside Lio.", "completed": first_mine_built},
+				{"text": "Build the two remaining Gold Mines.", "completed": all_mines_built},
+				{"text": "Talk to Lio about joining you.", "completed": lio_completed},
+			],
+		})
+	if _has_seen(&"deru_intro"):
+		var deru_completed := _has_seen(&"deru_parts_delivered")
+		quests.append({
+			"id": &"deru_cart",
+			"title": "Deru's Broken Cart",
+			"location": "Snakemouth Expanse",
+			"completed": deru_completed,
+			"steps": [
+				{"text": "Talk to Deru about his broken cart.", "completed": true},
+				{"text": "Ask Asha about spare cart parts.", "completed": _has_seen(&"asha_deru_parts_intro") or _has_seen(&"spare_parts_purchased")},
+				{"text": "Buy the spare cart parts from Asha.", "completed": _has_seen(&"spare_parts_purchased")},
+				{"text": "Bring the spare cart parts to Deru.", "completed": deru_completed},
+			],
+		})
+	return quests
+
+
+func reset_dialogue_flags_before_load() -> void:
+	if is_instance_valid(_dialogue_box):
+		_dialogue_box.cancel()
+	completed_dialogues = 0
+	first_gate_opened = false
+	_seen_events.clear()
+	_queued_events.clear()
+	_active_dialogue = 0
+	_active_event = &""
+	_reopen_shop_after_dialogue = false
+	_shop_to_reopen = null
+	if is_instance_valid(_world):
+		_world.interaction_locked = false
+		_world.gameplay_paused = false
 
 
 func get_save_data() -> Array:
@@ -719,6 +772,8 @@ func _connect_enemy_story_spawn(spawn: EnemySpawnPoint) -> void:
 		spawn.enemy_killed.connect(_on_spider_killed)
 	if spawn.enemy_type == 6 and not spawn.enemy_killed.is_connected(_on_evil_goat_killed):
 		spawn.enemy_killed.connect(_on_evil_goat_killed)
+	if spawn.enemy_type == 13 and spawn.boss and not spawn.enemy_killed.is_connected(_on_mad_coyote_killed):
+		spawn.enemy_killed.connect(_on_mad_coyote_killed)
 
 
 func _on_evil_goat_killed(_enemy: ChickenEnemy) -> void:
@@ -727,6 +782,10 @@ func _on_evil_goat_killed(_enemy: ChickenEnemy) -> void:
 
 func _on_spider_killed(_enemy: ChickenEnemy) -> void:
 	_trigger_event_once(&"first_spider_killed")
+
+
+func _on_mad_coyote_killed(_enemy: ChickenEnemy) -> void:
+	_trigger_event_once(&"mad_coyote_killed")
 
 
 func _check_bull_proximity_event() -> bool:
@@ -811,6 +870,7 @@ func _get_dialogue(dialogue_number: int) -> Array[Dictionary]:
 		3:
 			return [
 				_line("Lio", "You wouldn’t believe how much work it takes to dig up this gold!", LIO_PORTRAIT),
+				_line("Lio", "If only I had some way to automate it, hah!", LIO_PORTRAIT),
 				_line("Lio", "What I wouldn’t do for some fish right now, haha!", LIO_PORTRAIT),
 			]
 		4:
@@ -864,7 +924,7 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 				_line("Mira", "I can get around quickly by pressing M or TAB and selecting a campfire.", PLAYER_PORTRAIT),
 			]
 		&"luca_purchase":
-			return [_line("Luca", "Appreicate it.", LUCA_PORTRAIT)]
+			return [_line("Lucie", "Appreicate it.", LUCA_PORTRAIT)]
 		&"lio_purchase":
 			return [_line("Lio", "Oh man, I'm so hungry, thank you!", LIO_PORTRAIT)]
 		&"lio_hunt_departure":
@@ -895,4 +955,6 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 				_line("Mira", "I’ve got a bad feeling about moving on just yet.", PLAYER_PORTRAIT),
 				_line("Mira", "I should probably clear this place out first.", PLAYER_PORTRAIT),
 			]
+		&"mad_coyote_killed":
+			return [_line("Mira", "Alright! That clears the path to the next area :)", PLAYER_PORTRAIT)]
 	return []

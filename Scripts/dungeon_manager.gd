@@ -242,7 +242,7 @@ func _hide_overworld_popups() -> void:
 		enemy_tooltip.hide()
 
 
-func leave_dungeon(dungeon_animation_remaining := 0.0) -> void:
+func leave_dungeon(dungeon_animation_remaining := 0.0, snap_completion_to_entrance := false) -> void:
 	if not is_dungeon_active() or _transitioning:
 		return
 	_transitioning = true
@@ -310,7 +310,15 @@ func leave_dungeon(dungeon_animation_remaining := 0.0) -> void:
 	_active_level.queue_free()
 	_active_level = null
 	_dungeon_camera = null
-	await _play_overworld_exit_animation(player, _overworld_position)
+	if snap_completion_to_entrance:
+		player.global_position = overworld_entrance_position
+		player.end_scripted_movement()
+		if _camera:
+			_camera.position = Vector2.ZERO
+			_camera.reset_smoothing()
+			_camera.force_update_scroll()
+	else:
+		await _play_overworld_exit_animation(player, _overworld_position)
 	_active_id = &""
 	_active_entrance = null
 	_world.interaction_locked = false
@@ -391,7 +399,7 @@ func _play_completed_dungeon_exit() -> void:
 	await get_tree().create_timer(COMPLETION_TRANSITION_DELAY).timeout
 	_transitioning = false
 	_completion_exit_running = false
-	await leave_dungeon(COMPLETION_RISE_TIME - COMPLETION_TRANSITION_DELAY)
+	await leave_dungeon(COMPLETION_RISE_TIME - COMPLETION_TRANSITION_DELAY, true)
 	if is_instance_valid(beam):
 		beam.queue_free()
 	if is_instance_valid(player.fox_sprite):

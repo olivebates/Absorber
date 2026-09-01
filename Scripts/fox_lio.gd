@@ -15,6 +15,7 @@ const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 const HEALTH_ICON := preload("res://Sprites/Heart.webp")
 const REGENERATION_ICON := preload("res://Sprites/RecoveryHeart.webp")
 const DEFENSE_ICON := preload("res://Sprites/ShieldIcon.webp")
+const HELPER_INVENTORY_TRANSFER_SCRIPT := preload("res://Scripts/helper_inventory_transfer.gd")
 
 enum HuntState { INACTIVE, HUNTING, RETURNING, WAITING_AT_CAMPFIRE, DELIVERING, WAITING_FOR_ENEMIES }
 
@@ -24,6 +25,7 @@ var _hunt_target: ChickenEnemy
 var _hunt_path_refresh_left := 0.0
 var _hunt_attack_left := 0.0
 var _collected_rewards: Array[Dictionary] = []
+var _collected_items: Array[Dictionary] = []
 var _collected_row: HBoxContainer
 var _delivery_running := false
 var _reward_fee_paid := false
@@ -199,11 +201,28 @@ func collect_enemy_reward(enemy: ChickenEnemy) -> void:
 	_refresh_collected_stats_display()
 
 
+func collect_enemy_item(item: Dictionary) -> void:
+	var item_id := str(item.get("item_id", ""))
+	if not ItemPickup.ITEM_DATA.has(item_id):
+		return
+	_collected_items.append(ItemPickup.make_item(item_id, ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item)))
+	_refresh_collected_stats_display()
+
+
 func begin_reward_delivery() -> void:
 	if _delivery_running or hunt_state != HuntState.WAITING_AT_CAMPFIRE or not _reward_fee_paid:
 		return
 	_delivery_running = true
 	hunt_state = HuntState.DELIVERING
+	if not _collected_items.is_empty():
+		if _can_player_accept_all_items():
+			for item in _collected_items:
+				_player.collect_item_data(item)
+			_collected_items.clear()
+			_refresh_collected_stats_display()
+		else:
+			_open_item_transfer()
+			return
 	_run_reward_delivery()
 
 
@@ -222,6 +241,7 @@ func get_save_data() -> Array:
 	data.append(hunt_state)
 	data.append(_collected_rewards.duplicate(true))
 	data.append(_reward_fee_paid)
+	data.append(_collected_items.duplicate(true))
 	return data
 
 
@@ -230,6 +250,7 @@ func load_save_data(data: Array) -> bool:
 	_hunter_recruited = false
 	hunt_state = HuntState.INACTIVE
 	_collected_rewards.clear()
+	_collected_items.clear()
 	_reward_fee_paid = false
 	if data.size() >= 10 and str(data[6]) == LIO_SAVE_FORMAT:
 		_hunter_recruited = bool(data[7])
@@ -241,6 +262,13 @@ func load_save_data(data: Array) -> bool:
 				if raw_reward is Dictionary:
 					_collected_rewards.append((raw_reward as Dictionary).duplicate(true))
 		_reward_fee_paid = bool(data[10]) if data.size() > 10 else false
+		if data.size() > 11 and data[11] is Array:
+			for raw_item in data[11] as Array:
+				if raw_item is Dictionary:
+					var item := raw_item as Dictionary
+					var item_id := str(item.get("item_id", ""))
+					if ItemPickup.ITEM_DATA.has(item_id):
+						_collected_items.append(ItemPickup.make_item(item_id, ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item)))
 	if hunt_state != HuntState.WAITING_AT_CAMPFIRE:
 		_reward_fee_paid = false
 	stationary = _hunter_recruited or _is_stationary_before_recruitment()
@@ -492,7 +520,7 @@ func _get_reward_price_text() -> String:
 func _update_helper_tooltip() -> void:
 	var hovering := Rect2(Vector2(-32, -32), Vector2(64, 64)).has_point(to_local(get_global_mouse_position()))
 	var dungeon_manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
-	var should_show := hovering and is_waiting_at_campfire() and not _collected_rewards.is_empty() and not _dialogue_is_open() \
+	var should_show := hovering and is_waiting_at_campfire() and (not _collected_rewards.is_empty() or not _collected_items.is_empty()) and not _dialogue_is_open() \
 		and not (dungeon_manager and dungeon_manager.is_dungeon_active())
 	var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
 	if not should_show:
@@ -519,6 +547,9 @@ func _get_reward_tooltip_copy() -> String:
 	for key_variant in keys:
 		var key := str(key_variant)
 		lines.append("+%d %s" % [int(totals[key_variant]), _reward_name_for_key(key)])
+	for item in _collected_items:
+		var item_id := str(item.get("item_id", ""))
+		lines.append("%s %s" % [ItemPickup.get_grade_name(ItemPickup.get_item_grade(item)), str(ItemPickup.ITEM_NAMES.get(item_id, item_id.capitalize()))])
 	lines.append("Price: %s" % _get_reward_price_text())
 	return "\n".join(lines)
 
@@ -561,6 +592,57 @@ func _run_reward_delivery() -> void:
 	var story := get_tree().get_first_node_in_group("story_manager") as StoryManager
 	if story:
 		_notify_reward_delivery_finished(story)
+
+
+func _can_player_accept_all_items() -> bool:
+	if not is_instance_valid(_player):
+		return false
+	var inventory_space := 0
+	for item in _player.inventory_slots:
+		if item.is_empty():
+			inventory_space += 1
+	var weapon_space := _player.equipped_weapons[0].is_empty()
+	var armor_space := _player.equipped_armor[0].is_empty()
+	for item in _collected_items:
+		var item_id := str(item.get("item_id", ""))
+		if ItemPickup.is_weapon(item_id) and weapon_space:
+			weapon_space = false
+		elif ItemPickup.is_armor(item_id) and armor_space:
+			armor_space = false
+		elif inventory_space > 0:
+			inventory_space -= 1
+		else:
+			return false
+	return true
+
+
+func _open_item_transfer() -> void:
+	var hud := _world.get_node_or_null("HUD") as CanvasLayer if is_instance_valid(_world) else null
+	if hud == null:
+		_delivery_running = false
+		hunt_state = HuntState.WAITING_AT_CAMPFIRE
+		return
+	_world.gameplay_paused = true
+	_world.interaction_locked = true
+	var transfer := HELPER_INVENTORY_TRANSFER_SCRIPT.new() as HelperInventoryTransfer
+	hud.add_child(transfer)
+	transfer.setup(_player, _collected_items, _get_helper_name())
+	transfer.confirmed.connect(_on_item_transfer_confirmed)
+	transfer.cancelled.connect(_on_item_transfer_cancelled)
+
+
+func _on_item_transfer_confirmed() -> void:
+	_collected_items.clear()
+	_refresh_collected_stats_display()
+	_run_reward_delivery()
+
+
+func _on_item_transfer_cancelled() -> void:
+	_delivery_running = false
+	hunt_state = HuntState.WAITING_AT_CAMPFIRE
+	if is_instance_valid(_world):
+		_world.gameplay_paused = false
+		_world.interaction_locked = false
 
 
 func _notify_reward_delivery_finished(story: StoryManager) -> void:
@@ -673,7 +755,18 @@ func _refresh_collected_stats_display() -> void:
 		amount.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		entry.add_child(amount)
 		_collected_row.add_child(entry)
-	_collected_row.visible = not totals.is_empty()
+	for item in _collected_items:
+		var entry := HBoxContainer.new()
+		entry.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var icon := TextureRect.new()
+		icon.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", ""))) as Texture2D
+		icon.custom_minimum_size = Vector2(18, 18)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		entry.add_child(icon)
+		_collected_row.add_child(entry)
+	_collected_row.visible = not totals.is_empty() or not _collected_items.is_empty()
 	_collected_row.reset_size()
 	_center_collected_stats_display()
 	call_deferred("_center_collected_stats_display")

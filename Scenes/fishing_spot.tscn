@@ -16,7 +16,7 @@ shack_build_cost = {"fish": 10}
 shack_scene = ExtResource("3_crate")
 shack_icon = ExtResource("4_crate_icon")
 mine_icon = ExtResource("5_mine_icon")
-mine_build_label = "Build Hut"
+mine_build_label = "Build Fishery"
 capacity_build_label = "Build Crate"
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
@@ -29,4 +29,4 @@ offset_top = -15.0
 offset_right = 52.0
 offset_bottom = 15.0
 mouse_filter = 0
-text = "Build Hut"
+text = "Build Fishery"

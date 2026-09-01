@@ -2,6 +2,7 @@ class_name ArmorGrid
 extends PanelContainer
 
 const DEFENSE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const DEFENSE_NAMES := ["Red Defense", "Yellow Defense", "Blue Defense"]
 const SHIELD_ICON := preload("res://Sprites/ShieldIcon.webp")
 
 var _player: FoxPlayer
@@ -52,7 +53,7 @@ func _refresh() -> void:
 		if color_index != FoxPlayer.COLOR_RED and _player.get_base_defense_for_color(color_index) < 1 and reference_defense < 1:
 			continue
 		_add_color_header(color_index)
-		_add_number_cell(_player.get_defense_for_color(color_index))
+		_add_number_cell(_player.get_defense_for_color(color_index), color_index)
 	call_deferred("_fit_beside_damage_grid")
 
 
@@ -117,7 +118,8 @@ func _add_shield_header() -> void:
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	center.add_child(icon)
-	_add_cell(center, Vector2(34, 25))
+	var cell := _add_cell(center, Vector2(34, 25))
+	_connect_stat_tooltip(cell, "Defense")
 
 
 func _add_color_header(color_index: int) -> void:
@@ -130,10 +132,11 @@ func _add_color_header(color_index: int) -> void:
 	style.set_corner_radius_all(6)
 	dot.add_theme_stylebox_override("panel", style)
 	center.add_child(dot)
-	_add_cell(center, Vector2(32, 25))
+	var cell := _add_cell(center, Vector2(32, 25))
+	_connect_stat_tooltip(cell, DEFENSE_NAMES[color_index])
 
 
-func _add_number_cell(value: int) -> void:
+func _add_number_cell(value: int, color_index: int) -> void:
 	var label := Label.new()
 	label.name = "DefenseValue"
 	label.text = str(value)
@@ -142,16 +145,31 @@ func _add_number_cell(value: int) -> void:
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 2)
-	_add_cell(label, Vector2(34, 25))
+	var cell := _add_cell(label, Vector2(34, 25))
+	_connect_stat_tooltip(cell, DEFENSE_NAMES[color_index])
 
 
-func _add_cell(content: Control, minimum_size: Vector2) -> void:
+func _add_cell(content: Control, minimum_size: Vector2) -> PanelContainer:
 	var cell := PanelContainer.new()
 	cell.custom_minimum_size = minimum_size
 	cell.add_theme_stylebox_override("panel", _make_cell_style())
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cell.add_child(content)
 	_grid.add_child(cell)
+	return cell
+
+
+func _connect_stat_tooltip(control: Control, title: String) -> void:
+	control.mouse_entered.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip:
+			tooltip.show_description(null, title, "")
+	)
+	control.mouse_exited.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip:
+			tooltip.hide_item()
+	)
 
 
 func _make_cell_style() -> StyleBoxFlat:

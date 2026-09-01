@@ -432,6 +432,21 @@ func capture_snapshot() -> Dictionary:
 func load_snapshot(snapshot: Dictionary) -> void:
 	if snapshot.is_empty():
 		return
+	# Rebuild every saved room before restoring its spawns. Previously, enemies
+	# outside the entry room were restored while those cells were still absent
+	# from navigation, so the spawn lookup failed and left only a huge timer.
+	var saved_visited_rooms := snapshot.get("visited_rooms", []) as Array
+	var navigation_expanded := false
+	for raw_room in saved_visited_rooms:
+		if raw_room is Array and raw_room.size() >= 2:
+			var room := Vector2i(int(raw_room[0]), int(raw_room[1]))
+			_register_visited_room(room)
+			if not _navigation_rooms.has(room):
+				_navigation_rooms.append(room)
+				navigation_expanded = true
+	if navigation_expanded:
+		_build_dungeon_navigation()
+		queue_redraw()
 	var saved_spawns := snapshot.get("spawns", {}) as Dictionary
 	for child in get_children():
 		if not is_instance_valid(child) or not child is EnemySpawnPoint:
@@ -441,7 +456,7 @@ func load_snapshot(snapshot: Dictionary) -> void:
 			continue
 		spawn.clear_for_load()
 		var spawn_data := saved_spawns[str(spawn.name)] as Array
-		spawn.load_save_data(spawn_data, 0)
+		spawn.load_save_data(spawn_data, 0, true)
 	var saved_chests := snapshot.get("chests", {}) as Dictionary
 	for node in get_tree().get_nodes_in_group("dungeon_chests"):
 		if is_instance_valid(node) and node is DungeonChest and belongs_to_world(node) and saved_chests.has(str(node.name)):
@@ -461,19 +476,7 @@ func load_snapshot(snapshot: Dictionary) -> void:
 			pickup.setup(str(raw_pickup[2]), int(raw_pickup[3]))
 			pickup.global_position = Vector2(float(raw_pickup[0]), float(raw_pickup[1]))
 			add_child(pickup)
-	var saved_visited_rooms := snapshot.get("visited_rooms", []) as Array
-	var navigation_expanded := false
-	for raw_room in saved_visited_rooms:
-		if raw_room is Array and raw_room.size() >= 2:
-			var room := Vector2i(int(raw_room[0]), int(raw_room[1]))
-			_register_visited_room(room)
-			if not _navigation_rooms.has(room):
-				_navigation_rooms.append(room)
-				navigation_expanded = true
 	_restore_explored_cells(snapshot.get("explored", []) as Array, saved_visited_rooms.is_empty(), not navigation_expanded)
-	if navigation_expanded:
-		_build_dungeon_navigation()
-		queue_redraw()
 	_restore_player_snapshot(snapshot)
 	_update_room_objects()
 

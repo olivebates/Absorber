@@ -17,7 +17,7 @@ const ITEM_IDS := [
 	&"potion_bronze", &"potion_silver", &"potion_royal", &"potion_holy",
 ]
 
-@export_enum("Weathered Armor", "Weathered Sword", "Basic Potion", "Upgraded Potion", "Bronze Potion", "Silver Potion", "Royal Potion", "Holy Potion") var item_type: int = ItemType.WEATHERED_ARMOR
+@export_enum("Orange Shield", "Yellow Sword", "Basic Potion", "Upgraded Potion", "Bronze Potion", "Silver Potion", "Royal Potion", "Holy Potion") var item_type: int = ItemType.WEATHERED_ARMOR
 @export_range(0.0, 1.0, 0.01, "suffix: chance") var chance := 0.5
 @export_enum("Crude", "Ordinary", "Superior", "Elite", "Masterwork", "Mythic", "Divine", "Immortal", "Omnipotent", "Void") var grade := 0
 

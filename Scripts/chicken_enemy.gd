@@ -28,10 +28,10 @@ const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
 const ENEMY_SKILL_MOVE_TUTORIAL_DELAY := 0.4
 const SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_DELAY := 0.2
-const CASCADING_SWEEP_TUTORIAL_DELAY := 0.4
+const CASCADING_SWEEP_TUTORIAL_DELAY := 0.2
 const ENEMY_SKILL_MOVE_TUTORIAL_TEXT := "He's about to unleash a powerful attack, I should step out of the way."
-const SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_TEXT := "Oh no, I'm snared, I can't move!"
-const CASCADING_SWEEP_TUTORIAL_TEXT := "I'm snared, I can't move! I have to use my skill by pressing Q to get out of it."
+const SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_TEXT := "Oh no, I'm snared and can't move!"
+const CASCADING_SWEEP_TUTORIAL_TEXT := "Oh no, I'm snared. I need to use my skill by pressing Q to get out of it!"
 
 enum MovementMode {
 	PATROL,
@@ -196,6 +196,7 @@ func take_hunter_damage(hunter: FoxLio) -> void:
 	if health == 0:
 		if rewards_enabled:
 			hunter.collect_enemy_reward(self)
+			_collect_item_drops_for_hunter(hunter)
 		died.emit(self)
 		queue_free()
 
@@ -227,7 +228,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	var offline_milliseconds := maxi(0, offline_seconds) * 1000
 	var regeneration_delay := maxi(0, int(data[5]))
 	var regeneration_tick := maxi(0, int(data[6]))
-	if health < max_health and offline_milliseconds >= regeneration_delay:
+	if health < max_health and offline_milliseconds > 0 and offline_milliseconds >= regeneration_delay:
 		var regeneration_elapsed := offline_milliseconds - regeneration_delay
 		if regeneration_elapsed >= regeneration_tick:
 			var regenerated_ticks := 1 + floori(float(regeneration_elapsed - regeneration_tick) / 1000.0)
@@ -266,6 +267,15 @@ func _drop_items() -> void:
 		pickup.setup(item_id, grade)
 		pickup.global_position = global_position + Vector2(randf_range(-12.0, 12.0), randf_range(-7.0, 7.0))
 		get_parent().add_child(pickup)
+
+
+func _collect_item_drops_for_hunter(hunter: FoxLio) -> void:
+	for entry in drop_table:
+		if randf() > float(entry.get("chance", 0.0)):
+			continue
+		var item_id := str(entry.get("item_id", "weathered_sword"))
+		var grade := int(entry.get("grade", 0))
+		hunter.collect_enemy_item(ItemPickup.make_item(item_id, grade))
 
 
 func _physics_process(delta: float) -> void:
@@ -521,7 +531,7 @@ func _try_show_enemy_skill_tutorial() -> bool:
 		return false
 	var is_snaring_skill := _active_skill_id == SKILL_CASCADING_SWEEP or _active_skill_id == SKILL_CASCADING_SURROUND
 	if is_snaring_skill and _active_skill_elapsed >= SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_DELAY \
-			and not _player.unlocked_player_skills.has(FoxPlayer.SKILL_ROLL_CLOCKWISE) \
+			and not _player.has_unlocked_player_skill() \
 			and not _player.snare_without_quick_roll_tutorial_seen:
 		if dialogue.play([_tutorial_line(SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_TEXT)]):
 			_player.snare_without_quick_roll_tutorial_seen = true
@@ -541,7 +551,7 @@ func _try_show_enemy_skill_tutorial() -> bool:
 			_pause_skill_telegraph_tweens()
 			return true
 	if _active_skill_elapsed >= CASCADING_SWEEP_TUTORIAL_DELAY \
-			and is_snaring_skill and _player.unlocked_player_skills.has(FoxPlayer.SKILL_ROLL_CLOCKWISE) \
+			and is_snaring_skill and _player.has_unlocked_player_skill() \
 			and not _player.cascading_sweep_skill_tutorial_seen and not _skip_cascade_tutorial_for_current_cast \
 			and not _player.is_moving():
 		if not _player.prepare_player_skill_slot_for_tutorial(0):

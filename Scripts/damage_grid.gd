@@ -2,6 +2,7 @@ class_name DamageGrid
 extends PanelContainer
 
 const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const DAMAGE_NAMES := ["Red Damage", "Yellow Damage", "Blue Damage"]
 const COLOR_ORDER := [FoxPlayer.COLOR_RED, FoxPlayer.COLOR_YELLOW, FoxPlayer.COLOR_BLUE]
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 
@@ -117,7 +118,7 @@ func _refresh() -> void:
 					and weapon_index < (_dungeon_visibility_reference[color_index] as Array).size():
 				was_visible = int((_dungeon_visibility_reference[color_index] as Array)[weapon_index]) > 1
 			if was_visible:
-				_add_number_cell(damage)
+				_add_number_cell(damage, color_index)
 			else:
 				_add_hidden_damage_cell()
 	call_deferred("_fit_to_top_left")
@@ -169,11 +170,12 @@ func _add_color_header(color_index: int) -> PanelContainer:
 	visible_dot.add_theme_stylebox_override("panel", dot_style)
 	center.add_child(visible_dot)
 	cell.add_child(center)
+	_connect_stat_tooltip(cell, DAMAGE_NAMES[color_index])
 	_grid.add_child(cell)
 	return cell
 
 
-func _add_number_cell(value: int) -> void:
+func _add_number_cell(value: int, color_index: int) -> void:
 	var cell := PanelContainer.new()
 	cell.custom_minimum_size = Vector2(34, 25)
 	cell.add_theme_stylebox_override("panel", _make_cell_style())
@@ -186,6 +188,7 @@ func _add_number_cell(value: int) -> void:
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 2)
 	cell.add_child(label)
+	_connect_stat_tooltip(cell, DAMAGE_NAMES[color_index])
 	_grid.add_child(cell)
 
 
@@ -209,7 +212,21 @@ func _add_weapon_header(weapon_index: int) -> void:
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(icon)
+	_connect_stat_tooltip(damage_type_cell, "Weapon Damage")
 	_grid.add_child(damage_type_cell)
+
+
+func _connect_stat_tooltip(control: Control, title: String) -> void:
+	control.mouse_entered.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip:
+			tooltip.show_description(null, title, "")
+	)
+	control.mouse_exited.connect(func() -> void:
+		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
+		if tooltip:
+			tooltip.hide_item()
+	)
 
 
 func _make_cell_style() -> StyleBoxFlat:

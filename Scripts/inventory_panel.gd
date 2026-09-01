@@ -88,6 +88,7 @@ func _connect_player() -> void:
 	_player = get_tree().get_first_node_in_group("player") as FoxPlayer
 	if _player:
 		_player.inventory_changed.connect(_refresh)
+		_player.item_use_failed.connect(_on_item_use_failed)
 		_player.merge_targets_changed.connect(_set_merge_targets)
 		_player.merge_completed.connect(_on_merge_completed)
 		_refresh()
@@ -171,9 +172,15 @@ func click_slot(slot: ItemSlot) -> void:
 	if ItemPickup.is_consumable(str(slot.item.get("item_id", ""))):
 		_player.consume_inventory_item(slot.slot_index)
 	elif ItemPickup.is_weapon(str(slot.item.get("item_id", ""))):
-		_player.move_or_merge(slot.storage, slot.slot_index, "weapon", 0)
+		_player.move_or_merge(slot.storage, slot.slot_index, "weapon", 0, false)
 	elif ItemPickup.is_armor(str(slot.item.get("item_id", ""))):
-		_player.move_or_merge(slot.storage, slot.slot_index, "armor", 0)
+		_player.move_or_merge(slot.storage, slot.slot_index, "armor", 0, false)
+
+
+func _on_item_use_failed(slot_index: int, _message: String) -> void:
+	var slot := _get_item_slot("inventory", slot_index)
+	if slot:
+		slot.play_unavailable_feedback()
 
 
 func _on_auto_merge_pressed() -> void:

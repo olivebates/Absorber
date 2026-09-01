@@ -142,6 +142,12 @@ func get_active_enemies() -> Array[ChickenEnemy]:
 	return result
 
 
+func get_respawn_progress() -> float:
+	if respawn_time <= 0.0 or not get_active_enemies().is_empty():
+		return 0.0
+	return clampf(1.0 - _respawn_time_left / respawn_time, 0.0, 1.0)
+
+
 func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector2i, saved_data: Array = [], rewards_enabled := true) -> ChickenEnemy:
 	var enemy := _get_enemy_scene().instantiate() as ChickenEnemy
 	enemy.spawn_point = self
@@ -223,7 +229,7 @@ func ensure_initial_wave_spawned() -> void:
 	_update_respawn_indicator()
 
 
-func load_save_data(data: Array, offline_seconds: int) -> bool:
+func load_save_data(data: Array, offline_seconds: int, preserve_enemy_positions := false) -> bool:
 	if data.size() < 2:
 		return false
 	var world := _get_navigation_world()
@@ -237,18 +243,20 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 		var enemy_data := raw_enemy_data as Array
 		if enemy_data.size() < 9:
 			continue
-		# Restore persistent combat state, but always place the enemy from this
-		# scene's current spawn marker. Saved position/home cells become stale when
-		# a map or spawn is moved between releases.
-		var spawn_cell := _get_available_spawn_cell(world)
+		var saved_position := Vector2(float(enemy_data[0]), float(enemy_data[1]))
+		var saved_home := Vector2i(int(enemy_data[2]), int(enemy_data[3]))
+		var saved_cell := world.world_to_cell(saved_position)
+		var spawn_cell := saved_cell if preserve_enemy_positions and world.is_walkable(saved_cell) else _get_available_spawn_cell(world)
 		if spawn_cell == Vector2i(-1, -1):
 			continue
-		var enemy := _create_enemy(world, world.cell_to_world(spawn_cell), spawn_cell)
+		var home_cell := saved_home if preserve_enemy_positions and world.is_walkable(saved_home) else spawn_cell
+		var enemy_position := saved_position if preserve_enemy_positions and world.is_walkable(saved_cell) else world.cell_to_world(spawn_cell)
+		var enemy := _create_enemy(world, enemy_position, home_cell)
 		if enemy:
 			enemy.load_save_data(enemy_data, offline_seconds)
 
 	var interval_milliseconds := maxi(1, roundi(respawn_time * 1000.0))
-	var time_left_milliseconds := maxi(0, int(data[0]))
+	var time_left_milliseconds := clampi(int(data[0]), 0, interval_milliseconds)
 	if _spawned_enemies.size() < max_enemies and not (dungeon_once and emptied_once):
 		time_left_milliseconds -= maxi(0, offline_seconds) * 1000
 		while _spawned_enemies.size() < max_enemies and time_left_milliseconds <= 0:

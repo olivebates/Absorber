@@ -19,6 +19,7 @@ var _icon: TextureRect
 var _empty_icon: TextureRect
 var _cooldown_overlay: ColorRect
 var _lock_icon: TextureRect
+var _merge_amount_label: Label
 var _disabled_line: Line2D
 var _was_dragged := false
 var _merge_tween: Tween
@@ -46,6 +47,20 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 	_icon.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", ""))) if not item.is_empty() else null
 	_icon.visible = not item.is_empty()
 	_icon.modulate = EQUIPMENT_YELLOW_TINT if not item.is_empty() and ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
+	if _merge_amount_label == null:
+		_merge_amount_label = Label.new()
+		_merge_amount_label.name = "MergeAmount"
+		_merge_amount_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_merge_amount_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		_merge_amount_label.add_theme_font_size_override("font_size", 11)
+		_merge_amount_label.add_theme_color_override("font_color", Color.WHITE)
+		_merge_amount_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		_merge_amount_label.add_theme_constant_override("outline_size", 3)
+		_merge_amount_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_merge_amount_label.z_index = 4
+		add_child(_merge_amount_label)
+	_merge_amount_label.text = str(ItemPickup.get_merge_amount(item))
+	_merge_amount_label.visible = not item.is_empty() and ItemPickup.is_equipment(str(item.get("item_id", "")))
 	if _empty_icon == null:
 		_empty_icon = TextureRect.new()
 		_empty_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -114,6 +129,9 @@ func _update_cooldown_overlay() -> void:
 	if _lock_icon:
 		_lock_icon.position = icon_position
 		_lock_icon.size = icon_size
+	if _merge_amount_label:
+		_merge_amount_label.position = Vector2(2, 1)
+		_merge_amount_label.size = slot_size - Vector2(5, 4)
 
 
 func _get_drag_data(_at_position: Vector2) -> Variant:
@@ -186,6 +204,14 @@ func play_merge_success() -> void:
 		if is_instance_valid(burst):
 			burst.queue_free()
 	)
+
+
+func play_unavailable_feedback() -> void:
+	var origin := position
+	var tween := create_tween()
+	for offset in [Vector2(-4, 0), Vector2(4, 0), Vector2(-3, 0), Vector2(3, 0)]:
+		tween.tween_property(self, "position", origin + offset, 0.04)
+	tween.tween_property(self, "position", origin, 0.04)
 
 
 func _set_style(background: Color, merge_highlight: bool) -> void:

@@ -19,13 +19,13 @@ func _get_upgrades() -> Array:
 
 func _get_resource_offers() -> Array[Dictionary]:
 	return [
-		{"resource_id": &"fish", "cost_resource_id": &"jewels", "price": 1},
+		{"resource_id": &"fish", "cost_resource_id": &"jewels", "price": 2},
 		{"resource_id": &"jewels", "cost_resource_id": &"gold_ore", "price": 5},
 	]
 
 
 func _get_shop_title() -> String:
-	return "Luca's Store"
+	return "Lucie's Store"
 
 
 func _notify_story_purchase(_upgrade_index := -1) -> void:

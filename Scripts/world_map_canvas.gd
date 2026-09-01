@@ -9,6 +9,7 @@ const FLOOR_COLORS := [
 const GREEN_FLOOR := Color("4f8a46")
 const YELLOW_FLOOR := Color("a69a3f")
 const BROWN_FLOOR := Color("795638")
+const SECOND_ROW_FLOOR := Color("44442b")
 const OBSTACLE_COLOR := Color("303238")
 const WATER_COLOR := Color("2d7fc4")
 const PATH_COLOR := Color("42a5f5")
@@ -18,7 +19,7 @@ const REDRAW_INTERVAL := 0.1
 var _world: WorldNavigation
 var _campfires: Array[Campfire] = []
 var _campfire_buttons: Array[Button] = []
-var _show_enemies := false
+var _show_enemies := true
 var _show_buildings := true
 var _enemies_toggle: CheckButton
 var _buildings_toggle: CheckButton
@@ -71,7 +72,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.025, 0.035, 0.055, 1.0), true)
+	draw_rect(Rect2(Vector2.ZERO, size), Color.BLACK, true)
 	if _world == null:
 		return
 	_refresh_terrain_cache()
@@ -79,6 +80,9 @@ func _draw() -> void:
 	var cell_size := _cell_size_cache
 	for cell in _floor_cells_cache:
 		if not _world.is_cell_explored(cell):
+			continue
+		if not _should_draw_floor_cell(cell):
+			# Explored coordinates without an authored floor tile remain black.
 			continue
 		var center := _cell_to_map(cell)
 		draw_rect(Rect2(center - Vector2.ONE * cell_size * 0.5, Vector2.ONE * maxf(1.0, cell_size)), _get_floor_color(cell), true)
@@ -102,6 +106,7 @@ func _draw() -> void:
 		for node in get_tree().get_nodes_in_group("enemies"):
 			if node is Node2D and is_instance_valid(node) and _world.belongs_to_world(node):
 				_draw_discovered_node_marker(node)
+	_draw_boss_respawn_timers(cell_size)
 	for node in get_tree().get_nodes_in_group("gold_ores"):
 		if node is Node2D and is_instance_valid(node) and _world.belongs_to_world(node):
 			if _show_buildings and node is GoldOre and is_instance_valid(node._mine):
@@ -118,10 +123,17 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color.BLACK, false, 2.0)
 
 
+func _should_draw_floor_cell(cell: Vector2i) -> bool:
+	return _world is DungeonLevel or (_world != null and _world.floor_layer.get_cell_source_id(cell) != -1)
+
+
 func _get_floor_color(cell: Vector2i) -> Color:
 	if _world is DungeonLevel:
 		return (_world as DungeonLevel).get_map_floor_color(cell)
 	var atlas := _world.floor_layer.get_cell_atlas_coords(cell)
+	var source := _world.floor_layer.get_cell_source_id(cell)
+	if atlas.y == 1 and atlas.x >= 0 and atlas.x < 3:
+		return SECOND_ROW_FLOOR
 	if atlas.x >= 0 and atlas.x < 3:
 		if atlas.y == 0:
 			return GREEN_FLOOR
@@ -129,7 +141,6 @@ func _get_floor_color(cell: Vector2i) -> Color:
 			return YELLOW_FLOOR
 		if atlas.y == 4:
 			return BROWN_FLOOR
-	var source := _world.floor_layer.get_cell_source_id(cell)
 	var color_index := absi(source * 31 + atlas.x * 17 + atlas.y * 13) % FLOOR_COLORS.size()
 	return FLOOR_COLORS[color_index]
 
@@ -179,7 +190,7 @@ func _build_layer_toggles() -> void:
 	_enemies_toggle = CheckButton.new()
 	_enemies_toggle.name = "ShowEnemiesToggle"
 	_enemies_toggle.text = "Show Enemies"
-	_enemies_toggle.button_pressed = false
+	_enemies_toggle.button_pressed = true
 	_enemies_toggle.toggled.connect(_on_show_enemies_toggled)
 	toggles.add_child(_enemies_toggle)
 	_buildings_toggle = CheckButton.new()
@@ -230,6 +241,27 @@ func _draw_discovered_node_marker(node: Node2D) -> void:
 	var marker_size := clampf(_get_cell_size() * 1.8, 12.0, 24.0)
 	var rect := Rect2(_cell_to_map(cell) - Vector2.ONE * marker_size * 0.5, Vector2.ONE * marker_size)
 	draw_texture_rect(sprite.texture, rect, false)
+
+
+func _draw_boss_respawn_timers(cell_size: float) -> void:
+	if _world is DungeonLevel:
+		return
+	for node in get_tree().get_nodes_in_group("enemy_spawns"):
+		if not node is EnemySpawnPoint or not is_instance_valid(node) or not _world.belongs_to_world(node):
+			continue
+		var spawn := node as EnemySpawnPoint
+		if not spawn.boss or not spawn.get_active_enemies().is_empty():
+			continue
+		var cell := _world.world_to_cell(spawn.global_position)
+		if not _world.is_cell_explored(cell):
+			continue
+		var radius := minf(cell_size * 1.35, 26.0)
+		var center := _cell_to_map(cell)
+		draw_circle(center, radius, Color(0.0, 0.0, 0.0, 0.65))
+		draw_arc(center, radius, 0.0, TAU, 48, Color("454b58"), 3.0, true)
+		var progress := spawn.get_respawn_progress()
+		if progress > 0.0:
+			draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + TAU * progress, 48, Color("ef4444"), 3.0, true)
 
 
 func _get_marker_sprite(node: Node2D) -> Sprite2D:

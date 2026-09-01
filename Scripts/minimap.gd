@@ -10,6 +10,7 @@ const REDRAW_INTERVAL := 0.1
 const GREEN_FLOOR := Color("4f8a46")
 const YELLOW_FLOOR := Color("a69a3f")
 const BROWN_FLOOR := Color("795638")
+const SECOND_ROW_FLOOR := Color("44442b")
 const OBSTACLE_COLOR := Color("303238")
 const WATER_COLOR := Color("2d7fc4")
 const DUNGEON_WALL_COLOR := Color.BLACK
@@ -67,7 +68,7 @@ func _draw() -> void:
 		return
 	var player_cell := _world.world_to_cell(player.global_position)
 	var tile_scale := _get_tile_scale(map_rect)
-	draw_rect(map_rect, Color(0.055, 0.07, 0.065, 1.0), true)
+	draw_rect(map_rect, Color.BLACK, true)
 	_draw_terrain(map_rect, player_cell, tile_scale)
 	_draw_player_path(map_rect)
 	draw_rect(map_rect, Color(0.0, 0.0, 0.0, 1.0), false, 1.0)
@@ -107,6 +108,9 @@ func _get_floor_color(cell: Vector2i) -> Color:
 	if _world is DungeonLevel:
 		return (_world as DungeonLevel).get_map_floor_color(cell)
 	var atlas := _world.floor_layer.get_cell_atlas_coords(cell)
+	var source := _world.floor_layer.get_cell_source_id(cell)
+	if atlas.y == 1 and atlas.x >= 0 and atlas.x < 3:
+		return SECOND_ROW_FLOOR
 	if atlas.x >= 0 and atlas.x < 3:
 		if atlas.y == 0:
 			return GREEN_FLOOR
@@ -114,7 +118,6 @@ func _get_floor_color(cell: Vector2i) -> Color:
 			return YELLOW_FLOOR
 		if atlas.y == 4:
 			return BROWN_FLOOR
-	var source := _world.floor_layer.get_cell_source_id(cell)
 	var color_index := absi(source * 31 + atlas.x * 17 + atlas.y * 13) % FLOOR_COLORS.size()
 	return FLOOR_COLORS[color_index]
 

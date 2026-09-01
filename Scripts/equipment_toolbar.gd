@@ -131,8 +131,8 @@ func click_slot(_slot: ItemSlot) -> void:
 		return
 	for index in range(_player.inventory_slots.size()):
 		var candidate := _player.get_slot_item("inventory", index)
-		if _player.can_merge(_slot.item, candidate) or candidate.is_empty():
-			_player.move_or_merge(_slot.storage, _slot.slot_index, "inventory", index)
+		if candidate.is_empty():
+			_player.move_or_merge(_slot.storage, _slot.slot_index, "inventory", index, false)
 			return
 
 
@@ -179,12 +179,15 @@ func _is_valid_equipment_target(storage: String, index: int, item: Dictionary) -
 
 
 func _connect_tooltip(slot: ItemSlot) -> void:
-	if slot.item.is_empty():
-		return
 	slot.mouse_entered.connect(func() -> void:
 		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
 		if tooltip:
-			tooltip.show_item(slot.item)
+			if not slot.item.is_empty():
+				tooltip.show_item(slot.item)
+			else:
+				var kind := "Weapon" if slot.storage == "weapon" else "Armor"
+				var empty_name := "None" if slot.locked or slot.storage == "armor" else "Claws"
+				tooltip.show_description(null, "%s - %s" % [kind, empty_name], "Locked" if slot.locked else "")
 	)
 	slot.mouse_exited.connect(func() -> void:
 		var tooltip := get_tree().get_first_node_in_group("item_tooltip") as ItemTooltip
