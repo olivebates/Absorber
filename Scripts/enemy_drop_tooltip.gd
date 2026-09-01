@@ -4,6 +4,7 @@ extends PanelContainer
 var _content: VBoxContainer
 var _shown_enemy: ChickenEnemy
 var _last_mouse_position := Vector2.ZERO
+var _animated_card_styles: Array[StyleBoxFlat] = []
 
 
 func _ready() -> void:
@@ -15,6 +16,9 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	var rainbow_color := ItemPickup.get_grade_color(ItemPickup.OMNIPOTENT_GRADE)
+	for style in _animated_card_styles:
+		style.bg_color = rainbow_color
 	var mouse := get_viewport().get_mouse_position()
 	_last_mouse_position = mouse
 	var active_world := _get_active_world()
@@ -69,6 +73,7 @@ func _get_visible_drops(drop_table: Array[Dictionary]) -> Array[Dictionary]:
 
 
 func _refresh(drop_table: Array[Dictionary]) -> void:
+	_animated_card_styles.clear()
 	for child in _content.get_children():
 		child.free()
 	var title := Label.new()
@@ -84,7 +89,10 @@ func _refresh(drop_table: Array[Dictionary]) -> void:
 		var card := PanelContainer.new()
 		var card_style := StyleBoxFlat.new()
 		var item := ItemPickup.make_item(item_id, int(entry.get("grade", 0)))
-		card_style.bg_color = ItemPickup.get_grade_color(ItemPickup.get_item_grade(item))
+		var item_grade := ItemPickup.get_item_grade(item)
+		card_style.bg_color = ItemPickup.get_grade_color(item_grade)
+		if ItemPickup.is_animated_grade(item_grade):
+			_animated_card_styles.append(card_style)
 		card_style.border_color = Color.BLACK
 		card_style.set_border_width_all(1)
 		card_style.set_corner_radius_all(3)

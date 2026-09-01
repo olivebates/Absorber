@@ -1078,8 +1078,7 @@ func can_merge(first: Dictionary, second: Dictionary) -> bool:
 	return not first.is_empty() and not second.is_empty() \
 		and ItemPickup.is_equipment(str(first.get("item_id", ""))) \
 		and str(first.get("item_id", "")) == str(second.get("item_id", "")) \
-		and ItemPickup.get_item_grade(first) == ItemPickup.get_item_grade(second) \
-		and ItemPickup.get_item_grade(first) < ItemPickup.GRADES.size() - 1
+		and ItemPickup.get_item_grade(first) == ItemPickup.get_item_grade(second)
 
 
 func consume_inventory_item(index: int) -> bool:
@@ -1689,7 +1688,8 @@ func _attack_nearby_enemy() -> void:
 			audio.play_damage()
 		_face_toward(target)
 		_play_attack_animation(target)
-		_show_slash(target, ItemPickup.get_grade_color(ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])))
+		var weapon_grade := ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])
+		_show_slash(target, ItemPickup.get_grade_color(weapon_grade), ItemPickup.is_animated_grade(weapon_grade))
 		target.take_damage(get_damage_for_color(target.enemy_color), automatic)
 		_weapon_cooldowns[current_weapon_index] = attack_cooldown
 
@@ -1845,28 +1845,37 @@ func _create_combat_ring(color: Color) -> Line2D:
 	return ring
 
 
-func _show_slash(target: Node2D, color: Color) -> void:
+func _show_slash(target: Node2D, color: Color, animated_color := false) -> void:
 	var slash := Node2D.new()
 	slash.z_index = 20
 	slash.position = Vector2(0, -5)
 	slash.modulate = Color(1.0, 1.0, 1.0, 0.62)
 	target.add_child(slash)
+	var color_lines: Array[Line2D] = []
 	for offset in [-3.5, 0.0, 3.5]:
 		_add_slash_line(slash, Vector2(-14, 10 + offset), Vector2(14, -12 + offset), Color.BLACK, 6.0)
-		_add_slash_line(slash, Vector2(-14, 10 + offset), Vector2(14, -12 + offset), color, 3.2)
+		color_lines.append(_add_slash_line(slash, Vector2(-14, 10 + offset), Vector2(14, -12 + offset), color, 3.2))
+	if animated_color:
+		var rainbow_tween := slash.create_tween()
+		rainbow_tween.tween_method(func(_weight: float) -> void:
+			var rainbow_color := ItemPickup.get_grade_color(ItemPickup.OMNIPOTENT_GRADE)
+			for line in color_lines:
+				line.default_color = rainbow_color
+		, 0.0, 1.0, 0.17)
 	var tween := slash.create_tween()
 	tween.tween_property(slash, "scale", Vector2(1.12, 1.12), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_interval(0.10)
 	tween.tween_callback(slash.queue_free)
 
 
-func _add_slash_line(parent: Node2D, from: Vector2, to: Vector2, color: Color, width: float) -> void:
+func _add_slash_line(parent: Node2D, from: Vector2, to: Vector2, color: Color, width: float) -> Line2D:
 	var line := Line2D.new()
 	line.width = width
 	line.default_color = color
 	line.add_point(from)
 	line.add_point(to)
 	parent.add_child(line)
+	return line
 
 
 func _update_enemy_chase() -> void:

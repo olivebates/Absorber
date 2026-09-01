@@ -27,7 +27,7 @@ const HIDDEN_OUTLINE_RADIUS := 1.5
 @export_range(1, 999, 1) var reward_amount := 1
 @export_enum("Red", "Yellow", "Blue") var reward_color := FoxPlayer.COLOR_RED
 @export var item_id := "weathered_sword"
-@export_range(0, 7, 1) var item_grade := 0
+@export_enum("Crude", "Ordinary", "Superior", "Elite", "Masterwork", "Mythic", "Divine", "Immortal", "Omnipotent", "Void") var item_grade := 0
 @export var resource_id: StringName = &"cave_moss"
 @export_enum("Quick Roll", "Golden Guard", "Back Roll", "Arc Roll") var reward_skill := 0
 

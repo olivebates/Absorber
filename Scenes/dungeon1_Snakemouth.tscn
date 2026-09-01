@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://Scenes/dungeon_chest.tscn" id="5_1v0o3"]
 [ext_resource type="PackedScene" path="res://Scenes/dungeon_door_locked.tscn" id="6_ikms5"]
 [ext_resource type="PackedScene" path="res://Scenes/dungeon_stairs.tscn" id="7_mo08s"]
+[ext_resource type="PackedScene" path="res://Scenes/dungeon_boss_door_locked.tscn" id="8_v5t50"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_5y3s5"]
 texture = ExtResource("2_mo08s")
@@ -255,6 +256,7 @@ reward_type = 7
 
 [node name="KeyChest7" parent="." unique_id=1828908409 instance=ExtResource("5_1v0o3")]
 position = Vector2(3424, -1056)
+reward_type = 13
 
 [node name="KeyChest6" parent="." unique_id=924617405 instance=ExtResource("5_1v0o3")]
 position = Vector2(608, -1120)
@@ -271,5 +273,5 @@ position = Vector2(288, 352)
 [node name="DungeonDoorLocked" parent="." unique_id=936114343 instance=ExtResource("6_ikms5")]
 position = Vector2(1888, 96)
 
-[node name="DungeonDoorLocked2" parent="." unique_id=1013394502 instance=ExtResource("6_ikms5")]
+[node name="DungeonBossDoorLocked" parent="." unique_id=26029198 instance=ExtResource("8_v5t50")]
 position = Vector2(1440, -352)

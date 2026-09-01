@@ -26,15 +26,21 @@ const ITEM_TEXTURES := {
 }
 
 const GRADES := [
-	{"name": "Gray", "color": Color("777777")},
-	{"name": "White", "color": Color("f2f2f2")},
-	{"name": "Green", "color": Color("47b85c")},
-	{"name": "Blue", "color": Color("4785e8")},
-	{"name": "Purple", "color": Color("9a58d4")},
-	{"name": "Orange", "color": Color("e99032")},
-	{"name": "Pink", "color": Color("e65ac5")},
-	{"name": "Black", "color": Color("141414")},
+	{"name": "Crude", "color": Color("777777")},
+	{"name": "Ordinary", "color": Color("f2f2f2")},
+	{"name": "Superior", "color": Color("47b85c")},
+	{"name": "Elite", "color": Color("4785e8")},
+	{"name": "Masterwork", "color": Color("9a58d4")},
+	{"name": "Mythic", "color": Color("e99032")},
+	{"name": "Divine", "color": Color("e65ac5")},
+	{"name": "Immortal", "color": Color("2ec4b6")},
+	{"name": "Omnipotent", "color": Color("ff4d4d"), "animated": true},
+	{"name": "Void", "color": Color("141414")},
 ]
+const OMNIPOTENT_GRADE := 8
+const VOID_GRADE := 9
+const RAINBOW_CYCLES_PER_SECOND := 0.28
+const MAX_SCALED_STAT := 0x7fffffffffffffff
 
 const ITEM_DATA := {
 	"weathered_armor": {"block": 2, "slot": "armor", "color": FoxPlayer.COLOR_YELLOW},
@@ -59,7 +65,7 @@ var _shadow: Polygon2D
 
 func setup(new_item_id: String, new_grade := 0) -> void:
 	item_id = new_item_id
-	grade = clampi(new_grade, 0, GRADES.size() - 1)
+	grade = maxi(new_grade, 0)
 
 
 func _ready() -> void:
@@ -114,15 +120,28 @@ func get_item_name() -> String:
 
 
 static func get_grade_name(grade: int) -> String:
-	return str(GRADES[clampi(grade, 0, GRADES.size() - 1)].get("name", "Gray"))
+	var normalized_grade := maxi(grade, 0)
+	if normalized_grade > VOID_GRADE:
+		return "Void +%d" % (normalized_grade - VOID_GRADE)
+	return str(GRADES[normalized_grade].get("name", "Crude"))
 
 
-static func get_grade_color(grade: int) -> Color:
-	return GRADES[clampi(grade, 0, GRADES.size() - 1)].get("color", Color("777777")) as Color
+static func get_grade_color(grade: int, animation_time_seconds := -1.0) -> Color:
+	var normalized_grade := maxi(grade, 0)
+	if normalized_grade == OMNIPOTENT_GRADE:
+		var elapsed_seconds := animation_time_seconds if animation_time_seconds >= 0.0 else float(Time.get_ticks_msec()) * 0.001
+		var hue := fposmod(elapsed_seconds * RAINBOW_CYCLES_PER_SECOND, 1.0)
+		return Color.from_hsv(hue, 0.72, 1.0)
+	var base_grade := mini(normalized_grade, VOID_GRADE)
+	return GRADES[base_grade].get("color", Color("777777")) as Color
+
+
+static func is_animated_grade(grade: int) -> bool:
+	return maxi(grade, 0) == OMNIPOTENT_GRADE
 
 
 static func get_item_grade(item: Dictionary) -> int:
-	return clampi(int(item.get("grade", 0)), 0, GRADES.size() - 1)
+	return maxi(int(item.get("grade", 0)), 0)
 
 
 static func get_damage_bonus(item: Dictionary) -> int:
@@ -170,11 +189,17 @@ static func is_full_heal(item: Dictionary) -> bool:
 
 
 static func make_item(new_item_id: String, new_grade := 0) -> Dictionary:
-	return {"item_id": new_item_id, "grade": clampi(new_grade, 0, GRADES.size() - 1)}
+	return {"item_id": new_item_id, "grade": maxi(new_grade, 0)}
 
 
 static func _scaled_stat(base_amount: int, grade: int) -> int:
+	if base_amount <= 0:
+		return 0
 	var amount := float(base_amount)
-	for _step in range(clampi(grade, 0, GRADES.size() - 1)):
+	# Sixty-four steps exceed a signed 64-bit stat even from the smallest
+	# positive base, so malformed or far-future save grades cannot cause a long loop.
+	for _step in range(mini(maxi(grade, 0), 64)):
+		if amount >= float(MAX_SCALED_STAT) / 2.1:
+			return MAX_SCALED_STAT
 		amount = amount * 2.1
 	return roundi(amount)

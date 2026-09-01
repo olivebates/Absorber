@@ -22,6 +22,7 @@ var _lock_icon: TextureRect
 var _disabled_line: Line2D
 var _was_dragged := false
 var _merge_tween: Tween
+var _panel_style: StyleBoxFlat
 
 
 func configure(new_owner: Control, new_storage: String, new_slot_index: int, new_item: Dictionary, highlight := false, is_locked := false, show_unarmed_damage := false) -> void:
@@ -84,6 +85,8 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 
 
 func _process(_delta: float) -> void:
+	if _panel_style and storage != "trash" and not item.is_empty() and ItemPickup.is_animated_grade(ItemPickup.get_item_grade(item)):
+		_panel_style.bg_color = ItemPickup.get_grade_color(ItemPickup.get_item_grade(item))
 	_update_cooldown_overlay()
 
 
@@ -191,4 +194,5 @@ func _set_style(background: Color, merge_highlight: bool) -> void:
 	style.border_color = Color("ff5252") if storage == "trash" else Color.YELLOW if merge_highlight else Color.BLACK
 	style.set_border_width_all(3 if merge_highlight else 2)
 	style.set_corner_radius_all(4)
+	_panel_style = style
 	add_theme_stylebox_override("panel", style)

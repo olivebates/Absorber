@@ -6,6 +6,8 @@ var _rank: Label
 var _stat_icon: TextureRect
 var _stat: Label
 var _target_position := Vector2.ZERO
+var _displayed_grade := -1
+var _panel_style: StyleBoxFlat
 
 
 func _ready() -> void:
@@ -45,11 +47,16 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	if ItemPickup.is_animated_grade(_displayed_grade):
+		var grade_color := ItemPickup.get_grade_color(_displayed_grade)
+		_rank.add_theme_color_override("font_color", grade_color)
+		_update_style_color(grade_color)
 	_update_target_position()
 	position = position.lerp(_target_position, 1.0 - exp(-18.0 * delta))
 
 
 func show_item(item: Dictionary) -> void:
+	_displayed_grade = -1
 	var item_id := str(item.get("item_id", ""))
 	if not ItemPickup.ITEM_DATA.has(item_id):
 		return
@@ -85,6 +92,7 @@ func show_item(item: Dictionary) -> void:
 		_place_inside_camera()
 		return
 	var grade := ItemPickup.get_item_grade(item)
+	_displayed_grade = grade
 	_rank.text = "Grade %d · %s" % [grade, ItemPickup.get_grade_name(grade)]
 	_rank.visible = true
 	_rank.add_theme_color_override("font_color", ItemPickup.get_grade_color(grade))
@@ -101,6 +109,7 @@ func show_item(item: Dictionary) -> void:
 
 
 func show_description(icon: Texture2D, title: String, description: String) -> void:
+	_displayed_grade = -1
 	_icon.texture = icon
 	_icon.visible = icon != null
 	_rank.text = title
@@ -118,6 +127,7 @@ func show_description(icon: Texture2D, title: String, description: String) -> vo
 
 func hide_item() -> void:
 	visible = false
+	_displayed_grade = -1
 
 
 func _place_inside_camera() -> void:
@@ -151,4 +161,10 @@ func _set_style(rank_color: Color) -> void:
 	style.content_margin_right = 7
 	style.content_margin_top = 5
 	style.content_margin_bottom = 5
+	_panel_style = style
 	add_theme_stylebox_override("panel", style)
+
+
+func _update_style_color(rank_color: Color) -> void:
+	if _panel_style:
+		_panel_style.bg_color = rank_color.darkened(0.48)
