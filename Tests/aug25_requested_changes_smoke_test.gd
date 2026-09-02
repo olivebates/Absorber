@@ -20,19 +20,20 @@ func _run() -> void:
 	dialogue.cancel()
 	var inventory_style := inventory_panel.get_theme_stylebox("panel")
 	var expected_inventory_size := inventory_panel._content.get_combined_minimum_size() + inventory_style.get_minimum_size()
-	assert(inventory_panel.size.is_equal_approx(expected_inventory_size), "The inventory panel must fit its content without extra width or height")
+	assert(inventory_panel.size.is_equal_approx(expected_inventory_size), "The inventory panel must fit its content")
 	# Inventory and equipment signals can refresh this panel more than once in a
 	# frame. Old slots must stop participating in layout immediately rather than
 	# briefly making the row look like a second, invisible inventory.
 	inventory_panel._refresh()
 	inventory_panel._refresh()
 	inventory_panel._fit_to_content()
-	assert(inventory_panel._items.get_child_count() == 4, "Consecutive inventory refreshes must not leave stale slots in the layout")
-	assert(inventory_panel.size.is_equal_approx(expected_inventory_size), "Consecutive inventory refreshes must not double the panel width")
-	assert(inventory_style.content_margin_left == 8.0 and inventory_style.content_margin_right == 8.0 and inventory_style.content_margin_top == 8.0 and inventory_style.content_margin_bottom == 8.0, "The inventory must have an eight-pixel content margin")
-	var expected_merge_width := InventoryPanel.SLOT_SIZE * 3.0 + InventoryPanel.SLOT_SEPARATION * 2.0
-	assert(is_equal_approx(inventory_panel._auto_merge_button.size.x, expected_merge_width), "Merge All must be exactly three inventory-slot columns wide")
-	assert(is_equal_approx(inventory_panel._trash_slot.size.x + InventoryPanel.SLOT_SEPARATION + inventory_panel._auto_merge_button.size.x, inventory_panel._items.size.x), "The trash slot and Merge All must fill one row matching the four inventory slots")
+	assert(inventory_panel._items.get_child_count() == 6, "Consecutive inventory refreshes must retain exactly the starting six slots")
+	assert(inventory_panel.size.is_equal_approx(expected_inventory_size), "Consecutive inventory refreshes must not change the fitted panel size")
+	assert(inventory_style.content_margin_left == 8.0 and inventory_style.content_margin_right == 8.0 and inventory_style.content_margin_top == 8.0 and inventory_style.content_margin_bottom == 4.0, "The unified card must split its eight-pixel section gap across the Inventory and Equipment sections")
+	var expected_merge_width := InventoryPanel.SLOT_SIZE * InventoryPanel.MERGE_BUTTON_COLUMNS \
+		+ InventoryPanel.SLOT_SEPARATION * (InventoryPanel.MERGE_BUTTON_COLUMNS - 1)
+	assert(is_equal_approx(inventory_panel._auto_merge_button.size.x, expected_merge_width), "Merge All must occupy the five columns beside the trash slot")
+	assert(is_equal_approx(inventory_panel._trash_slot.size.x + InventoryPanel.SLOT_SEPARATION + inventory_panel._auto_merge_button.size.x, inventory_panel._items.size.x), "The trash slot and Merge All must fill one row matching the six-column inventory grid")
 	world.player.inventory_slots[0] = ItemPickup.make_item("weathered_sword", 0)
 	world.player.equipped_weapons[0] = ItemPickup.make_item("weathered_sword", 0)
 	world.player.inventory_changed.emit()
@@ -77,6 +78,7 @@ func _run() -> void:
 	assert(story.has_seen_event(&"asha_post_recruitment") and not asha.is_story_interactable(), "The one-time Asha interaction must remain consumed after loading")
 	print("PASS: inventory fitting/equipped merging, helper reset/audio, and Asha click-through work")
 	world.queue_free()
+	await process_frame
 	await process_frame
 	quit()
 

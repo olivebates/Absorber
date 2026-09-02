@@ -6,6 +6,7 @@ const SWORD_ICON := preload("res://Sprites/SwordIcon.webp")
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 const TRASH_ICON := preload("res://Sprites/IconTrash.webp")
 const SPRITE_BASE_SIZE := Vector2(32, 32)
+const SLOT_SIZE := Vector2(42, 42)
 const EQUIPMENT_YELLOW_TINT := Color(0.99686, 0.95059, 0.83529, 1.0)
 
 var owner_ui: Control
@@ -34,7 +35,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 	item = new_item.duplicate()
 	locked = is_locked
 	shows_unarmed_damage = show_unarmed_damage
-	custom_minimum_size = Vector2(42, 42)
+	custom_minimum_size = SLOT_SIZE
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if not item.is_empty() and not locked else Control.CURSOR_ARROW
 	_set_style(ItemPickup.get_grade_color(ItemPickup.get_item_grade(item)) if not item.is_empty() else Color("192236"), highlight)
 	if _icon == null:
@@ -88,7 +89,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 	if _disabled_line == null:
 		_disabled_line = Line2D.new()
 		_disabled_line.name = "DungeonEquipmentDisabled"
-		_disabled_line.points = PackedVector2Array([Vector2(0, 42), Vector2(42, 0)])
+		_disabled_line.points = PackedVector2Array([Vector2(0, SLOT_SIZE.y), Vector2(SLOT_SIZE.x, 0)])
 		_disabled_line.width = 3.0
 		_disabled_line.default_color = Color("dc2626")
 		_disabled_line.antialiased = true
@@ -115,6 +116,8 @@ func _update_cooldown_overlay() -> void:
 	if storage == "weapon" and (not item.is_empty() or shows_unarmed_damage) and owner_ui:
 		ratio = float(owner_ui.call("get_weapon_cooldown_ratio", slot_index))
 	var slot_size := size if size.length_squared() > 0.0 else custom_minimum_size
+	if _disabled_line:
+		_disabled_line.points = PackedVector2Array([Vector2(0, slot_size.y), Vector2(slot_size.x, 0)])
 	var icon_size := Vector2(minf(SPRITE_BASE_SIZE.x, slot_size.x), minf(SPRITE_BASE_SIZE.y, slot_size.y))
 	var icon_position := (slot_size - icon_size) * 0.5
 	if _icon:

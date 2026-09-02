@@ -3,6 +3,7 @@ extends PanelContainer
 
 const COLOR_NAMES := ["Red Damage", "Yellow Damage", "Blue Damage"]
 const DEFENSE_NAMES := ["Red Defense", "Yellow Defense", "Blue Defense"]
+const SIDEBAR_MARGIN := 12.0
 
 var _player: FoxPlayer
 var _damage_grid: DamageGrid
@@ -48,6 +49,7 @@ func _connect_player() -> void:
 
 func _build_menu() -> void:
 	var rows := VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rows.add_theme_constant_override("separation", 3)
 	add_child(rows)
 	var title := Label.new()
@@ -67,11 +69,13 @@ func _build_menu() -> void:
 
 func _add_stat_row(parent: VBoxContainer, label_text: String, stat_index: int) -> void:
 	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_theme_constant_override("separation", 4)
 	parent.add_child(row)
 	var name_label := Label.new()
 	name_label.text = label_text
 	name_label.custom_minimum_size = Vector2(94, 24)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(name_label)
 	var minus_button := Button.new()
@@ -122,12 +126,12 @@ func _fit_below_damage_grid() -> void:
 	size = minimum_size
 	var top := 12.0
 	if is_instance_valid(_damage_grid) and _damage_grid.visible:
-		top = _damage_grid.position.y + _damage_grid.size.y + 6.0
+		top = _damage_grid.position.y + _damage_grid.size.y + 8.0
 	if is_instance_valid(_vitals):
-		top = maxf(top, _vitals.position.y + _vitals.size.y + 6.0)
-	set_offset(SIDE_LEFT, 12.0)
+		top = maxf(top, _vitals.position.y + _vitals.size.y + 8.0)
+	set_offset(SIDE_LEFT, SIDEBAR_MARGIN)
 	set_offset(SIDE_TOP, top)
-	set_offset(SIDE_RIGHT, 12.0 + minimum_size.x)
+	set_offset(SIDE_RIGHT, SIDEBAR_MARGIN + minimum_size.x)
 	set_offset(SIDE_BOTTOM, top + minimum_size.y)
 
 

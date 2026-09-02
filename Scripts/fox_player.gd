@@ -12,6 +12,8 @@ const SKILL_ROLL_ARC := &"roll_arc"
 const SKILL_BULWARK := &"bulwark"
 const PLAYER_SKILL_IDS: Array[StringName] = [SKILL_ROLL_CLOCKWISE, SKILL_YELLOW_GUARD, SKILL_ROLL_BACK, SKILL_ROLL_ARC, SKILL_BULWARK]
 const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const EQUIPMENT_SLOT_COUNT := 6
+const STARTING_INVENTORY_SLOT_COUNT := 6
 const SKILL_DATA := {
 	SKILL_ROLL_CLOCKWISE: {
 		"name": "Quick Roll", "description": "* Rolls 90 degrees around your target.\n* Invulnerable while rolling.\n* Increases Yellow damage by 2 for two seconds.",
@@ -65,7 +67,7 @@ var player_skill_slots_unlocked := [true, false, false, false]
 var equipment_slots_unlocked := 1
 var skill_swap_tutorial_seen := false
 var current_weapon_index := 0
-var damage_by_color := [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]
+var damage_by_color := [[1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1]]
 var defense_by_color: Array[int] = [0, 0, 0]
 var defense: int:
 	set(value):
@@ -73,11 +75,11 @@ var defense: int:
 		damage_matrix_changed.emit()
 	get:
 		return defense_by_color[COLOR_RED]
-var equipped_armor: Array[Dictionary] = [{}, {}, {}, {}]
-var equipped_weapons: Array[Dictionary] = [{}, {}, {}, {}]
-var inventory_slots: Array[Dictionary] = [{}, {}, {}, {}]
+var equipped_armor: Array[Dictionary] = [{}, {}, {}, {}, {}, {}]
+var equipped_weapons: Array[Dictionary] = [{}, {}, {}, {}, {}, {}]
+var inventory_slots: Array[Dictionary] = [{}, {}, {}, {}, {}, {}]
 var trash_slots: Array[Dictionary] = [{}]
-var weapon_ever_equipped := [false, false, false, false]
+var weapon_ever_equipped := [false, false, false, false, false, false]
 var armor_ever_equipped := false
 var merge_count := 0
 var duplicate_equipment_tutorial_seen := false
@@ -87,7 +89,7 @@ var snare_without_quick_roll_tutorial_seen := false
 var auto_fight_unlocked := false
 var auto_fight_enabled := false
 var auto_fight_range_bonus := 0
-var _weapon_cooldowns := [0.0, 0.0, 0.0, 0.0]
+var _weapon_cooldowns := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 var _heal_time_left := 3.0
 var _path := PackedVector2Array()
 var _path_index := 0
@@ -399,7 +401,7 @@ func unlock_inventory_slots(amount := 1) -> int:
 
 func unlock_equipment_slots(amount := 1) -> int:
 	var previous := equipment_slots_unlocked
-	equipment_slots_unlocked = mini(4, equipment_slots_unlocked + maxi(0, amount))
+	equipment_slots_unlocked = mini(EQUIPMENT_SLOT_COUNT, equipment_slots_unlocked + maxi(0, amount))
 	var unlocked := equipment_slots_unlocked - previous
 	if unlocked > 0:
 		equipment_changed.emit()
@@ -1434,24 +1436,24 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	var saved_color_defense := data[15] as Array if data.size() > 15 and data[15] is Array else []
 	for color_index in range(3):
 		defense_by_color.append(maxi(0, int(saved_color_defense[color_index])) if color_index < saved_color_defense.size() else legacy_defense)
-	current_weapon_index = clampi(int(data[5]), 0, equipped_weapons.size() - 1)
+	current_weapon_index = clampi(int(data[5]), 0, EQUIPMENT_SLOT_COUNT - 1)
 
 	var flattened_damage := data[6] as Array
-	var damage_index := 0
+	var saved_damage_weapon_count := clampi(flattened_damage.size() / 3, 1, EQUIPMENT_SLOT_COUNT)
 	damage_by_color = []
-	for _color_index in range(3):
+	for color_index in range(3):
 		var color_values: Array[int] = []
-		for _weapon_index in range(4):
-			color_values.append(maxi(1, int(flattened_damage[damage_index])) if damage_index < flattened_damage.size() else 1)
-			damage_index += 1
+		for weapon_index in range(EQUIPMENT_SLOT_COUNT):
+			var damage_index := color_index * saved_damage_weapon_count + weapon_index
+			color_values.append(maxi(1, int(flattened_damage[damage_index])) if weapon_index < saved_damage_weapon_count and damage_index < flattened_damage.size() else 1)
 		damage_by_color.append(color_values)
 
 	var saved_inventory: Array = data[7] as Array
-	var inventory_slot_count := maxi(4, int(data[34])) if data.size() > 34 else maxi(4, saved_inventory.size())
+	var inventory_slot_count := maxi(STARTING_INVENTORY_SLOT_COUNT, int(data[34])) if data.size() > 34 else maxi(STARTING_INVENTORY_SLOT_COUNT, saved_inventory.size())
 	inventory_slots = _unpack_items(saved_inventory, inventory_slot_count)
-	equipped_weapons = _unpack_items(data[8] as Array, 4)
-	equipped_armor = _unpack_items(data[9] as Array, 4)
-	equipment_slots_unlocked = clampi(int(data[35]), 1, 4) if data.size() > 35 else 1
+	equipped_weapons = _unpack_items(data[8] as Array, EQUIPMENT_SLOT_COUNT)
+	equipped_armor = _unpack_items(data[9] as Array, EQUIPMENT_SLOT_COUNT)
+	equipment_slots_unlocked = clampi(int(data[35]), 1, EQUIPMENT_SLOT_COUNT) if data.size() > 35 else 1
 	skill_swap_tutorial_seen = bool(data[36]) if data.size() > 36 else false
 	snare_without_quick_roll_tutorial_seen = bool(data[37]) if data.size() > 37 else false
 	auto_fight_range_bonus = maxi(0, int(data[38])) if data.size() > 38 else 0
@@ -1502,12 +1504,12 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	_mana_regen_time_left = maxf(0.001, float(mana_regeneration_milliseconds) / 1000.0)
 	var ever_equipped_mask := int(data[10])
 	weapon_ever_equipped = []
-	for index in range(4):
+	for index in range(EQUIPMENT_SLOT_COUNT):
 		weapon_ever_equipped.append((ever_equipped_mask & (1 << index)) != 0)
 
 	var saved_cooldowns := data[11] as Array
 	_weapon_cooldowns = []
-	for index in range(4):
+	for index in range(EQUIPMENT_SLOT_COUNT):
 		var saved_milliseconds := int(saved_cooldowns[index]) if index < saved_cooldowns.size() else 0
 		_weapon_cooldowns.append(maxf(0.0, float(saved_milliseconds - offline_seconds * 1000) / 1000.0))
 

@@ -121,7 +121,7 @@ func _run() -> void:
 	toolbar.drop_skill({"source_kind": "picker", "source_index": -1, "skill_id": FoxPlayer.SKILL_ROLL_BACK}, toolbar._get_player_slot(toolbar._tutorial_target_slot))
 	toolbar.end_skill_drag()
 	assert(player.skill_swap_tutorial_seen and toolbar._picker.visible and not world.gameplay_paused, "Dropping Back Roll into the highlighted slot must complete the tutorial, resume play, and keep arranging open")
-	assert((toolbar._get_player_slot(0) as SkillSlot).size == Vector2(42, 42) and (toolbar._get_player_slot(0) as SkillSlot)._icon.size == Vector2(32, 32) and toolbar._picker_status.contains("Back Roll equipped"), "Skill slots must match equipment slots without enlarging their icons")
+	assert((toolbar._get_player_slot(0) as SkillSlot).size == Vector2(42, 42) and (toolbar._get_player_slot(0) as SkillSlot)._icon.size == Vector2(32, 32) and toolbar._picker_status.contains("Back Roll equipped"), "Center-bar skill slots must stay compact without enlarging their icons")
 	assert(toolbar._picker_list.columns == 5 and toolbar._picker.find_children("*", "Button", true, false).is_empty(), "The picker must be an icon-only five-column grid without a Done button")
 	for label in toolbar._picker.find_children("*", "Label", true, false):
 		assert((label as Label).text.is_empty(), "The picker must not show skill names, instructions, or a diagram legend")
@@ -138,7 +138,7 @@ func _run() -> void:
 	escape.keycode = KEY_ESCAPE
 	escape.pressed = true
 	toolbar._input(escape)
-	assert(not toolbar._picker.visible and (toolbar._get_player_slot(0) as SkillSlot).size == Vector2(42, 42), "Escape must close arranging mode without resizing its inventory-sized slots")
+	assert(not toolbar._picker.visible and (toolbar._get_player_slot(0) as SkillSlot).size == Vector2(42, 42), "Escape must close arranging mode without resizing its compact skill slots")
 	toolbar._toggle_picker()
 	var outside_click := InputEventMouseButton.new()
 	outside_click.button_index = MOUSE_BUTTON_LEFT

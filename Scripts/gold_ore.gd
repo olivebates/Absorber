@@ -192,10 +192,10 @@ func _move_build_button_to_hud() -> void:
 	_button_is_in_hud = true
 	_build_hover_label = Label.new()
 	_build_hover_label.name = "MineBuildHoverLabel"
-	_build_hover_label.text = "Build"
+	_build_hover_label.text = "Build\nMore"
 	_build_hover_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_build_hover_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_build_hover_label.size = Vector2(72, 28)
+	_build_hover_label.size = Vector2(72, 48)
 	_build_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_hover_label.add_theme_color_override("font_color", Color.WHITE)
 	_build_hover_label.add_theme_color_override("font_outline_color", Color.BLACK)

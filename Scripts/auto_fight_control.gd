@@ -2,6 +2,9 @@ class_name AutoFightControl
 extends PanelContainer
 
 const TOOLTIP := "Will automatically attack any creatures you have already defeated, within radius."
+const SIDEBAR_MARGIN := 12.0
+const SIDEBAR_CONTENT_WIDTH := 296.0
+const PANEL_GAP := 8.0
 
 var _player: FoxPlayer
 var _world: WorldNavigation
@@ -27,7 +30,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	_position_beside_resources()
+	_position_above_resources()
 
 
 func _connect_world() -> void:
@@ -71,20 +74,20 @@ func _refresh() -> void:
 	_player.set_auto_fight_range_visible(_player.auto_fight_unlocked and _player.auto_fight_enabled)
 
 
-func _position_beside_resources() -> void:
+func _position_above_resources() -> void:
 	if not visible:
 		return
 	var resources := get_parent().get_node_or_null("ResourcePanel") as Control
 	var fitted := get_combined_minimum_size()
 	if fitted == Vector2.ZERO:
 		fitted = Vector2(118, 42)
-	var left := 12.0
+	var bottom := -SIDEBAR_MARGIN
 	if resources and resources.visible:
-		left = resources.position.x + resources.size.x + 8.0
-	set_offset(SIDE_LEFT, left)
-	set_offset(SIDE_TOP, -12.0 - fitted.y)
-	set_offset(SIDE_RIGHT, left + fitted.x)
-	set_offset(SIDE_BOTTOM, -12.0)
+		bottom = resources.get_offset(SIDE_TOP) - PANEL_GAP
+	set_offset(SIDE_LEFT, SIDEBAR_MARGIN)
+	set_offset(SIDE_TOP, bottom - fitted.y)
+	set_offset(SIDE_RIGHT, SIDEBAR_MARGIN + SIDEBAR_CONTENT_WIDTH)
+	set_offset(SIDE_BOTTOM, bottom)
 
 
 func _set_style() -> void:

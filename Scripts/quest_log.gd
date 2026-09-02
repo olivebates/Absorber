@@ -5,6 +5,7 @@ const QUEST_ICON := preload("res://Sprites/iconQuest.webp")
 
 var _story: StoryManager
 var _button: Button
+var _button_icon: TextureRect
 var _badge: Label
 var _overlay: Control
 var _quest_list: VBoxContainer
@@ -25,7 +26,7 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	_position_button_above_inventory()
+	_position_button_in_inventory_header()
 	if not is_instance_valid(_story):
 		_story = get_tree().get_first_node_in_group("story_manager") as StoryManager
 	var quests := _get_quests()
@@ -48,14 +49,23 @@ func _process(_delta: float) -> void:
 func _build_button() -> void:
 	_button = Button.new()
 	_button.name = "QuestLogButton"
-	_button.icon = QUEST_ICON
-	_button.expand_icon = false
 	_button.tooltip_text = "Quest Log"
 	_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_button.size = Vector2(44, 44)
 	_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	_style_quest_button()
 	_button.pressed.connect(open)
 	add_child(_button)
+	_button_icon = TextureRect.new()
+	_button_icon.name = "QuestIcon"
+	_button_icon.texture = QUEST_ICON
+	_button_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_button_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_button_icon.position = Vector2(6, 6)
+	_button_icon.size = Vector2(32, 32)
+	_button_icon.modulate = Color(1.5, 1.5, 1.5, 1.0)
+	_button_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_button.add_child(_button_icon)
 	_badge = Label.new()
 	_badge.name = "ActiveQuestCount"
 	_badge.position = Vector2(23, 23)
@@ -68,20 +78,35 @@ func _build_button() -> void:
 	_badge.add_theme_constant_override("outline_size", 3)
 	_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_button.add_child(_badge)
-	call_deferred("_position_button_above_inventory")
+	call_deferred("_position_button_in_inventory_header")
 
 
-func _position_button_above_inventory() -> void:
+func _style_quest_button() -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color("242938")
+	normal.border_color = Color("aeb8cc")
+	normal.set_border_width_all(2)
+	normal.set_corner_radius_all(6)
+	_button.add_theme_stylebox_override("normal", normal)
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color("343b50")
+	hover.border_color = Color.WHITE
+	_button.add_theme_stylebox_override("hover", hover)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color("171b26")
+	_button.add_theme_stylebox_override("pressed", pressed)
+	_button.add_theme_stylebox_override("focus", hover)
+
+
+func _position_button_in_inventory_header() -> void:
 	if not is_instance_valid(_button):
 		return
-	var inventory := get_parent().get_node_or_null("Inventory") as Control
+	var inventory := get_parent().get_node_or_null("Inventory") as InventoryPanel
 	if inventory == null or inventory.size.x <= 0.0:
 		return
-	var inventory_rect := inventory.get_global_rect()
-	_button.global_position = Vector2(
-		inventory_rect.end.x - _button.size.x,
-		inventory_rect.position.y - _button.size.y - 8.0
-	)
+	var anchor_rect := inventory.get_quest_anchor_rect()
+	if anchor_rect.size.x > 0.0:
+		_button.global_position = anchor_rect.position
 
 
 func _build_overlay() -> void:

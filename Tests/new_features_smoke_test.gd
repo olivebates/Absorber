@@ -17,15 +17,15 @@ func _run() -> void:
 	resource_manager.register_producer(producer, &"gold_ore", 1.0)
 	await process_frame
 	var gold_row := resource_panel._rows.get_child(0) as HBoxContainer
-	assert((gold_row.get_child(1) as Label).text == "1/10", "Gold must use a maximum of ten")
-	assert(gold_row.get_child_count() == 3, "Gaining resources must show a gain label")
-	assert((gold_row.get_child(2) as Label).get_theme_color("font_color") == Color("65d76e"), "Gain labels must be green")
+	assert((gold_row.find_child("ResourceAmount", true, false) as Label).text == "1/10", "Gold must use a maximum of ten")
+	assert(gold_row.find_child("ResourceProduction", true, false) != null, "Gaining resources must show a gain label")
+	assert((gold_row.find_child("ResourceProduction", true, false) as Label).get_theme_color("font_color") == Color("65d76e"), "Gain labels must be green")
 	resource_manager.add_resource(&"gold_ore", 100.0)
 	resource_manager.add_resource(&"jewels", 100.0)
 	assert(resource_manager.get_amount(&"gold_ore") == 10 and resource_manager.get_amount(&"jewels") == 10, "Gold and jewels must cap at ten")
 	await process_frame
 	gold_row = resource_panel._rows.get_child(0) as HBoxContainer
-	assert(gold_row.get_child_count() == 2, "Full resources are not currently gaining and must hide gain text")
+	assert(gold_row.find_child("ResourceProduction", true, false) == null, "Full resources are not currently gaining and must hide gain text")
 
 	var fox := load("res://Scenes/fox.tscn").instantiate() as FoxPlayer
 	root.add_child(fox)

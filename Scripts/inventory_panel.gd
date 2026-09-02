@@ -3,38 +3,61 @@ extends PanelContainer
 
 const SLOT_SIZE := 42.0
 const SLOT_SEPARATION := 5.0
-const MERGE_BUTTON_COLUMNS := 3
+const COLUMN_COUNT := 6
+const MERGE_BUTTON_COLUMNS := COLUMN_COUNT - 1
+const SIDEBAR_MARGIN := 12.0
+const SECTION_GAP := 8
+const EQUIPMENT_GAP := 0.0
 
 var _player: FoxPlayer
 var _content: VBoxContainer
-var _items: HBoxContainer
+var _items: GridContainer
 var _dragged_item: Dictionary = {}
 var _drag_source_storage := ""
 var _drag_source_index := -1
 var _auto_merge_button: Button
 var _auto_merge_in_progress := false
 var _trash_slot: ItemSlot
+var _header: HBoxContainer
+var _quest_anchor: Control
+var _cluster_background: Panel
 
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	offset_left = -214.0
-	offset_top = -288.0
-	offset_right = -14.0
+	offset_left = -305.0
+	offset_top = -320.0
+	offset_right = -SIDEBAR_MARGIN
 	offset_bottom = -126.0
 	_set_style()
 	_content = VBoxContainer.new()
-	_content.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_content.add_theme_constant_override("separation", SECTION_GAP)
 	add_child(_content)
+	_header = HBoxContainer.new()
+	_header.name = "InventoryHeader"
+	_header.custom_minimum_size.y = 44.0
+	_header.add_theme_constant_override("separation", SECTION_GAP)
+	_content.add_child(_header)
+	_quest_anchor = Control.new()
+	_quest_anchor.name = "QuestLogAnchor"
+	_quest_anchor.custom_minimum_size = Vector2(44, 44)
+	_header.add_child(_quest_anchor)
 	var title := Label.new()
 	title.text = "Inventory"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_color_override("font_color", Color.WHITE)
-	_content.add_child(title)
-	_items = HBoxContainer.new()
-	_items.alignment = BoxContainer.ALIGNMENT_BEGIN
+	_header.add_child(title)
+	var header_balance := Control.new()
+	header_balance.custom_minimum_size = Vector2(44, 44)
+	_header.add_child(header_balance)
+	_items = GridContainer.new()
+	_items.columns = COLUMN_COUNT
 	_items.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_items.add_theme_constant_override("separation", 5)
+	_items.add_theme_constant_override("h_separation", int(SLOT_SEPARATION))
+	_items.add_theme_constant_override("v_separation", int(SLOT_SEPARATION))
 	_content.add_child(_items)
 	var trash_row := HBoxContainer.new()
 	trash_row.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -56,6 +79,7 @@ func _ready() -> void:
 	)
 	_auto_merge_button = Button.new()
 	_auto_merge_button.text = "Merge All"
+	_auto_merge_button.clip_text = true
 	_auto_merge_button.tooltip_text = "Merge all matching inventory and equipped items"
 	_auto_merge_button.custom_minimum_size = Vector2(
 		SLOT_SIZE * MERGE_BUTTON_COLUMNS + SLOT_SEPARATION * (MERGE_BUTTON_COLUMNS - 1),
@@ -69,19 +93,56 @@ func _ready() -> void:
 	trash_row.add_child(_auto_merge_button)
 	call_deferred("_connect_player")
 	call_deferred("_fit_to_content")
+	call_deferred("_ensure_cluster_background")
 
 
 func _set_style() -> void:
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.025, 0.035, 0.055, 0.93)
-	style.border_color = Color.BLACK
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(7)
+	var style := StyleBoxEmpty.new()
 	style.content_margin_left = 8
 	style.content_margin_right = 8
 	style.content_margin_top = 8
-	style.content_margin_bottom = 8
+	style.content_margin_bottom = 4
 	add_theme_stylebox_override("panel", style)
+
+
+func _ensure_cluster_background() -> void:
+	if is_instance_valid(_cluster_background):
+		return
+	_cluster_background = get_parent().get_node_or_null("BottomRightCluster") as Panel
+	if _cluster_background == null:
+		_cluster_background = Panel.new()
+		_cluster_background.name = "BottomRightCluster"
+		_cluster_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_cluster_background.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.025, 0.035, 0.055, 0.96)
+		style.border_color = Color("192236")
+		style.set_border_width_all(2)
+		style.set_corner_radius_all(7)
+		_cluster_background.add_theme_stylebox_override("panel", style)
+		var equipment := get_parent().get_node_or_null("EquipmentToolbar") as Control
+		var insert_index := get_index()
+		if is_instance_valid(equipment):
+			insert_index = mini(insert_index, equipment.get_index())
+		get_parent().add_child(_cluster_background)
+		get_parent().move_child(_cluster_background, insert_index)
+	_fit_cluster_background()
+
+
+func _fit_cluster_background() -> void:
+	if not is_instance_valid(_cluster_background):
+		return
+	var equipment := get_parent().get_node_or_null("EquipmentToolbar") as Control
+	if not is_instance_valid(equipment):
+		return
+	_cluster_background.set_offset(SIDE_LEFT, minf(get_offset(SIDE_LEFT), equipment.get_offset(SIDE_LEFT)))
+	_cluster_background.set_offset(SIDE_TOP, get_offset(SIDE_TOP))
+	_cluster_background.set_offset(SIDE_RIGHT, -SIDEBAR_MARGIN)
+	_cluster_background.set_offset(SIDE_BOTTOM, -SIDEBAR_MARGIN)
+
+
+func get_quest_anchor_rect() -> Rect2:
+	return _quest_anchor.get_global_rect() if is_instance_valid(_quest_anchor) else Rect2()
 
 
 func _connect_player() -> void:
@@ -114,7 +175,7 @@ func _refresh() -> void:
 		return
 	for child in _items.get_children():
 		# Detach stale slots before queuing them for deletion. Otherwise they remain
-		# part of the HBoxContainer until the end of the frame, so consecutive
+		# part of the GridContainer until the end of the frame, so consecutive
 		# refreshes temporarily measure eight slots and cache that doubled width as
 		# this panel's custom minimum size.
 		_items.remove_child(child)
@@ -223,15 +284,18 @@ func _fit_to_content() -> void:
 		return
 	var panel_style := get_theme_stylebox("panel")
 	var fitted_size := _content.get_combined_minimum_size() + panel_style.get_minimum_size()
+	var panel_bottom := -126.0
+	var equipment := get_parent().get_node_or_null("EquipmentToolbar") as Control
+	if is_instance_valid(equipment):
+		panel_bottom = equipment.get_offset(SIDE_TOP) - EQUIPMENT_GAP
 	custom_minimum_size = fitted_size
-	set_offset(SIDE_LEFT, -14.0 - fitted_size.x)
-	set_offset(SIDE_TOP, -126.0 - fitted_size.y)
-	set_offset(SIDE_RIGHT, -14.0)
-	set_offset(SIDE_BOTTOM, -126.0)
-	# PanelContainer can retain a previously allocated rectangle even after its
-	# minimum shrinks. Force the anchored control to the fitted rectangle so the
-	# panel background cannot extend into empty space on the right.
+	set_offset(SIDE_LEFT, -SIDEBAR_MARGIN - fitted_size.x)
+	set_offset(SIDE_TOP, panel_bottom - fitted_size.y)
+	set_offset(SIDE_RIGHT, -SIDEBAR_MARGIN)
+	set_offset(SIDE_BOTTOM, panel_bottom)
 	size = fitted_size
+	_ensure_cluster_background()
+	_fit_cluster_background()
 
 
 func _play_auto_merge_animation(source_slot: ItemSlot, target_slot: ItemSlot) -> void:

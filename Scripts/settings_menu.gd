@@ -16,10 +16,15 @@ var _export_dialog: AcceptDialog
 var _export_text: TextEdit
 var _import_dialog: AcceptDialog
 var _import_text: TextEdit
+var _save_to_disk_button: Button
+var _load_from_disk_button: Button
+var _save_file_dialog: FileDialog
+var _load_file_dialog: FileDialog
 var _start_over_dialog: ConfirmationDialog
 var _start_over_step := 0
 var _backup_paths := PackedStringArray()
 var _previous_interaction_locked := false
+var _gear_button: Button
 
 
 func _ready() -> void:
@@ -28,22 +33,37 @@ func _ready() -> void:
 	_build_gear_button()
 	_build_overlay()
 	_build_transfer_dialogs()
+	_build_disk_file_dialogs()
 	_build_start_over_dialog()
 	call_deferred("_resolve_services")
+	call_deferred("_position_gear_button")
+
+
+func _process(_delta: float) -> void:
+	_position_gear_button()
 
 
 func _build_gear_button() -> void:
-	var button := Button.new()
-	button.name = "SettingsButton"
-	button.icon = GEAR_ICON
-	button.expand_icon = true
-	button.tooltip_text = "Settings"
-	button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	button.position = Vector2(-56, 10)
-	button.size = Vector2(44, 44)
-	button.mouse_filter = Control.MOUSE_FILTER_STOP
-	button.pressed.connect(open_settings)
-	add_child(button)
+	_gear_button = Button.new()
+	_gear_button.name = "SettingsButton"
+	_gear_button.icon = GEAR_ICON
+	_gear_button.expand_icon = true
+	_gear_button.tooltip_text = "Settings"
+	_gear_button.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_gear_button.size = Vector2(36, 36)
+	_gear_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	_gear_button.pressed.connect(open_settings)
+	add_child(_gear_button)
+
+
+func _position_gear_button() -> void:
+	if not is_instance_valid(_gear_button):
+		return
+	var anchor := get_parent().get_node_or_null("Minimap/MinimapHeader/Content/SettingsAnchor") as Control
+	if is_instance_valid(anchor):
+		_gear_button.global_position = anchor.get_global_rect().position
+	else:
+		_gear_button.global_position = get_viewport_rect().size - Vector2(48, get_viewport_rect().size.y - 10)
 
 
 func _build_overlay() -> void:
@@ -132,6 +152,24 @@ func _build_overlay() -> void:
 	_backup_button.pressed.connect(_show_backups)
 	actions.add_child(_backup_button)
 
+	if supports_disk_save_dialogs():
+		var disk_actions := HBoxContainer.new()
+		disk_actions.name = "DiskSaveActions"
+		disk_actions.add_theme_constant_override("separation", 10)
+		content.add_child(disk_actions)
+		_save_to_disk_button = Button.new()
+		_save_to_disk_button.name = "SaveToDiskButton"
+		_save_to_disk_button.text = "Save to Disk"
+		_save_to_disk_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_save_to_disk_button.pressed.connect(_show_save_to_disk)
+		disk_actions.add_child(_save_to_disk_button)
+		_load_from_disk_button = Button.new()
+		_load_from_disk_button.name = "LoadFromDiskButton"
+		_load_from_disk_button.text = "Load from Disk"
+		_load_from_disk_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_load_from_disk_button.pressed.connect(_show_load_from_disk)
+		disk_actions.add_child(_load_from_disk_button)
+
 	_status_label = Label.new()
 	_status_label.text = "Autosaves every 5 seconds"
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -207,6 +245,37 @@ func _build_transfer_dialogs() -> void:
 	_import_dialog.custom_action.connect(_on_import_action)
 
 
+func _build_disk_file_dialogs() -> void:
+	if not supports_disk_save_dialogs():
+		return
+	_save_file_dialog = FileDialog.new()
+	_save_file_dialog.name = "SaveToDiskDialog"
+	_save_file_dialog.title = "Save Absorber Save"
+	_save_file_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	_configure_disk_file_dialog(_save_file_dialog)
+	_save_file_dialog.current_file = "Absorber Save.absorber"
+	_save_file_dialog.file_selected.connect(_on_disk_save_selected)
+	add_child(_save_file_dialog)
+	_load_file_dialog = FileDialog.new()
+	_load_file_dialog.name = "LoadFromDiskDialog"
+	_load_file_dialog.title = "Load Absorber Save"
+	_load_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_configure_disk_file_dialog(_load_file_dialog)
+	_load_file_dialog.file_selected.connect(_on_disk_load_selected)
+	add_child(_load_file_dialog)
+
+
+func _configure_disk_file_dialog(dialog: FileDialog) -> void:
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.filters = PackedStringArray(["*.absorber ; Absorber Save Files"])
+	dialog.use_native_dialog = true
+
+
+static func supports_disk_save_dialogs() -> bool:
+	# Headless test/server processes have no native window for a filesystem dialog.
+	return OS.has_feature("windows") and not OS.has_feature("web") and DisplayServer.get_name() != "headless"
+
+
 func _build_start_over_dialog() -> void:
 	_start_over_dialog = ConfirmationDialog.new()
 	_start_over_dialog.title = "Start Over"
@@ -237,6 +306,10 @@ func close_settings() -> void:
 	_export_dialog.hide()
 	_import_dialog.hide()
 	_start_over_dialog.hide()
+	if _save_file_dialog:
+		_save_file_dialog.hide()
+	if _load_file_dialog:
+		_load_file_dialog.hide()
 	_backup_menu.hide()
 	_overlay.hide()
 	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
@@ -294,6 +367,41 @@ func _on_import_action(action: StringName) -> void:
 		_status_label.text = "Save imported and loaded"
 	else:
 		_import_dialog.dialog_text = "That save string is invalid or incompatible. Nothing was changed."
+
+
+func _show_save_to_disk() -> void:
+	_resolve_services()
+	if _save_system and _save_file_dialog:
+		_save_file_dialog.popup_centered_ratio(0.7)
+
+
+func _show_load_from_disk() -> void:
+	_resolve_services()
+	if _save_system and _load_file_dialog:
+		_load_file_dialog.popup_centered_ratio(0.7)
+
+
+func _on_disk_save_selected(path: String) -> void:
+	if not _save_system:
+		return
+	if _save_system.save_string_to_file(path, _save_system.create_save_string()):
+		_status_label.text = "Save written to disk"
+	else:
+		_status_label.text = "Could not write that save file"
+
+
+func _on_disk_load_selected(path: String) -> void:
+	if not _save_system:
+		return
+	if _save_system.load_file(path):
+		_save_system.save_auto()
+		_status_label.text = "Save loaded from disk"
+		# Loading resets transient interaction flags, but Settings remains modal.
+		var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+		if world:
+			world.interaction_locked = true
+	else:
+		_status_label.text = "That save file is invalid or incompatible"
 
 
 func _show_backups() -> void:

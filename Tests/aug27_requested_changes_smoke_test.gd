@@ -26,7 +26,7 @@ func _run() -> void:
 		assert((label as Label).text.is_empty(), "The skill picker must not draw text")
 	assert(toolbar._picker.find_children("MovementDiagram", "Control", true, false).is_empty(), "Movement diagrams must be removed from the picker")
 	var compact_slot := toolbar._get_player_slot(0)
-	assert(compact_slot.size == Vector2(42, 42) and compact_slot._icon.size == Vector2(32, 32) and compact_slot._icon.position == Vector2(3, 3) and compact_slot._hotkey_label.position == compact_slot.size - Vector2(14, 17), "Skill slots must match equipment slots while their icons stay 32 pixels and shifted up-left")
+	assert(compact_slot.size == Vector2(42, 42) and compact_slot._icon.size == Vector2(32, 32) and compact_slot._icon.position == Vector2(3, 3) and compact_slot._hotkey_label.position == compact_slot.size - Vector2(14, 17), "Center-bar skill slots must remain compact while their icons stay 32 pixels and shifted up-left")
 	toolbar._close_picker()
 	await process_frame
 	compact_slot = toolbar._get_player_slot(0)

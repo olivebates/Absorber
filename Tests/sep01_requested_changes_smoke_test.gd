@@ -36,7 +36,7 @@ func _run() -> void:
 	var failure_state := {"failed": false}
 	player.item_use_failed.connect(func(_index: int, message: String) -> void: failure_state["failed"] = message == "Full Health")
 	assert(not player.consume_inventory_item(0) and bool(failure_state["failed"]) and not player.inventory_slots[0].is_empty())
-	assert((world.get_node("HUD/QuestLog") as QuestLog)._button.icon.resource_path == "res://Sprites/iconQuest.webp")
+	assert((world.get_node("HUD/QuestLog") as QuestLog)._button_icon.texture.resource_path == "res://Sprites/iconQuest.webp")
 	var story := world.get_node("StoryManager") as StoryManager
 	story._seen_events[&"lio_intro"] = true
 	assert(story.get_quest_log_entries().size() == 1)

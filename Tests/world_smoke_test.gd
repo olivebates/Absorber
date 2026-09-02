@@ -101,8 +101,8 @@ func _run() -> void:
 	assert(resource_manager.has_ever_owned(&"gold_ore"), "Resources must become discovered when first obtained")
 	assert(resource_panel.visible, "First resource acquisition must reveal the resource HUD")
 	var gold_row := resource_panel._rows.get_child(0) as HBoxContainer
-	assert((gold_row.get_child(1) as Label).text == "5/10", "Resource HUD should show the capped amount")
-	assert(gold_row.get_child_count() == 2, "Resource HUD should hide gain text while no resource is being gained")
+	assert((gold_row.find_child("ResourceAmount", true, false) as Label).text == "5/10", "Resource HUD should show the capped amount")
+	assert(gold_row.find_child("ResourceProduction", true, false) == null, "Resource HUD should hide gain text while no resource is being gained")
 	var bull_spawn := world.get_node("ChickenSpawn3") as EnemySpawnPoint
 	bull_spawn._spawn_enemy()
 	var bull := bull_spawn._spawned_enemies.back() as ChickenEnemy
@@ -130,9 +130,9 @@ func _run() -> void:
 	assert(ore.get_node_or_null("MinerStructure") is MinerStructure, "A mine should be built on gold ore when its cost is affordable")
 	assert(is_equal_approx(resource_manager.get_production_speed(&"gold_ore"), 1.0 / 300.0), "Each mine must produce one gold ore every five minutes")
 	gold_row = resource_panel._rows.get_child(0) as HBoxContainer
-	assert((gold_row.get_child(1) as Label).text == "0/10", "Resource HUD must refresh the capped amount")
-	assert(gold_row.get_child_count() == 3 and (gold_row.get_child(2) as Label).text == "+0.2/m", "Resource HUD must show active gain speed without unused decimals")
-	assert((gold_row.get_child(2) as Label).get_theme_color("font_color") == Color("65d76e"), "Active resource gain must be green")
+	assert((gold_row.find_child("ResourceAmount", true, false) as Label).text == "0/10", "Resource HUD must refresh the capped amount")
+	assert((gold_row.find_child("ResourceProduction", true, false) as Label).text == "+0.2/m", "Resource HUD must show active gain speed without unused decimals")
+	assert((gold_row.find_child("ResourceProduction", true, false) as Label).get_theme_color("font_color") == Color("65d76e"), "Active resource gain must be green")
 	var mine := ore.get_node("MinerStructure") as MinerStructure
 	ore.global_position = fox.global_position
 	mine._process(300.0)
@@ -141,7 +141,7 @@ func _run() -> void:
 	resource_manager.add_resource(&"gold_ore", 100.0)
 	assert(resource_manager.get_amount(&"gold_ore") == 10, "Gold must stop at a maximum of ten")
 	gold_row = resource_panel._rows.get_child(0) as HBoxContainer
-	assert(gold_row.get_child_count() == 2, "Resource gain text must hide once the resource is full")
+	assert(gold_row.find_child("ResourceProduction", true, false) == null, "Resource gain text must hide once the resource is full")
 	var damage_enemy := load("res://Scenes/chicken_enemy.tscn").instantiate() as ChickenEnemy
 	damage_enemy.global_position = world.cell_to_world(adjacent_cell)
 	damage_enemy.setup(adjacent_cell, 2, ChickenEnemy.REWARD_DAMAGE, [], &"gold_ore", FoxPlayer.COLOR_YELLOW, 50, 0)

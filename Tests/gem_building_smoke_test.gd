@@ -43,14 +43,14 @@ func _run() -> void:
 	await process_frame
 	assert((tooltip._content.get_child(0) as TextureRect).texture == definition.icon, "Building stats must put the resource icon on the left")
 	assert((tooltip._content.get_child(1) as Label).text == "Capacity: +10", "Shack hover stats must show capacity")
-	tooltip.show_stat(definition.icon, "Production", "+0.002/s", gem_ore)
+	tooltip.show_stat(definition.icon, "Production", gem_ore._mine._get_production_tooltip_value(), gem_ore)
 	await process_frame
-	assert((tooltip._content.get_child(1) as Label).text == "Production: +0.002/s", "Mine hover stats must show per-second production")
+	assert((tooltip._content.get_child(1) as Label).text == "Production: +0.10/m", "Mine hover stats must show production per minute")
 	var resource_panel := world.get_node("HUD/ResourcePanel") as ResourcePanel
 	await process_frame
 	await process_frame
 	var panel_style := resource_panel.get_theme_stylebox("panel")
-	var expected_panel_size := resource_panel._rows.get_combined_minimum_size() + panel_style.get_minimum_size()
+	var expected_panel_size := Vector2(ResourcePanel.SIDEBAR_CONTENT_WIDTH, resource_panel._rows.get_combined_minimum_size().y + panel_style.get_minimum_size().y)
 	assert(resource_panel.size.is_equal_approx(expected_panel_size), "The resource panel must fit only its visible rows and eight-pixel margins")
 
 	for offset in GoldOre.ADJACENT_OFFSETS:

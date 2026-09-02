@@ -51,7 +51,7 @@ func _run() -> void:
 	ore._try_build_mine()
 	assert(is_instance_valid(ore._mine), "The mine must build before shack placement becomes available")
 	ore._update_mine_build_hover_label(ore.global_position)
-	assert(ore._build_hover_label.visible and ore._build_hover_label is Label and ore._build_hover_label.mouse_filter == Control.MOUSE_FILTER_IGNORE and ore._build_hover_label.get_theme_color("font_color") == Color.WHITE, "A built mine must show a plain white Build label on hover")
+	assert(ore._build_hover_label.visible and ore._build_hover_label.text == "Build\nMore" and ore._build_hover_label is Label and ore._build_hover_label.mouse_filter == Control.MOUSE_FILTER_IGNORE and ore._build_hover_label.get_theme_color("font_color") == Color.WHITE, "A built mine with capacity-building space must show a two-line Build More label on hover")
 	ore.show_build_button()
 	assert(not ore._build_hover_label.visible, "The Build hover label must disappear when the mine is clicked")
 	var world_map := world.get_node("HUD/WorldMap") as WorldMap

@@ -5,6 +5,12 @@ const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 const DAMAGE_NAMES := ["Red Damage", "Yellow Damage", "Blue Damage"]
 const COLOR_ORDER := [FoxPlayer.COLOR_RED, FoxPlayer.COLOR_YELLOW, FoxPlayer.COLOR_BLUE]
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
+const SIDEBAR_MARGIN := 12.0
+const STAT_MARGIN := 8.0
+const CELL_GAP := 4
+const CELL_SIZE := Vector2(40, 40)
+const ICON_SIZE := 32.0
+const VALUE_FONT_SIZE := 22
 
 var _player: FoxPlayer
 var _grid: GridContainer
@@ -17,6 +23,10 @@ func _ready() -> void:
 	grow_horizontal = Control.GROW_DIRECTION_END
 	_set_panel_style()
 	call_deferred("_connect_player")
+
+
+func _process(_delta: float) -> void:
+	_fit_to_top_left()
 
 
 func _connect_player() -> void:
@@ -34,8 +44,8 @@ func get_color_target_screen_position(color_index: int) -> Vector2:
 	var header := _grid.get_child(0) as Control if _grid and _grid.get_child_count() > 0 else null
 	if header:
 		var header_rect := header.get_global_rect()
-		return Vector2(header_rect.get_center().x, header_rect.end.y + 15.5 + clamped_color_index * 28.0)
-	return get_global_rect().position + Vector2(22.0, 49.5 + clamped_color_index * 28.0)
+		return Vector2(header_rect.get_center().x, header_rect.end.y + 23.0 + clamped_color_index * 43.0)
+	return get_global_rect().position + Vector2(22.0, 71.0 + clamped_color_index * 43.0)
 
 
 func set_dungeon_visibility_reference(damage_values: Array) -> void:
@@ -55,8 +65,8 @@ func _refresh() -> void:
 		remove_child(_grid)
 		_grid.queue_free()
 	_grid = GridContainer.new()
-	_grid.add_theme_constant_override("h_separation", 4)
-	_grid.add_theme_constant_override("v_separation", 3)
+	_grid.add_theme_constant_override("h_separation", CELL_GAP)
+	_grid.add_theme_constant_override("v_separation", CELL_GAP)
 	add_child(_grid)
 	_color_target_cells.clear()
 
@@ -127,15 +137,16 @@ func _refresh() -> void:
 func _fit_to_top_left() -> void:
 	var minimum_size := get_combined_minimum_size()
 	size = minimum_size
-	set_offset(SIDE_LEFT, 12.0)
-	set_offset(SIDE_TOP, 12.0)
-	set_offset(SIDE_RIGHT, 12.0 + minimum_size.x)
-	set_offset(SIDE_BOTTOM, 12.0 + minimum_size.y)
+	set_offset(SIDE_LEFT, SIDEBAR_MARGIN)
+	set_offset(SIDE_TOP, SIDEBAR_MARGIN)
+	set_offset(SIDE_RIGHT, SIDEBAR_MARGIN + minimum_size.x)
+	set_offset(SIDE_BOTTOM, SIDEBAR_MARGIN + minimum_size.y)
 
 
 func _add_blank_header() -> void:
 	var cell := PanelContainer.new()
-	cell.custom_minimum_size = Vector2(32, 25)
+	cell.custom_minimum_size = CELL_SIZE
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.add_theme_stylebox_override("panel", _make_cell_style())
 	var label := Label.new()
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -147,7 +158,8 @@ func _add_blank_header() -> void:
 
 func _add_color_header(color_index: int) -> PanelContainer:
 	var cell := PanelContainer.new()
-	cell.custom_minimum_size = Vector2(32, 25)
+	cell.custom_minimum_size = CELL_SIZE
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.add_theme_stylebox_override("panel", _make_cell_style())
 	var dot := Polygon2D.new()
 	dot.polygon = PackedVector2Array([-6, 0, -4, -4, 0, -6, 4, -4, 6, 0, 4, 4, 0, 6, -4, 4])
@@ -177,7 +189,8 @@ func _add_color_header(color_index: int) -> PanelContainer:
 
 func _add_number_cell(value: int, color_index: int) -> void:
 	var cell := PanelContainer.new()
-	cell.custom_minimum_size = Vector2(34, 25)
+	cell.custom_minimum_size = CELL_SIZE
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.add_theme_stylebox_override("panel", _make_cell_style())
 	var label := Label.new()
 	label.text = str(value)
@@ -187,6 +200,7 @@ func _add_number_cell(value: int, color_index: int) -> void:
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 2)
+	label.add_theme_font_size_override("font_size", VALUE_FONT_SIZE)
 	cell.add_child(label)
 	_connect_stat_tooltip(cell, DAMAGE_NAMES[color_index])
 	_grid.add_child(cell)
@@ -194,20 +208,22 @@ func _add_number_cell(value: int, color_index: int) -> void:
 
 func _add_hidden_damage_cell() -> void:
 	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(34, 25)
+	spacer.custom_minimum_size = CELL_SIZE
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_grid.add_child(spacer)
 
 
 func _add_weapon_header(weapon_index: int) -> void:
 	var damage_type_cell := PanelContainer.new()
-	damage_type_cell.custom_minimum_size = Vector2(34, 25)
+	damage_type_cell.custom_minimum_size = CELL_SIZE
+	damage_type_cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	damage_type_cell.add_theme_stylebox_override("panel", _make_cell_style())
 	var content := CenterContainer.new()
 	damage_type_cell.add_child(content)
 	var icon := TextureRect.new()
 	icon.texture = DAMAGE_ICON
-	icon.custom_minimum_size = Vector2(20, 20)
+	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -244,8 +260,8 @@ func _set_panel_style() -> void:
 	style.border_color = Color.BLACK
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(5)
-	style.content_margin_left = 6
-	style.content_margin_right = 6
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
+	style.content_margin_left = STAT_MARGIN
+	style.content_margin_right = STAT_MARGIN
+	style.content_margin_top = STAT_MARGIN
+	style.content_margin_bottom = STAT_MARGIN
 	add_theme_stylebox_override("panel", style)

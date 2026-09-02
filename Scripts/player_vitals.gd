@@ -5,6 +5,11 @@ const HEART_ICON := preload("res://Sprites/Heart.webp")
 const REGEN_ICON := preload("res://Sprites/RecoveryHeart.webp")
 const MANA_ICON := preload("res://Sprites/IconMana.webp")
 const MANA_REGEN_ICON := preload("res://Sprites/iconManaRegen.webp")
+const SIDEBAR_MARGIN := 12.0
+const STAT_MARGIN := 8.0
+const CELL_HEIGHT := 48.0
+const ICON_SIZE := 32.0
+const VALUE_FONT_SIZE := 22
 
 var _player: FoxPlayer
 var _damage_grid: DamageGrid
@@ -24,14 +29,16 @@ var _mana_regen_block_line: Line2D
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
-	add_theme_constant_override("separation", 2)
+	add_theme_constant_override("separation", int(STAT_MARGIN))
 	var health_row := HBoxContainer.new()
-	health_row.add_theme_constant_override("separation", 4)
+	health_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	health_row.add_theme_constant_override("separation", int(STAT_MARGIN))
 	add_child(health_row)
 	_health_label = _add_stat_cell(health_row, "Health", HEART_ICON)
 	_regen_label = _add_stat_cell(health_row, "Regeneration", REGEN_ICON)
 	_mana_row = HBoxContainer.new()
-	_mana_row.add_theme_constant_override("separation", 4)
+	_mana_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_mana_row.add_theme_constant_override("separation", int(STAT_MARGIN))
 	add_child(_mana_row)
 	_mana_label = _add_stat_cell(_mana_row, "Mana", MANA_ICON)
 	_mana_regen_label = _add_stat_cell(_mana_row, "ManaRegeneration", MANA_REGEN_ICON)
@@ -116,22 +123,25 @@ func get_stat_target_screen_position(stat: StringName) -> Vector2:
 func _fit_below_grids() -> void:
 	var top := 12.0
 	if is_instance_valid(_damage_grid) and _damage_grid.visible:
-		top = maxf(top, _damage_grid.position.y + _damage_grid.size.y + 4.0)
+		top = maxf(top, _damage_grid.position.y + _damage_grid.size.y + STAT_MARGIN)
 	if is_instance_valid(_armor_grid) and _armor_grid.visible:
-		top = maxf(top, _armor_grid.position.y + _armor_grid.size.y + 4.0)
+		top = maxf(top, _armor_grid.position.y + _armor_grid.size.y + STAT_MARGIN)
 	var minimum_size := get_combined_minimum_size()
 	size = minimum_size
-	set_offset(SIDE_LEFT, 12.0)
+	set_offset(SIDE_LEFT, SIDEBAR_MARGIN)
 	set_offset(SIDE_TOP, top)
-	set_offset(SIDE_RIGHT, 12.0 + minimum_size.x)
+	set_offset(SIDE_RIGHT, SIDEBAR_MARGIN + minimum_size.x)
 	set_offset(SIDE_BOTTOM, top + minimum_size.y)
+	_update_block_line(_regen_block_line, _regen_cell)
+	_update_block_line(_mana_regen_block_line, _mana_regen_cell)
 
 
 func _add_stat_cell(parent_row: HBoxContainer, cell_name: String, texture: Texture2D) -> Label:
 	var cell := PanelContainer.new()
 	cell.name = "%sCell" % cell_name
-	cell.custom_minimum_size = Vector2(74, 29)
-	cell.add_theme_stylebox_override("panel", _make_cell_style())
+	cell.custom_minimum_size = Vector2(74, CELL_HEIGHT)
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cell.add_theme_stylebox_override("panel", _make_cell_style(cell_name == "Health" or cell_name == "Mana"))
 	var tooltip_titles := {
 		"Health": "Health",
 		"Regeneration": "Health Regeneration",
@@ -148,7 +158,7 @@ func _add_stat_cell(parent_row: HBoxContainer, cell_name: String, texture: Textu
 	var icon := TextureRect.new()
 	icon.name = "%sIcon" % cell_name
 	icon.texture = texture
-	icon.custom_minimum_size = Vector2(18, 18)
+	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -158,6 +168,7 @@ func _add_stat_cell(parent_row: HBoxContainer, cell_name: String, texture: Textu
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 2)
+	label.add_theme_font_size_override("font_size", VALUE_FONT_SIZE)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(label)
 	return label
@@ -176,12 +187,16 @@ func _connect_stat_tooltip(control: Control, title: String) -> void:
 	)
 
 
-func _make_cell_style() -> StyleBoxFlat:
+func _make_cell_style(primary: bool) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.09, 0.11, 0.15, 0.95)
-	style.border_color = Color(0.28, 0.33, 0.42, 1.0)
+	style.bg_color = Color(0.105, 0.135, 0.19, 0.98) if primary else Color(0.065, 0.075, 0.095, 0.94)
+	style.border_color = Color(0.34, 0.41, 0.54, 1.0) if primary else Color(0.22, 0.25, 0.31, 1.0)
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(2)
+	style.content_margin_left = STAT_MARGIN
+	style.content_margin_right = STAT_MARGIN
+	style.content_margin_top = STAT_MARGIN
+	style.content_margin_bottom = STAT_MARGIN
 	return style
 
 
@@ -190,7 +205,7 @@ func _build_block_line(cell: PanelContainer, line_name: String) -> Line2D:
 		return null
 	var line := Line2D.new()
 	line.name = line_name
-	line.points = PackedVector2Array([Vector2(0, 29), Vector2(74, 0)])
+	line.points = PackedVector2Array([Vector2(0, CELL_HEIGHT), Vector2(74, 0)])
 	line.width = 3.0
 	line.default_color = Color("dc2626")
 	line.antialiased = true
@@ -198,3 +213,8 @@ func _build_block_line(cell: PanelContainer, line_name: String) -> Line2D:
 	line.hide()
 	cell.add_child(line)
 	return line
+
+
+func _update_block_line(line: Line2D, cell: Control) -> void:
+	if is_instance_valid(line) and is_instance_valid(cell):
+		line.points = PackedVector2Array([Vector2(0, cell.size.y), Vector2(cell.size.x, 0)])

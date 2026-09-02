@@ -14,6 +14,12 @@ const SECOND_ROW_FLOOR := Color("44442b")
 const OBSTACLE_COLOR := Color("303238")
 const WATER_COLOR := Color("2d7fc4")
 const DUNGEON_WALL_COLOR := Color.BLACK
+const SIDEBAR_MARGIN := 12.0
+const MINIMAP_WIDTH := 296.0
+const MINIMAP_HEIGHT := 207.2
+const TOP_OFFSET := 60.0
+const HEADER_HEIGHT := 44.0
+const HEADER_GAP := 8.0
 const FLOOR_COLORS := [
 	Color("527f46"), Color("3e716b"), Color("516d91"), Color("795f91"),
 	Color("94754d"), Color("6f7945"), Color("7d5252"), Color("4c7280"),
@@ -28,18 +34,55 @@ var _map_rect_cache := Rect2()
 var _transform_world_id := 0
 var _transform_revision := -1
 var _transform_center_cell := Vector2i(2147483647, 2147483647)
+var _header: PanelContainer
+var _settings_anchor: Control
 
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	offset_left = -194.0
-	offset_top = 60.0
-	offset_right = -12.0
-	offset_bottom = 196.0
-	clip_contents = true
+	offset_left = -SIDEBAR_MARGIN - MINIMAP_WIDTH
+	offset_top = TOP_OFFSET
+	offset_right = -SIDEBAR_MARGIN
+	offset_bottom = TOP_OFFSET + MINIMAP_HEIGHT
+	clip_contents = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_build_header()
 	gui_input.connect(_on_gui_input)
 	call_deferred("_connect_world")
+
+
+func _build_header() -> void:
+	_header = PanelContainer.new()
+	_header.name = "MinimapHeader"
+	_header.position = Vector2(0, -HEADER_HEIGHT - HEADER_GAP)
+	_header.size = Vector2(MINIMAP_WIDTH, HEADER_HEIGHT)
+	_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.035, 0.055, 0.93)
+	style.border_color = Color("192236")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(5)
+	style.content_margin_left = 8
+	style.content_margin_right = 4
+	style.content_margin_top = 4
+	style.content_margin_bottom = 4
+	_header.add_theme_stylebox_override("panel", style)
+	add_child(_header)
+	var row := HBoxContainer.new()
+	row.name = "Content"
+	row.add_theme_constant_override("separation", 8)
+	_header.add_child(row)
+	var title := Label.new()
+	title.text = "Map"
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color("dbe5f7"))
+	row.add_child(title)
+	_settings_anchor = Control.new()
+	_settings_anchor.name = "SettingsAnchor"
+	_settings_anchor.custom_minimum_size = Vector2(36, 36)
+	row.add_child(_settings_anchor)
 
 
 func _connect_world() -> void:

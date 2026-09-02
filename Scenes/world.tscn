@@ -971,6 +971,57 @@ script = ExtResource("12_tile_grid")
 [node name="HUD" type="CanvasLayer" parent="." unique_id=2091766999]
 layer = 2
 
+[node name="EdgeBars" type="Control" parent="HUD" unique_id=451783589]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Left" type="ColorRect" parent="HUD/EdgeBars" unique_id=330716211]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 320.0
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="Right" type="ColorRect" parent="HUD/EdgeBars" unique_id=1335369263]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -320.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="Top" type="ColorRect" parent="HUD/EdgeBars" unique_id=11558148]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 192.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="Bottom" type="ColorRect" parent="HUD/EdgeBars" unique_id=969582655]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -192.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
 [node name="DamageGrid" type="PanelContainer" parent="HUD" unique_id=1039699815]
 script = ExtResource("5_damage_grid")
 
@@ -1019,7 +1070,7 @@ grow_horizontal = 0
 grow_vertical = 0
 script = ExtResource("14_minimap")
 
-[node name="QuestLog" type="Control" parent="HUD"]
+[node name="QuestLog" type="Control" parent="HUD" unique_id=1859906524]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0

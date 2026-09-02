@@ -39,13 +39,17 @@ func _update_tooltip() -> void:
 		return
 	if hovered:
 		var definition := _resource_manager.get_definition(resource_id) if _resource_manager else null
-		tooltip.show_stat(definition.icon if definition else null, "Production", "+%s/s" % _format_speed(production_speed), self)
+		tooltip.show_stat(definition.icon if definition else null, "Production", _get_production_tooltip_value(), self)
 	else:
 		tooltip.hide_tooltip(self)
 
 
 func _format_speed(speed: float) -> String:
 	return "%.3f" % speed if speed < 0.01 else "%.2f" % speed
+
+
+func _get_production_tooltip_value() -> String:
+	return "+%s/m" % _format_speed(production_speed * 60.0)
 
 
 func _get_building_tooltip() -> BuildMineTooltip:

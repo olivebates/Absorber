@@ -16,9 +16,10 @@ func _run() -> void:
 	var player := world.player
 	var quest_log := world.get_node("HUD/QuestLog") as QuestLog
 	var inventory := world.get_node("HUD/Inventory") as Control
-	assert(quest_log._button.icon.resource_path == "res://Sprites/iconQuest.webp" and not quest_log._button.expand_icon)
-	assert(is_equal_approx(quest_log._button.get_global_rect().end.x, inventory.get_global_rect().end.x))
-	assert(quest_log._button.get_global_rect().end.y <= inventory.get_global_rect().position.y - 7.0)
+	assert(quest_log._button_icon.texture.resource_path == "res://Sprites/iconQuest.webp")
+	assert(quest_log._button_icon.modulate == Color(1.5, 1.5, 1.5, 1.0), "The quest sprite must be 50% brighter")
+	assert((quest_log._button.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.a == 1.0, "The quest button must have an opaque background")
+	assert(quest_log._button.get_global_rect().position == (inventory as InventoryPanel).get_quest_anchor_rect().position, "The Quest Log button must be embedded in the Inventory header")
 
 	var story := world.get_node("StoryManager") as StoryManager
 	story._seen_events[&"lio_intro"] = true

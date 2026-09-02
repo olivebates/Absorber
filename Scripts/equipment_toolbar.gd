@@ -1,9 +1,15 @@
 class_name EquipmentToolbar
 extends PanelContainer
 
+const SIDEBAR_MARGIN := 12.0
+const COLUMN_COUNT := 6
+const SECTION_GAP := 8
+
 var _player: FoxPlayer
-var _armor_row: HBoxContainer
-var _weapon_row: HBoxContainer
+var _rows: VBoxContainer
+var _armor_row: GridContainer
+var _weapon_row: GridContainer
+var _secondary_background: Panel
 var _dragged_item: Dictionary = {}
 var _drag_source_storage := ""
 var _drag_source_index := -1
@@ -11,34 +17,53 @@ var _drag_source_index := -1
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	offset_left = -214.0
-	offset_top = -116.0
-	offset_right = -14.0
-	offset_bottom = -14.0
+	offset_left = -305.0
+	offset_top = -380.0
+	offset_right = -SIDEBAR_MARGIN
+	offset_bottom = -SIDEBAR_MARGIN
 	_set_style()
-	var rows := VBoxContainer.new()
-	rows.add_theme_constant_override("separation", 5)
-	add_child(rows)
-	_armor_row = HBoxContainer.new()
-	_armor_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_armor_row.add_theme_constant_override("separation", 5)
-	rows.add_child(_armor_row)
-	_weapon_row = HBoxContainer.new()
-	_weapon_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_weapon_row.add_theme_constant_override("separation", 5)
-	rows.add_child(_weapon_row)
+	_secondary_background = Panel.new()
+	_secondary_background.name = "SecondaryEquipmentBackground"
+	_secondary_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var secondary_style := StyleBoxFlat.new()
+	secondary_style.bg_color = Color(0.055, 0.065, 0.085, 0.72)
+	secondary_style.set_corner_radius_all(5)
+	_secondary_background.add_theme_stylebox_override("panel", secondary_style)
+	add_child(_secondary_background)
+	_rows = VBoxContainer.new()
+	_rows.add_theme_constant_override("separation", SECTION_GAP)
+	add_child(_rows)
+	var title := Label.new()
+	title.name = "EquipmentTitle"
+	title.text = "Equipment"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color("c5cee0"))
+	_rows.add_child(title)
+	_armor_row = GridContainer.new()
+	_armor_row.columns = COLUMN_COUNT
+	_armor_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_armor_row.add_theme_constant_override("h_separation", 5)
+	_armor_row.add_theme_constant_override("v_separation", 5)
+	_rows.add_child(_armor_row)
+	_weapon_row = GridContainer.new()
+	_weapon_row.columns = COLUMN_COUNT
+	_weapon_row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_weapon_row.add_theme_constant_override("h_separation", 5)
+	_weapon_row.add_theme_constant_override("v_separation", 5)
+	_rows.add_child(_weapon_row)
 	call_deferred("_connect_player")
+	call_deferred("_fit_to_content")
+
+
+func _process(_delta: float) -> void:
+	_fit_to_content()
 
 
 func _set_style() -> void:
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.38, 0.4, 0.44, 0.62)
-	style.border_color = Color.BLACK
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(7)
+	var style := StyleBoxEmpty.new()
 	style.content_margin_left = 8
 	style.content_margin_right = 8
-	style.content_margin_top = 8
+	style.content_margin_top = 4
 	style.content_margin_bottom = 8
 	add_theme_stylebox_override("panel", style)
 
@@ -62,7 +87,7 @@ func _set_merge_targets(item: Dictionary, source_storage: String, source_index: 
 
 func _update_merge_highlights() -> void:
 	for row_and_storage in [[_weapon_row, "weapon"], [_armor_row, "armor"]]:
-		var row := row_and_storage[0] as HBoxContainer
+		var row := row_and_storage[0] as GridContainer
 		var storage := str(row_and_storage[1])
 		for child in row.get_children():
 			if child is ItemSlot:
@@ -79,10 +104,11 @@ func _refresh() -> void:
 	_rebuild_row(_armor_row, "armor")
 
 
-func _rebuild_row(row: HBoxContainer, storage: String) -> void:
+func _rebuild_row(row: GridContainer, storage: String) -> void:
 	for child in row.get_children():
+		row.remove_child(child)
 		child.queue_free()
-	for index in range(4):
+	for index in range(COLUMN_COUNT):
 		var item := _player.get_slot_item(storage, index)
 		var slot := ItemSlot.new()
 		var merge_target := _player.is_tutorial_merge_slot(storage, index) or (not (storage == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item))
@@ -141,6 +167,21 @@ func _on_merge_completed(_item: Dictionary, target_storage: String, target_index
 		call_deferred("_play_merge_success", target_storage, target_index)
 
 
+func _fit_to_content() -> void:
+	if not is_instance_valid(_rows):
+		return
+	var panel_style := get_theme_stylebox("panel")
+	var fitted_size := _rows.get_combined_minimum_size() + panel_style.get_minimum_size()
+	custom_minimum_size = fitted_size
+	size = fitted_size
+	_secondary_background.position = Vector2(4, 0)
+	_secondary_background.size = fitted_size - Vector2(8, 4)
+	set_offset(SIDE_LEFT, -SIDEBAR_MARGIN - fitted_size.x)
+	set_offset(SIDE_TOP, -SIDEBAR_MARGIN - fitted_size.y)
+	set_offset(SIDE_RIGHT, -SIDEBAR_MARGIN)
+	set_offset(SIDE_BOTTOM, -SIDEBAR_MARGIN)
+
+
 func _play_merge_success(storage: String, target_index: int) -> void:
 	var row := _weapon_row if storage == "weapon" else _armor_row
 	for child in row.get_children():
@@ -164,7 +205,7 @@ func _is_locked(storage: String, index: int) -> bool:
 func _shows_unarmed_damage(storage: String, index: int) -> bool:
 	if storage != "weapon" or index != 0:
 		return false
-	for weapon_index in range(4):
+	for weapon_index in range(COLUMN_COUNT):
 		if not _player.get_slot_item("weapon", weapon_index).is_empty():
 			return false
 	return true

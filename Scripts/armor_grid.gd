@@ -4,6 +4,13 @@ extends PanelContainer
 const DEFENSE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 const DEFENSE_NAMES := ["Red Defense", "Yellow Defense", "Blue Defense"]
 const SHIELD_ICON := preload("res://Sprites/ShieldIcon.webp")
+const SIDEBAR_MARGIN := 12.0
+const STAT_MARGIN := 8.0
+const GRID_GAP := 8.0
+const CELL_GAP := 4
+const CELL_SIZE := Vector2(40, 40)
+const ICON_SIZE := 32.0
+const VALUE_FONT_SIZE := 22
 
 var _player: FoxPlayer
 var _damage_grid: DamageGrid
@@ -40,8 +47,8 @@ func _refresh() -> void:
 		_grid.queue_free()
 	_grid = GridContainer.new()
 	_grid.columns = 2
-	_grid.add_theme_constant_override("h_separation", 4)
-	_grid.add_theme_constant_override("v_separation", 3)
+	_grid.add_theme_constant_override("h_separation", CELL_GAP)
+	_grid.add_theme_constant_override("v_separation", CELL_GAP)
 	add_child(_grid)
 	visible = _dungeon_force_visible or _player.armor_ever_equipped or _player.has_equipped_armor() or _has_color_defense()
 	if not visible:
@@ -95,18 +102,18 @@ func _fit_beside_damage_grid() -> void:
 	if not visible:
 		return
 	var minimum_size := get_combined_minimum_size()
-	size = minimum_size
-	var left := 12.0
+	var left := SIDEBAR_MARGIN
 	if is_instance_valid(_damage_grid) and _damage_grid.visible:
-		left = _damage_grid.position.x + _damage_grid.size.x + 6.0
+		left = _damage_grid.position.x + _damage_grid.size.x + GRID_GAP
+	size = minimum_size
 	set_offset(SIDE_LEFT, left)
-	set_offset(SIDE_TOP, 12.0)
+	set_offset(SIDE_TOP, SIDEBAR_MARGIN)
 	set_offset(SIDE_RIGHT, left + minimum_size.x)
-	set_offset(SIDE_BOTTOM, 12.0 + minimum_size.y)
+	set_offset(SIDE_BOTTOM, SIDEBAR_MARGIN + minimum_size.y)
 
 
 func _add_blank_header() -> void:
-	_add_cell(Control.new(), Vector2(32, 25))
+	_add_cell(Control.new())
 
 
 func _add_shield_header() -> void:
@@ -114,11 +121,11 @@ func _add_shield_header() -> void:
 	var icon := TextureRect.new()
 	icon.name = "ShieldIcon"
 	icon.texture = SHIELD_ICON
-	icon.custom_minimum_size = Vector2(20, 20)
+	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	center.add_child(icon)
-	var cell := _add_cell(center, Vector2(34, 25))
+	var cell := _add_cell(center)
 	_connect_stat_tooltip(cell, "Defense")
 
 
@@ -132,7 +139,7 @@ func _add_color_header(color_index: int) -> void:
 	style.set_corner_radius_all(6)
 	dot.add_theme_stylebox_override("panel", style)
 	center.add_child(dot)
-	var cell := _add_cell(center, Vector2(32, 25))
+	var cell := _add_cell(center)
 	_connect_stat_tooltip(cell, DEFENSE_NAMES[color_index])
 
 
@@ -145,13 +152,15 @@ func _add_number_cell(value: int, color_index: int) -> void:
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 2)
-	var cell := _add_cell(label, Vector2(34, 25))
+	label.add_theme_font_size_override("font_size", VALUE_FONT_SIZE)
+	var cell := _add_cell(label)
 	_connect_stat_tooltip(cell, DEFENSE_NAMES[color_index])
 
 
-func _add_cell(content: Control, minimum_size: Vector2) -> PanelContainer:
+func _add_cell(content: Control) -> PanelContainer:
 	var cell := PanelContainer.new()
-	cell.custom_minimum_size = minimum_size
+	cell.custom_minimum_size = CELL_SIZE
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cell.add_theme_stylebox_override("panel", _make_cell_style())
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cell.add_child(content)
@@ -187,8 +196,8 @@ func _set_panel_style() -> void:
 	style.border_color = Color.BLACK
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(5)
-	style.content_margin_left = 6
-	style.content_margin_right = 6
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
+	style.content_margin_left = STAT_MARGIN
+	style.content_margin_right = STAT_MARGIN
+	style.content_margin_top = STAT_MARGIN
+	style.content_margin_bottom = STAT_MARGIN
 	add_theme_stylebox_override("panel", style)
