@@ -197,6 +197,7 @@ func begin_scripted_movement() -> void:
 func end_scripted_movement() -> void:
 	_scripted_movement = false
 	velocity = Vector2.ZERO
+	_sync_navigation_position()
 
 
 func follow_enemy(enemy: ChickenEnemy) -> void:
@@ -646,6 +647,7 @@ func _update_player_roll(progress: float) -> void:
 		global_position = _roll_center + Vector2.RIGHT.rotated(_roll_start_angle + _roll_arc_angle * progress) * radius
 	else:
 		global_position = _roll_start.lerp(_roll_end, progress)
+	_sync_navigation_position()
 	fox_sprite.rotation = _roll_sprite_start_rotation + TAU * _roll_rotation_turns * progress
 	if is_instance_valid(_roll_trail):
 		_roll_trail.add_point(_roll_trail.get_parent().to_local(global_position))
@@ -658,6 +660,7 @@ func _update_player_roll(progress: float) -> void:
 
 func _finish_player_roll() -> void:
 	global_position = _roll_end
+	_sync_navigation_position()
 	fox_sprite.rotation = 0.0
 	fox_sprite.position = Vector2.ZERO
 	fox_sprite.scale = Vector2(1.26, 0.74)
@@ -954,6 +957,7 @@ func reset_to_beginning() -> void:
 	stop()
 	clear_attack_target()
 	global_position = _beginning_position
+	_sync_navigation_position()
 	_spawn_position = _beginning_position
 
 
@@ -1429,6 +1433,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	stop()
 	clear_attack_target()
 	global_position = Vector2(float(data[0]), float(data[1]))
+	_sync_navigation_position()
 	max_health = maxi(1, int(data[3]))
 	passive_healing_amount = maxi(1, int(data[4]))
 	var legacy_defense := maxi(0, int(data[14])) if data.size() > 14 else 0
@@ -1651,12 +1656,15 @@ func _physics_process(delta: float) -> void:
 		_update_walk_animation(0.0)
 		return
 	_update_enemy_chase()
-	_move_along_path(delta)
+	var adjacent_enemy: ChickenEnemy = world.get_cached_adjacent_enemy(self) if world else null
+	_move_along_path(delta, adjacent_enemy)
 	_collect_pickups_on_current_tile()
-	_attack_nearby_enemy()
+	_attack_nearby_enemy(world, adjacent_enemy, true)
 	_update_walk_animation(delta)
-	_update_combat_ring()
-	_face_combat_enemy()
+	_update_combat_ring(adjacent_enemy)
+	_face_combat_enemy(adjacent_enemy)
+	if world:
+		world.sync_navigation_actor(self)
 
 
 func _dialogue_is_open() -> bool:
@@ -1664,12 +1672,11 @@ func _dialogue_is_open() -> bool:
 	return dialogue != null and dialogue.is_open()
 
 
-func _move_along_path(delta: float) -> void:
+func _move_along_path(delta: float, adjacent_enemy: ChickenEnemy = null) -> void:
 	_advance_past_reached_points()
 	if not is_moving():
 		velocity = Vector2.ZERO
-		var world := _get_navigation_world()
-		if world == null or _get_adjacent_enemy(world) == null:
+		if adjacent_enemy == null:
 			_snap_to_tile_center()
 		return
 	var target := _path[_path_index]
@@ -1694,13 +1701,14 @@ func _move_along_path(delta: float) -> void:
 	move_and_slide()
 
 
-func _attack_nearby_enemy() -> void:
+func _attack_nearby_enemy(world: WorldNavigation = null, adjacent_enemy: ChickenEnemy = null, adjacency_checked := false) -> void:
 	if _dialogue_is_open():
 		return
-	var world := _get_navigation_world()
+	if world == null:
+		world = _get_navigation_world()
 	if world == null:
 		return
-	var target := _get_adjacent_enemy(world)
+	var target := adjacent_enemy if adjacency_checked else _get_adjacent_enemy(world)
 	var automatic := false
 	if target:
 		if target != _combat_alignment_enemy:
@@ -1756,6 +1764,8 @@ func _can_apply_enemy_attack(target: ChickenEnemy, world: WorldNavigation, autom
 
 
 func _get_adjacent_enemy(world: WorldNavigation) -> ChickenEnemy:
+	if world == null:
+		return null
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if enemy is ChickenEnemy and is_instance_valid(enemy) and world.belongs_to_world(enemy) and enemy.health > 0 and world.are_adjacent(self, enemy):
 			return enemy as ChickenEnemy
@@ -1779,21 +1789,13 @@ func _collect_pickups_on_current_tile() -> void:
 			pickup.begin_collect(self)
 
 
-func _update_combat_ring() -> void:
-	var world := _get_navigation_world()
-	_combat_ring.visible = false
-	if world == null:
-		return
-	_combat_ring.visible = _get_adjacent_enemy(world) != null
+func _update_combat_ring(adjacent_enemy: ChickenEnemy = null) -> void:
+	_combat_ring.visible = is_instance_valid(adjacent_enemy) and adjacent_enemy.health > 0
 
 
-func _face_combat_enemy() -> void:
-	var world := _get_navigation_world()
-	if world == null:
-		return
-	var enemy := _get_adjacent_enemy(world)
-	if enemy:
-		_face_toward(enemy)
+func _face_combat_enemy(adjacent_enemy: ChickenEnemy = null) -> void:
+	if is_instance_valid(adjacent_enemy) and adjacent_enemy.health > 0:
+		_face_toward(adjacent_enemy)
 
 
 func _face_toward(target: Node2D) -> void:
@@ -1941,19 +1943,7 @@ func _update_enemy_chase() -> void:
 	if enemy_cell == _target_cell:
 		return
 	_target_cell = enemy_cell
-	var best_path := PackedVector2Array()
-	var best_distance := INF
-	for offset: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
-		var adjacent_cell: Vector2i = enemy_cell + offset
-		if not world.is_walkable(adjacent_cell) or world.is_cell_occupied(adjacent_cell, self):
-			continue
-		var candidate := world.find_path(global_position, world.cell_to_world(adjacent_cell), self)
-		if candidate.is_empty():
-			continue
-		var distance := _path_distance(candidate)
-		if distance < best_distance:
-			best_distance = distance
-			best_path = candidate
+	var best_path := world.find_path_to_actor_adjacent(global_position, _attack_target, self)
 	if not best_path.is_empty():
 		follow_path(best_path)
 	else:
@@ -2006,6 +1996,8 @@ func _begin_death_sequence() -> void:
 	await get_tree().create_timer(0.5).timeout
 	global_position = world.get_death_respawn_position() if world is DungeonLevel else _spawn_position
 	if world:
+		world.sync_navigation_actor(self)
+	if world:
 		var asha := world.get_node_or_null("FoxAsha") as FoxAsha
 		if asha and asha.is_recruited():
 			asha.place_left_of_player_after_respawn()
@@ -2030,6 +2022,12 @@ func _get_navigation_world() -> WorldNavigation:
 			return cursor as WorldNavigation
 		cursor = cursor.get_parent()
 	return get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+
+
+func _sync_navigation_position() -> void:
+	var world := _get_navigation_world()
+	if world:
+		world.sync_navigation_actor(self)
 
 
 func _show_death_overlay() -> void:

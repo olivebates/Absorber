@@ -6,6 +6,16 @@ extends StaticBody2D
 
 func _ready() -> void:
 	add_to_group("solid_walls")
+	_register_with_navigation()
+
+
+func _register_with_navigation() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			(cursor as WorldNavigation).register_navigation_actor(self)
+			return
+		cursor = cursor.get_parent()
 
 
 func get_blocked_cells(world: WorldNavigation) -> Array[Vector2i]:

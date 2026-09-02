@@ -119,6 +119,16 @@ func _set_revealed(value: bool, play_sound: bool) -> void:
 	else:
 		remove_from_group("solid_walls")
 		remove_from_group("dungeon_interactables")
+	_refresh_navigation_membership()
+
+
+func _refresh_navigation_membership() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			(cursor as WorldNavigation).refresh_navigation_actor_membership(self)
+			return
+		cursor = cursor.get_parent()
 
 
 func _draw() -> void:

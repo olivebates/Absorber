@@ -34,6 +34,10 @@ var _map_rect_cache := Rect2()
 var _transform_world_id := 0
 var _transform_revision := -1
 var _transform_center_cell := Vector2i(2147483647, 2147483647)
+var _terrain_texture: ImageTexture
+var _terrain_world_id := 0
+var _terrain_revision := -1
+var _terrain_region := Rect2i()
 var _header: PanelContainer
 var _settings_anchor: Control
 
@@ -46,6 +50,7 @@ func _ready() -> void:
 	offset_bottom = TOP_OFFSET + MINIMAP_HEIGHT
 	clip_contents = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_build_header()
 	gui_input.connect(_on_gui_input)
 	call_deferred("_connect_world")
@@ -94,6 +99,7 @@ func _process(delta: float) -> void:
 	var desired_world := manager.get_active_level() if manager and manager.is_dungeon_active() else get_tree().current_scene as WorldNavigation
 	if desired_world and desired_world != _world:
 		_world = desired_world
+		_terrain_world_id = 0
 	_redraw_time_left -= delta
 	if _redraw_time_left <= 0.0:
 		_redraw_time_left = REDRAW_INTERVAL
@@ -116,35 +122,65 @@ func _draw() -> void:
 	_draw_player_path(map_rect)
 	draw_rect(map_rect, Color(0.0, 0.0, 0.0, 1.0), false, 1.0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy is ChickenEnemy and is_instance_valid(enemy) and _world.belongs_to_world(enemy) and _is_visible_marker(enemy, player_cell):
-			var dot_position := _world_to_minimap(enemy.global_position, map_rect)
-			draw_circle(dot_position, 4.0, Color.BLACK)
-			draw_circle(dot_position, 2.5, ENEMY_COLORS[clampi(enemy.enemy_color, 0, ENEMY_COLORS.size() - 1)])
+		if not enemy is ChickenEnemy or not is_instance_valid(enemy) or not _world.belongs_to_world(enemy):
+			continue
+		var enemy_cell := _world.world_to_cell(enemy.global_position)
+		if not _is_visible_marker_cell(enemy_cell):
+			continue
+		var dot_position := _cell_to_minimap(enemy_cell, map_rect)
+		draw_circle(dot_position, 4.0, Color.BLACK)
+		draw_circle(dot_position, 2.5, ENEMY_COLORS[clampi(enemy.enemy_color, 0, ENEMY_COLORS.size() - 1)])
 	for npc in get_tree().get_nodes_in_group("npcs"):
-		if npc is Node2D and is_instance_valid(npc) and _world.belongs_to_world(npc) and _is_visible_marker(npc, player_cell):
-			var npc_position := _world_to_minimap(npc.global_position, map_rect)
-			draw_circle(npc_position, 4.0, Color.BLACK)
-			draw_circle(npc_position, 2.5, NPC_COLOR)
-	var player_position := _world_to_minimap(player.global_position, map_rect)
+		if not npc is Node2D or not is_instance_valid(npc) or not _world.belongs_to_world(npc):
+			continue
+		var npc_cell := _world.world_to_cell(npc.global_position)
+		if not _is_visible_marker_cell(npc_cell):
+			continue
+		var npc_position := _cell_to_minimap(npc_cell, map_rect)
+		draw_circle(npc_position, 4.0, Color.BLACK)
+		draw_circle(npc_position, 2.5, NPC_COLOR)
+	var player_position := _cell_to_minimap(player_cell, map_rect)
 	draw_circle(player_position, 3.5, Color.BLACK)
 	draw_circle(player_position, 2.0, Color.WHITE)
 
 
 func _draw_terrain(map_rect: Rect2, player_cell: Vector2i, tile_scale: Vector2) -> void:
-	var cells: Array[Vector2i] = _world.call("get_map_cells") as Array[Vector2i] if _world.has_method("get_map_cells") else []
-	if cells.is_empty():
-		cells.append(player_cell)
 	var display_region := _get_display_region()
-	for cell in cells:
-		if not display_region.has_point(cell) or not _world.is_cell_explored(cell):
-			continue
-		var center := _world_to_minimap_unclamped(_world.cell_to_world(cell), map_rect)
-		var drawn_size := Vector2(maxf(1.0, tile_scale.x), maxf(1.0, tile_scale.y))
-		var cell_rect := Rect2(center - tile_scale * 0.5, drawn_size)
-		if _world is DungeonLevel or _world.floor_layer.get_cell_source_id(cell) != -1:
-			draw_rect(cell_rect, _get_floor_color(cell), true)
-		if _world.wall_layer.get_cell_source_id(cell) != -1:
-			draw_rect(cell_rect, DUNGEON_WALL_COLOR if _world is DungeonLevel else _get_wall_color(cell), true)
+	_update_terrain_texture(display_region, player_cell)
+	if _terrain_texture:
+		var content_rect := Rect2(
+			_map_content_offset_cache,
+			Vector2(display_region.size) * tile_scale
+		)
+		draw_texture_rect(_terrain_texture, content_rect, false)
+
+
+func _update_terrain_texture(display_region: Rect2i, player_cell: Vector2i) -> void:
+	var world_id := _world.get_instance_id()
+	var revision := int(_world.call("get_map_revision")) if _world.has_method("get_map_revision") else 0
+	if world_id == _terrain_world_id and revision == _terrain_revision and display_region == _terrain_region:
+		return
+	_terrain_world_id = world_id
+	_terrain_revision = revision
+	_terrain_region = display_region
+	var image := Image.create(display_region.size.x, display_region.size.y, false, Image.FORMAT_RGBA8)
+	image.fill(Color.TRANSPARENT)
+	for y in range(display_region.size.y):
+		for x in range(display_region.size.x):
+			var cell := display_region.position + Vector2i(x, y)
+			if not _world.is_cell_explored(cell) and cell != player_cell:
+				continue
+			var color := Color.TRANSPARENT
+			if _world is DungeonLevel or _world.floor_layer.get_cell_source_id(cell) != -1:
+				color = _get_floor_color(cell)
+			if _world.wall_layer.get_cell_source_id(cell) != -1:
+				color = DUNGEON_WALL_COLOR if _world is DungeonLevel else _get_wall_color(cell)
+			if color.a > 0.0:
+				image.set_pixel(x, y, color)
+	if _terrain_texture == null or _terrain_texture.get_width() != image.get_width() or _terrain_texture.get_height() != image.get_height():
+		_terrain_texture = ImageTexture.create_from_image(image)
+	else:
+		_terrain_texture.update(image)
 
 
 func _get_floor_color(cell: Vector2i) -> Color:
@@ -176,9 +212,12 @@ func _is_within_visible_range(world_position: Vector2, _player_cell: Vector2i) -
 	return _get_display_region().has_point(cell) and _world.is_cell_explored(cell)
 
 
-func _is_visible_marker(node: Node2D, player_cell: Vector2i) -> bool:
-	var cell := _world.world_to_cell(node.global_position)
-	return _world.is_cell_explored(cell) and _is_within_visible_range(node.global_position, player_cell)
+func _is_visible_marker(node: Node2D, _player_cell: Vector2i) -> bool:
+	return _is_visible_marker_cell(_world.world_to_cell(node.global_position))
+
+
+func _is_visible_marker_cell(cell: Vector2i) -> bool:
+	return _world.is_cell_explored(cell) and _display_region_cache.has_point(cell)
 
 
 func _get_tile_scale(map_rect: Rect2) -> Vector2:
@@ -225,14 +264,19 @@ func _draw_player_path(map_rect: Rect2) -> void:
 
 
 func _draw_path_segment(from_world: Vector2, to_world: Vector2, map_rect: Rect2) -> void:
-	var from_map := _world_to_minimap_unclamped(from_world, map_rect)
-	var to_map := _world_to_minimap_unclamped(to_world, map_rect)
+	var from_cell := _world.world_to_cell(from_world)
+	var to_cell := _world.world_to_cell(to_world)
+	var from_map := _cell_to_minimap_unclamped(from_cell, map_rect)
+	var to_map := _cell_to_minimap_unclamped(to_cell, map_rect)
 	var steps := maxi(1, ceili(from_map.distance_to(to_map) / 5.0))
 	for step in range(steps + 1):
 		var weight := float(step) / float(steps)
 		var map_point := from_map.lerp(to_map, weight)
-		var world_point := from_world.lerp(to_world, weight)
-		if map_rect.has_point(map_point) and _world.is_cell_explored(_world.world_to_cell(world_point)):
+		var path_cell := Vector2i(
+			roundi(lerpf(float(from_cell.x), float(to_cell.x), weight)),
+			roundi(lerpf(float(from_cell.y), float(to_cell.y), weight))
+		)
+		if map_rect.has_point(map_point) and _world.is_cell_explored(path_cell):
 			draw_circle(map_point, 1.25, PATH_COLOR)
 
 
@@ -245,11 +289,22 @@ func _world_to_minimap(world_position: Vector2, map_rect: Rect2) -> Vector2:
 
 
 func _world_to_minimap_unclamped(world_position: Vector2, map_rect: Rect2) -> Vector2:
-	var cell := _world.world_to_cell(world_position)
 	if _world == null or not is_instance_valid(_world.player):
 		return map_rect.get_center()
+	return _cell_to_minimap_unclamped(_world.world_to_cell(world_position), map_rect)
+
+
+func _cell_to_minimap_unclamped(cell: Vector2i, map_rect: Rect2) -> Vector2:
 	_update_map_transform(map_rect)
 	return _map_content_offset_cache + (Vector2(cell - _display_region_cache.position) + Vector2.ONE * 0.5) * _tile_scale_cache
+
+
+func _cell_to_minimap(cell: Vector2i, map_rect: Rect2) -> Vector2:
+	var position := _cell_to_minimap_unclamped(cell, map_rect)
+	return Vector2(
+		clampf(position.x, map_rect.position.x, map_rect.end.x),
+		clampf(position.y, map_rect.position.y, map_rect.end.y)
+	)
 
 
 func _minimap_to_cell(local_position: Vector2, map_rect: Rect2) -> Vector2i:

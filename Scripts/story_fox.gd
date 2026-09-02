@@ -26,6 +26,8 @@ func _ready() -> void:
 	add_to_group("npcs")
 	add_to_group("story_characters")
 	_world = get_parent() as WorldNavigation
+	if _world:
+		_world.register_navigation_actor(self)
 	_player = _world.player if _world else get_tree().get_first_node_in_group("player") as FoxPlayer
 	_highlight = _create_tile_highlight()
 	add_child(_highlight)
@@ -120,6 +122,7 @@ func _patrol(delta: float) -> void:
 	var offset := target - global_position
 	if offset.length() <= 3.0:
 		global_position = target
+		_world.sync_navigation_actor(self)
 		_path_index += 1
 		if _path_index >= _path.size():
 			_pause_time_left = randf_range(3.0, 7.0)
@@ -130,6 +133,7 @@ func _patrol(delta: float) -> void:
 		_pause_time_left = 0.5
 		return
 	global_position += motion
+	_world.sync_navigation_actor(self)
 	_is_walking = true
 	if motion.x < -0.1:
 		fox_sprite.flip_h = false
@@ -148,13 +152,16 @@ func _update_walk_animation(delta: float) -> void:
 
 
 func _choose_patrol_path() -> void:
-	for _attempt in range(8):
-		var destination := _world.get_patrol_destination(_home_cell, PATROL_RADIUS_TILES, self)
-		var candidate := _world.get_patrol_path(global_position, destination, _home_cell, PATROL_RADIUS_TILES, self)
+	var destinations := _world.get_patrol_destinations(_home_cell, PATROL_RADIUS_TILES, self)
+	if not destinations.is_empty() and _world.try_consume_path_request():
+		var candidate := _world.get_patrol_path(global_position, destinations[0], _home_cell, PATROL_RADIUS_TILES, self)
 		if candidate.size() > 1:
 			_path = candidate
 			_path_index = 1
 			return
+	if not destinations.is_empty() and _world.get_path_requests_used() >= WorldNavigation.PATH_REQUEST_BUDGET_PER_FRAME:
+		_pause_time_left = randf_range(0.10, 0.20)
+		return
 	_pause_time_left = randf_range(3.0, 7.0)
 
 

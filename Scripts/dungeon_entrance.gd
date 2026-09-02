@@ -35,9 +35,19 @@ func _ready() -> void:
 	add_to_group("world_interactables")
 	add_to_group("solid_walls")
 	add_to_group("dungeon_entrances")
+	_register_with_navigation()
 	_build_cleared_label()
 	_build_tooltip()
 	call_deferred("_connect_manager")
+
+
+func _register_with_navigation() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			(cursor as WorldNavigation).register_navigation_actor(self)
+			return
+		cursor = cursor.get_parent()
 
 
 func _connect_manager() -> void:

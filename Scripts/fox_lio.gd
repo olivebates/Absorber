@@ -279,6 +279,8 @@ func load_save_data(data: Array) -> bool:
 		# the location authored in the current scene instead of leaving them at a
 		# campfire or hunting position from the running session.
 		global_position = _original_position
+		if is_instance_valid(_world):
+			_world.sync_navigation_actor(self)
 		_last_player_cell = INVALID_CELL
 		_follow_target_cell = INVALID_CELL
 		_stop_patrol()
@@ -320,8 +322,9 @@ func _process_hunting(delta: float) -> void:
 	_hunt_path_refresh_left -= delta
 	if _hunt_path_refresh_left <= 0.0 or _path_index >= _path.size():
 		_hunt_path_refresh_left = HUNT_PATH_REFRESH
-		_path = _best_adjacent_path(_hunt_target)
-		_path_index = 1 if _path.size() > 1 else _path.size()
+		if _world.try_consume_path_request():
+			_path = _best_adjacent_path(_hunt_target)
+			_path_index = 1 if _path.size() > 1 else _path.size()
 	_follow_hunt_path(delta)
 
 
@@ -332,14 +335,16 @@ func _process_returning(delta: float) -> void:
 	var destination := campfire.get_respawn_position()
 	if global_position.distance_to(destination) <= 4.0:
 		global_position = destination
+		_world.sync_navigation_actor(self)
 		_stop_patrol()
 		hunt_state = HuntState.WAITING_AT_CAMPFIRE
 		return
 	_hunt_path_refresh_left -= delta
 	if _hunt_path_refresh_left <= 0.0 or _path_index >= _path.size():
 		_hunt_path_refresh_left = HUNT_PATH_REFRESH
-		_path = _world.find_path(global_position, destination, self)
-		_path_index = 1 if _path.size() > 1 else _path.size()
+		if _world.try_consume_path_request():
+			_path = _world.find_path(global_position, destination, self)
+			_path_index = 1 if _path.size() > 1 else _path.size()
 	_follow_hunt_path(delta)
 
 
@@ -378,21 +383,7 @@ func _is_eligible_enemy(enemy: ChickenEnemy) -> bool:
 
 
 func _best_adjacent_path(enemy: ChickenEnemy) -> PackedVector2Array:
-	var best := PackedVector2Array()
-	var best_length := INF
-	var enemy_cell := _world.world_to_cell(enemy.global_position)
-	for offset: Vector2i in ADJACENT_OFFSETS:
-		var cell := enemy_cell + offset
-		if not _world.is_walkable(cell) or _world.is_cell_occupied(cell, self):
-			continue
-		var candidate := _world.find_path(global_position, _world.cell_to_world(cell), self)
-		if candidate.is_empty():
-			continue
-		var length := _path_distance(candidate)
-		if length < best_length:
-			best = candidate
-			best_length = length
-	return best
+	return _world.find_path_to_actor_adjacent(global_position, enemy, self)
 
 
 func _path_distance(points: PackedVector2Array) -> float:
@@ -409,6 +400,7 @@ func _follow_hunt_path(delta: float) -> void:
 	var offset := target - global_position
 	if offset.length() <= 3.0:
 		global_position = target
+		_world.sync_navigation_actor(self)
 		_path_index += 1
 		return
 	var motion := offset.normalized() * MOVE_SPEED * delta
@@ -417,6 +409,7 @@ func _follow_hunt_path(delta: float) -> void:
 		_hunt_path_refresh_left = 0.0
 		return
 	global_position += motion
+	_world.sync_navigation_actor(self)
 	_is_walking = true
 	if motion.x < -0.1:
 		fox_sprite.flip_h = reverse_sprite_orientation

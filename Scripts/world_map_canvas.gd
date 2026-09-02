@@ -314,6 +314,7 @@ func _teleport_to_campfire(campfire: Campfire) -> void:
 	_world.player.stop()
 	_world.player.clear_attack_target()
 	_world.player.global_position = campfire.global_position
+	_world.update_navigation_actor(_world.player)
 	_world.player.set_respawn_position(campfire.get_respawn_position())
 	var map := get_parent().get_parent().get_parent().get_parent() as WorldMap
 	if map:

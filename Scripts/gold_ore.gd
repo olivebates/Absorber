@@ -32,6 +32,7 @@ var _mine_selected := false
 
 func _ready() -> void:
 	add_to_group("gold_ores")
+	_register_with_navigation()
 	_tile_highlight = _create_tile_highlight()
 	add_child(_tile_highlight)
 	_resource_manager = get_tree().get_first_node_in_group("resource_manager") as ResourceManager
@@ -44,6 +45,15 @@ func _ready() -> void:
 	if _resource_manager:
 		_resource_manager.resource_changed.connect(_on_resource_changed)
 	call_deferred("_move_build_button_to_hud")
+
+
+func _register_with_navigation() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			(cursor as WorldNavigation).register_navigation_actor(self)
+			return
+		cursor = cursor.get_parent()
 
 
 func show_build_button() -> void:

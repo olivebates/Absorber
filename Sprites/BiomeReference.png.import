@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ch2ilotyaenp"
-path="res://.godot/imported/8x8 Icons, Allium_.jpg-2a2a08bbe878849d7b929d9746d0389d.ctex"
+uid="uid://dnrcjhhiq5drm"
+path="res://.godot/imported/BiomeReference.png-bf23ae50578384367a7c43601882e79c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/8x8 Icons, Allium_.jpg"
-dest_files=["res://.godot/imported/8x8 Icons, Allium_.jpg-2a2a08bbe878849d7b929d9746d0389d.ctex"]
+source_file="res://Sprites/BiomeReference.png"
+dest_files=["res://.godot/imported/BiomeReference.png-bf23ae50578384367a7c43601882e79c.ctex"]
 
 [params]
 

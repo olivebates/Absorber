@@ -46,6 +46,7 @@ func set_unlocked(value: bool, play_sound := false) -> void:
 		remove_from_group("gates")
 	else:
 		add_to_group("gates")
+	_refresh_navigation_membership()
 	var collision := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if collision:
 		collision.set_deferred("disabled", unlocked)
@@ -55,3 +56,12 @@ func set_unlocked(value: bool, play_sound := false) -> void:
 			if audio:
 				audio.play_open_gate()
 		gate_opened.emit()
+
+
+func _refresh_navigation_membership() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			(cursor as WorldNavigation).refresh_navigation_actor_membership(self)
+			return
+		cursor = cursor.get_parent()

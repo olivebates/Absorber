@@ -13,6 +13,7 @@ func _ready() -> void:
 	add_to_group("dungeon_room_objects")
 	add_to_group("dungeon_locked_doors")
 	add_to_group("solid_walls")
+	_refresh_navigation_membership()
 
 
 func request_interaction(player: FoxPlayer, world: WorldNavigation) -> void:
@@ -69,6 +70,7 @@ func _unlock(play_audio: bool) -> void:
 	unlocked = true
 	remove_from_group("solid_walls")
 	remove_from_group("dungeon_interactables")
+	_refresh_navigation_membership()
 	if play_audio:
 		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 		if audio:
@@ -77,6 +79,15 @@ func _unlock(play_audio: bool) -> void:
 	tween.tween_property(self, "modulate:a", 0.0, 0.22)
 	tween.tween_property(self, "scale", Vector2(1.15, 0.15), 0.22)
 	tween.tween_callback(hide)
+
+
+func _refresh_navigation_membership() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			(cursor as WorldNavigation).refresh_navigation_actor_membership(self)
+			return
+		cursor = cursor.get_parent()
 
 
 func _best_adjacent_path(player: FoxPlayer, level: DungeonLevel) -> PackedVector2Array:

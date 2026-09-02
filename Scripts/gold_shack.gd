@@ -13,6 +13,7 @@ var _hovered := false
 
 func _ready() -> void:
 	add_to_group("buildings")
+	_register_with_navigation()
 	_resource_manager = get_tree().get_first_node_in_group("resource_manager") as ResourceManager
 	if _resource_manager:
 		_resource_manager.register_capacity_bonus(self, resource_id, capacity_bonus)
@@ -37,3 +38,12 @@ func _process(_delta: float) -> void:
 func _exit_tree() -> void:
 	if _resource_manager:
 		_resource_manager.unregister_capacity_bonus(self)
+
+
+func _register_with_navigation() -> void:
+	var cursor := get_parent()
+	while cursor:
+		if cursor is WorldNavigation:
+			(cursor as WorldNavigation).register_navigation_actor(self)
+			return
+		cursor = cursor.get_parent()

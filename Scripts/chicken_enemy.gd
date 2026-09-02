@@ -15,6 +15,10 @@ const HEALTH_REGEN_INTERVAL := 1.0
 const REWARD_ICON_SIZE := 16.0
 const AGGRO_RADIUS_TILES := 3.0
 const DISENGAGE_FOLLOW_TILES := 3
+const REPATH_DELAY_MIN := 0.10
+const REPATH_DELAY_MAX := 0.20
+const FULL_RATE_SCREEN_MARGIN_TILES := 6.0
+const DISTANT_AI_INTERVAL := 0.20
 const SKILL_NONE := 0
 const SKILL_CRUSHING_BLOW := 1
 const SKILL_CASCADING_SWEEP := 2
@@ -77,6 +81,7 @@ var _health_regen_delay_left := HEALTH_REGEN_DELAY
 var _health_regen_tick_left := 0.0
 var _world: WorldNavigation
 var _player: FoxPlayer
+var _dialogue: DialogueBox
 var _hunter_target: FoxLio
 var spawn_point: EnemySpawnPoint
 var _suppress_reward_collection_sound := false
@@ -88,6 +93,9 @@ var _pursuit_is_limited := false
 var _pursuit_tiles_left := 0
 var _pursuit_distance_left := 0.0
 var _chased_player_cell := Vector2i(-999999, -999999)
+var _repath_time_left := 0.0
+var _distant_ai_time_left := 0.0
+var _distant_ai_accumulated_delta := 0.0
 var enemy_skills: Array[Dictionary] = []
 var _skill_cooldowns: Array[float] = []
 var _combat_skills_initialized := false
@@ -146,6 +154,10 @@ func _ready() -> void:
 	add_to_group("enemies")
 	_resolve_gameplay_context()
 	_pause_time_left = randf_range(0.0, 1.5)
+	_repath_time_left = randf_range(0.0, REPATH_DELAY_MAX)
+	_distant_ai_time_left = randf_range(0.0, DISTANT_AI_INTERVAL)
+	if is_instance_valid(_world):
+		_world.register_navigation_actor(self)
 	health = max_health
 	health_bar.max_value = max_health
 	health_bar.value = health
@@ -246,6 +258,8 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	rewards_enabled = bool(data[9]) if data.size() > 9 else true
 	_update_health_bar()
 	_update_reward_visual()
+	if is_instance_valid(_world):
+		_world.sync_navigation_actor(self)
 	return true
 
 
@@ -301,8 +315,24 @@ func _physics_process(delta: float) -> void:
 		_update_walk_animation(0.0)
 		_update_combat_ring(false)
 		return
+	if _should_use_distant_ai_lod():
+		_distant_ai_time_left -= delta
+		_distant_ai_accumulated_delta += delta
+		if _distant_ai_time_left > 0.0:
+			velocity = Vector2.ZERO
+			_update_walk_animation(0.0)
+			_update_combat_ring(false)
+			return
+		delta = _distant_ai_accumulated_delta
+		_distant_ai_accumulated_delta = 0.0
+		_distant_ai_time_left = DISTANT_AI_INTERVAL
+	elif _distant_ai_accumulated_delta > 0.0:
+		delta += _distant_ai_accumulated_delta
+		_distant_ai_accumulated_delta = 0.0
+		_distant_ai_time_left = DISTANT_AI_INTERVAL
 	if _skill_tutorial_paused:
 		_resume_skill_telegraph_tweens()
+	_repath_time_left = maxf(0.0, _repath_time_left - delta)
 	_attack_time_left = maxf(0.0, _attack_time_left - delta)
 	_player_attack_pause_left = maxf(0.0, _player_attack_pause_left - delta)
 	_attack_visual_time_left = maxf(0.0, _attack_visual_time_left - delta)
@@ -358,6 +388,8 @@ func _physics_process(delta: float) -> void:
 	_face_combat_target(player_in_combat, hunter_in_combat)
 	_update_health_regeneration(delta, in_combat)
 	_was_in_combat = player_in_combat
+	if is_instance_valid(_world):
+		_world.sync_navigation_actor(self)
 
 
 func _clear_combat_entry_alignment() -> void:
@@ -907,8 +939,9 @@ func _can_emit_combat_feedback() -> bool:
 
 
 func _dialogue_is_open() -> bool:
-	var dialogue := get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
-	return dialogue != null and dialogue.is_open()
+	if not is_instance_valid(_dialogue):
+		_dialogue = get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
+	return _dialogue != null and _dialogue.is_open()
 
 
 func _update_behavior_state(in_combat: bool) -> void:
@@ -940,6 +973,7 @@ func _begin_unlimited_pursuit() -> void:
 	_pursuit_tiles_left = DISENGAGE_FOLLOW_TILES
 	_pursuit_distance_left = DISENGAGE_FOLLOW_TILES * WorldNavigation.TILE_SIZE
 	_chased_player_cell = Vector2i(-999999, -999999)
+	_repath_time_left = randf_range(0.0, REPATH_DELAY_MIN)
 	_clear_movement_path()
 
 
@@ -951,6 +985,7 @@ func _begin_limited_pursuit() -> void:
 	_pursuit_tiles_left = DISENGAGE_FOLLOW_TILES
 	_pursuit_distance_left = DISENGAGE_FOLLOW_TILES * WorldNavigation.TILE_SIZE
 	_chased_player_cell = Vector2i(-999999, -999999)
+	_repath_time_left = randf_range(0.0, REPATH_DELAY_MIN)
 	_clear_movement_path()
 
 
@@ -958,6 +993,7 @@ func _begin_return_home() -> void:
 	_movement_mode = MovementMode.RETURN_HOME
 	_pursuit_is_limited = false
 	_chased_player_cell = Vector2i(-999999, -999999)
+	_repath_time_left = randf_range(0.0, REPATH_DELAY_MIN)
 	_clear_movement_path()
 
 
@@ -972,7 +1008,7 @@ func _chase_player(delta: float) -> void:
 		_begin_return_home()
 		return
 	var player_cell := _world.world_to_cell(_player.global_position)
-	if player_cell != _chased_player_cell or _path_index >= _path.size():
+	if (player_cell != _chased_player_cell or _path_index >= _path.size()) and _repath_time_left <= 0.0:
 		_choose_player_adjacent_path(player_cell)
 	if _path_index >= _path.size():
 		velocity = Vector2.ZERO
@@ -1003,20 +1039,11 @@ func _center_after_limited_pursuit() -> void:
 
 func _choose_player_adjacent_path(player_cell: Vector2i) -> void:
 	_chased_player_cell = player_cell
-	var best_path := PackedVector2Array()
-	var best_distance := INF
-	for offset: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
-		var adjacent_cell := player_cell + offset
-		if not _world.is_walkable(adjacent_cell) or _world.is_cell_occupied(adjacent_cell, self):
-			continue
-		var candidate := _world.find_path(global_position, _world.cell_to_world(adjacent_cell), self)
-		if candidate.is_empty():
-			continue
-		var distance := _path_distance(candidate)
-		if distance < best_distance:
-			best_distance = distance
-			best_path = candidate
-	_path = best_path
+	_repath_time_left = randf_range(REPATH_DELAY_MIN, REPATH_DELAY_MAX)
+	var occupied := _world.get_occupied_cells(self)
+	_path = _world.get_flow_path_to_player_adjacent(global_position, self, occupied)
+	if _path.is_empty() and _world.try_consume_path_request():
+		_path = _world.find_path_to_actor_adjacent(global_position, _player, self, occupied)
 	_path_index = 1 if _path.size() > 1 else _path.size()
 
 
@@ -1025,9 +1052,11 @@ func _return_to_spawn_area(delta: float) -> void:
 	if (current_cell - home_cell).length_squared() <= 4:
 		_begin_return_centering()
 		return
-	if _path_index >= _path.size():
-		_path = _world.find_path(global_position, _world.cell_to_world(home_cell), self)
-		_path_index = 1 if _path.size() > 1 else _path.size()
+	if _path_index >= _path.size() and _repath_time_left <= 0.0:
+		_repath_time_left = randf_range(REPATH_DELAY_MIN, REPATH_DELAY_MAX)
+		if _world.try_consume_path_request():
+			_path = _world.find_path(global_position, _world.cell_to_world(home_cell), self)
+			_path_index = 1 if _path.size() > 1 else _path.size()
 	if _path_index < _path.size():
 		_follow_behavior_path(delta)
 	else:
@@ -1126,9 +1155,11 @@ func _patrol(delta: float) -> void:
 	move_and_slide()
 
 
-func get_movement_target_cell(world: WorldNavigation) -> Vector2i:
+func get_movement_target_cell(world: WorldNavigation, current_cell: Variant = null) -> Vector2i:
 	if _path_index < _path.size():
 		return world.world_to_cell(_path[_path_index])
+	if current_cell is Vector2i:
+		return current_cell as Vector2i
 	return world.world_to_cell(global_position)
 
 
@@ -1142,13 +1173,16 @@ func _set_target_to_own_tile(world: WorldNavigation) -> void:
 func _choose_patrol_path() -> void:
 	if _world == null:
 		return
-	for attempt in range(8):
-		var destination := _world.get_patrol_destination(home_cell, 2, self)
-		var candidate_path := _world.get_patrol_path(global_position, destination, home_cell, 2, self)
+	var destinations := _world.get_patrol_destinations(home_cell, 2, self)
+	if not destinations.is_empty() and _world.try_consume_path_request():
+		var candidate_path := _world.get_patrol_path(global_position, destinations[0], home_cell, 2, self)
 		if candidate_path.size() > 1:
 			_path = candidate_path
 			_path_index = 1
 			return
+	if not destinations.is_empty() and _world.get_path_requests_used() >= WorldNavigation.PATH_REQUEST_BUDGET_PER_FRAME:
+		_pause_time_left = randf_range(REPATH_DELAY_MIN, REPATH_DELAY_MAX)
+		return
 	_pause_time_left = randf_range(3.0, 7.0)
 
 
@@ -1218,6 +1252,8 @@ func _update_walk_animation(delta: float) -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_world):
+		_world.unregister_navigation_actor(self)
 	_release_player_snare()
 	_clear_enemy_skill_telegraphs()
 	_clear_enemy_skill_name()
@@ -1443,6 +1479,27 @@ func _resolve_gameplay_context() -> void:
 		_player = _world.player
 	else:
 		_player = get_tree().get_first_node_in_group("player") as FoxPlayer
+	if not is_instance_valid(_dialogue):
+		_dialogue = get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
+
+
+func _should_use_distant_ai_lod() -> bool:
+	if not is_instance_valid(_world) or not is_instance_valid(_player) or _world is DungeonLevel:
+		return false
+	if _movement_mode != MovementMode.PATROL or _active_skill_slot >= 0 or is_instance_valid(_hunter_target):
+		return false
+	if is_instance_valid(spawn_point) and spawn_point.boss:
+		return false
+	var visible_rect := _world.get_visible_world_rect()
+	if visible_rect.size.x <= 0.0 or visible_rect.size.y <= 0.0:
+		return false
+	var margin := FULL_RATE_SCREEN_MARGIN_TILES * WorldNavigation.TILE_SIZE
+	return (
+		global_position.x < visible_rect.position.x - margin
+		or global_position.x > visible_rect.end.x + margin
+		or global_position.y < visible_rect.position.y - margin
+		or global_position.y > visible_rect.end.y + margin
+	)
 
 
 func _launch_reward_orb(target_screen_position: Vector2, color: Color, on_arrive: Callable) -> void:

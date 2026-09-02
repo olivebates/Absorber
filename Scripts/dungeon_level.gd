@@ -53,6 +53,7 @@ func _ready() -> void:
 	$FloorTerrain.visible = false
 	seed(1)
 	queue_redraw()
+	_initialize_navigation_runtime()
 
 
 func attach_player(dungeon_player: FoxPlayer, dungeon_camera: Camera2D, dungeon_manager: Node) -> void:
@@ -70,6 +71,7 @@ func attach_player(dungeon_player: FoxPlayer, dungeon_camera: Camera2D, dungeon_
 		_camera.global_position = get_room_center(current_room)
 		_camera.position_smoothing_enabled = false
 	_reveal_room(current_room)
+	_try_register_navigation_actor(player)
 
 
 func _process(_delta: float) -> void:
@@ -95,7 +97,9 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	_reset_path_request_budget()
 	_refresh_actor_cache()
+	_ensure_player_flow_field()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -153,6 +157,7 @@ func _transition_to_room(next_room: Vector2i, move_player_through_edge := false)
 	_previous_room_entry_position = _safe_entry_position_for_room(old_room, next_room)
 	if move_player_through_edge:
 		player.global_position = cell_to_world(destination_cell)
+		update_navigation_actor(player)
 	current_room = next_room
 	if abandoned_with_enemies:
 		_respawn_room_enemies(old_room)
@@ -492,6 +497,7 @@ func _restore_player_snapshot(snapshot: Dictionary) -> void:
 	if not is_walkable(candidate_cell) or is_cell_occupied(candidate_cell, player):
 		return
 	player.global_position = cell_to_world(candidate_cell)
+	update_navigation_actor(player)
 	current_room = cell_to_room(candidate_cell)
 	var saved_current_room := snapshot.get("current_room", []) as Array
 	if saved_current_room.size() >= 2:
@@ -558,6 +564,7 @@ func _build_dungeon_navigation() -> void:
 		for x in range(_navigation_region.position.x, _navigation_region.end.x):
 			var cell := Vector2i(x, y)
 			_pathfinder.set_point_solid(cell, not _walkable_cells.has(cell))
+	_navigation_changed()
 
 
 func _is_room_cell_walkable(_room: Vector2i, _local_cell: Vector2i) -> bool:

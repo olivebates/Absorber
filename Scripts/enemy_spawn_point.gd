@@ -112,7 +112,6 @@ func _physics_process(delta: float) -> void:
 	_was_empty = _spawned_enemies.is_empty()
 	_was_full = _spawned_enemies.size() >= max_enemies
 	if _spawned_enemies.size() >= max_enemies:
-		queue_redraw()
 		return
 	_respawn_time_left -= delta
 	if _respawn_time_left <= 0.0:
