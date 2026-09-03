@@ -105,6 +105,7 @@ func _refresh(drop_table: Array[Dictionary]) -> void:
 		card.add_child(row)
 		var icon := TextureRect.new()
 		icon.texture = ItemPickup.ITEM_TEXTURES[item_id]
+		icon.modulate = ItemPickup.get_icon_modulate(item_id)
 		icon.custom_minimum_size = Vector2(20, 20)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

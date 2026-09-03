@@ -460,6 +460,9 @@ func get_occupied_cells(except_actor: Node2D = null) -> Dictionary:
 	if is_instance_valid(except_actor):
 		sync_navigation_actor(except_actor)
 	_refresh_actor_cache()
+	if is_instance_valid(except_actor) and except_actor.has_method("has_unrestricted_helper_movement") \
+			and bool(except_actor.call("has_unrestricted_helper_movement")):
+		return {}
 	var physics_frame := Engine.get_physics_frames()
 	if _occupied_snapshot_frame != physics_frame:
 		_occupied_snapshot_frame = physics_frame
@@ -503,6 +506,8 @@ func _get_actor_cells(actor: Node2D) -> Array[Vector2i]:
 
 func can_enter_position(actor: Node2D, world_position: Vector2) -> bool:
 	var cell := world_to_cell(world_position)
+	if actor.has_method("has_unrestricted_helper_movement") and bool(actor.call("has_unrestricted_helper_movement")):
+		return is_walkable(cell)
 	var current_cell := world_to_cell(actor.global_position)
 	if cell == current_cell:
 		# A structure may be built beneath an actor. Let it cross its current tile

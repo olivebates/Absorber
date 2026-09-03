@@ -261,6 +261,11 @@ func _create_mine() -> void:
 	var sprite := _mine.get_node_or_null("Sprite2D") as Sprite2D
 	if sprite and mine_icon:
 		sprite.texture = mine_icon
+		sprite.position.y = -8.0
+	var deposit_sprite := get_node_or_null("Sprite2D") as Sprite2D
+	if deposit_sprite:
+		deposit_sprite.position.y = 14.0
+		deposit_sprite.z_index = 0
 	add_child(_mine)
 
 

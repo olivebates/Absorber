@@ -38,6 +38,8 @@ func open() -> void:
 
 
 func close() -> void:
+	if is_instance_valid(_canvas):
+		_canvas._hide_shop_popup()
 	hide()
 
 

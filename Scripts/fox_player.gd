@@ -13,7 +13,7 @@ const SKILL_BULWARK := &"bulwark"
 const PLAYER_SKILL_IDS: Array[StringName] = [SKILL_ROLL_CLOCKWISE, SKILL_YELLOW_GUARD, SKILL_ROLL_BACK, SKILL_ROLL_ARC, SKILL_BULWARK]
 const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 const EQUIPMENT_SLOT_COUNT := 6
-const STARTING_INVENTORY_SLOT_COUNT := 6
+const STARTING_INVENTORY_SLOT_COUNT := 4
 const SKILL_DATA := {
 	SKILL_ROLL_CLOCKWISE: {
 		"name": "Quick Roll", "description": "* Rolls 90 degrees around your target.\n* Invulnerable while rolling.\n* Increases Yellow damage by 2 for two seconds.",
@@ -55,6 +55,10 @@ signal mana_changed
 @export var attack_damage := 1 # Compatibility value mirrors the equipped red damage.
 @export var attack_range := 52.0
 @export var attack_cooldown := 0.8
+@export_category("Dialogue Voice")
+@export var dialogue_speaker_name := "Mira"
+@export_range(0.5, 2.0, 0.01) var talk_pitch_min := 0.9
+@export_range(0.5, 2.0, 0.01) var talk_pitch_max := 1.1
 
 var health: int
 var passive_healing_amount := 1
@@ -77,7 +81,7 @@ var defense: int:
 		return defense_by_color[COLOR_RED]
 var equipped_armor: Array[Dictionary] = [{}, {}, {}, {}, {}, {}]
 var equipped_weapons: Array[Dictionary] = [{}, {}, {}, {}, {}, {}]
-var inventory_slots: Array[Dictionary] = [{}, {}, {}, {}, {}, {}]
+var inventory_slots: Array[Dictionary] = [{}, {}, {}, {}]
 var trash_slots: Array[Dictionary] = [{}]
 var weapon_ever_equipped := [false, false, false, false, false, false]
 var armor_ever_equipped := false
@@ -148,6 +152,7 @@ var _snare_shake_tween: Tween
 
 
 func _ready() -> void:
+	add_to_group("dialogue_speakers")
 	_spawn_position = global_position
 	_beginning_position = global_position
 	health = max_health
@@ -166,6 +171,14 @@ func _ready() -> void:
 	_healing_particles.z_index = 2
 	add_child(_healing_particles)
 	_create_auto_fight_range()
+
+
+func get_dialogue_speaker_name() -> String:
+	return dialogue_speaker_name
+
+
+func get_talk_pitch_range() -> Vector2:
+	return Vector2(talk_pitch_min, talk_pitch_max)
 
 
 func follow_path(points: PackedVector2Array) -> void:
@@ -877,7 +890,10 @@ func collect_item_data(item: Dictionary) -> bool:
 	var item_id := str(item.get("item_id", ""))
 	if not ItemPickup.ITEM_DATA.has(item_id):
 		return false
-	var normalized_item := ItemPickup.make_item(item_id, ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item))
+	var normalized_item := ItemPickup.make_item(
+		item_id, ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item),
+		ItemPickup.get_equipped_stone(item)
+	)
 	var equipment_storage := "weapon" if ItemPickup.is_weapon(item_id) else "armor" if ItemPickup.is_armor(item_id) else ""
 	if not equipment_storage.is_empty():
 		var equipment_slots := _get_slots(equipment_storage)
@@ -1014,12 +1030,20 @@ func move_or_merge(source_storage: String, source_index: int, target_storage: St
 		return true
 	var merged_item: Dictionary = {}
 	if allow_merge and can_merge(source_item, target_item):
+		var is_equipment_merge := ItemPickup.is_equipment(str(target_item.get("item_id", "")))
+		var previous_stat := ItemPickup.get_damage_bonus(target_item) if ItemPickup.is_weapon(str(target_item.get("item_id", ""))) else ItemPickup.get_block_amount(target_item)
 		var total_merges := ItemPickup.get_merge_amount(source_item) + ItemPickup.get_merge_amount(target_item)
 		target_item["merges"] = total_merges
 		target_item["grade"] = ItemPickup.get_grade_for_merge_amount(total_merges)
+		if is_equipment_merge:
+			_preserve_best_merged_stone(source_item, target_item)
 		target_slots[target_index] = target_item
 		source_slots[source_index] = {}
-		merged_item = target_item.duplicate()
+		if is_equipment_merge:
+			merged_item = target_item.duplicate()
+			# Merge presentation needs the target's actual pre-merge value. Keep this
+			# transient metadata out of the stored item while including it in the signal.
+			merged_item["_previous_stat"] = previous_stat
 	else:
 		if not target_item.is_empty() and not _storage_accepts(source_storage, target_item):
 			return false
@@ -1095,8 +1119,49 @@ func merge_inventory_pair(source_index: int, target_index: int) -> bool:
 
 func can_merge(first: Dictionary, second: Dictionary) -> bool:
 	return not first.is_empty() and not second.is_empty() \
-		and ItemPickup.is_equipment(str(first.get("item_id", ""))) \
+		and (ItemPickup.is_equipment(str(first.get("item_id", ""))) or ItemPickup.is_stone(str(first.get("item_id", "")))) \
 		and str(first.get("item_id", "")) == str(second.get("item_id", ""))
+
+
+func is_stone_replacement_weaker(source_storage: String, source_index: int, target_storage: String, target_index: int) -> bool:
+	var stone := get_slot_item(source_storage, source_index)
+	var equipment := get_slot_item(target_storage, target_index)
+	if not ItemPickup.is_stone(str(stone.get("item_id", ""))) or not ItemPickup.is_equipment(str(equipment.get("item_id", ""))):
+		return false
+	var current_stone := ItemPickup.get_equipped_stone(equipment)
+	return not current_stone.is_empty() and ItemPickup.get_stone_bonus(stone) < ItemPickup.get_stone_bonus(current_stone)
+
+
+func equip_stone(source_storage: String, source_index: int, target_storage: String, target_index: int) -> bool:
+	if source_storage != "inventory" or (target_storage != "inventory" and target_storage != "weapon" and target_storage != "armor") \
+		or source_storage == target_storage and source_index == target_index:
+		return false
+	var source_slots := _get_slots(source_storage)
+	var target_slots := _get_slots(target_storage)
+	if source_index < 0 or source_index >= source_slots.size() or target_index < 0 or target_index >= target_slots.size():
+		return false
+	var stone := source_slots[source_index]
+	var equipment := target_slots[target_index]
+	if not ItemPickup.is_stone(str(stone.get("item_id", ""))) or not ItemPickup.is_equipment(str(equipment.get("item_id", ""))):
+		return false
+	var old_stone := ItemPickup.get_equipped_stone(equipment)
+	equipment["stone"] = stone.duplicate(true)
+	target_slots[target_index] = equipment
+	source_slots[source_index] = old_stone
+	attack_damage = get_damage_for_color(COLOR_RED)
+	inventory_changed.emit()
+	equipment_changed.emit()
+	damage_matrix_changed.emit()
+	return true
+
+
+func _preserve_best_merged_stone(source_item: Dictionary, target_item: Dictionary) -> void:
+	var source_stone := ItemPickup.get_equipped_stone(source_item)
+	var target_stone := ItemPickup.get_equipped_stone(target_item)
+	if source_stone.is_empty():
+		return
+	if target_stone.is_empty() or ItemPickup.get_stone_bonus(source_stone) > ItemPickup.get_stone_bonus(target_stone):
+		target_item["stone"] = source_stone
 
 
 func consume_inventory_item(index: int) -> bool:
@@ -1263,10 +1328,21 @@ func has_weapon_been_equipped(weapon_index: int) -> bool:
 func get_damage_for_weapon_color(color_index: int, weapon_index: int) -> int:
 	if color_index < 0 or color_index >= damage_by_color.size() or weapon_index < 0 or weapon_index >= equipped_weapons.size():
 		return 0
-	var equipment_bonus := ItemPickup.get_damage_bonus(equipped_weapons[weapon_index]) \
-		if color_index == COLOR_YELLOW and not is_in_dungeon() else 0
+	var equipped_weapon := equipped_weapons[weapon_index]
+	var equipment_bonus := ItemPickup.get_damage_bonus(equipped_weapon) \
+		if not equipped_weapon.is_empty() and color_index == ItemPickup.get_stat_color(equipped_weapon) and not is_in_dungeon() else 0
 	var quick_roll_bonus := 2 if color_index == COLOR_YELLOW and _quick_roll_damage_time_left > 0.0 else 0
-	return damage_by_color[color_index][weapon_index] + equipment_bonus + quick_roll_bonus
+	var stone_bonus := 0
+	if not is_in_dungeon():
+		var weapon_stone := ItemPickup.get_equipped_stone(equipped_weapon)
+		if ItemPickup.get_stone_stat(weapon_stone) == &"damage" and ItemPickup.get_stat_color(weapon_stone) == color_index:
+			stone_bonus += ItemPickup.get_stone_bonus(weapon_stone)
+		if weapon_index == current_weapon_index:
+			for armor in equipped_armor:
+				var armor_stone := ItemPickup.get_equipped_stone(armor)
+				if ItemPickup.get_stone_stat(armor_stone) == &"damage" and ItemPickup.get_stat_color(armor_stone) == color_index:
+					stone_bonus += ItemPickup.get_stone_bonus(armor_stone)
+	return damage_by_color[color_index][weapon_index] + equipment_bonus + stone_bonus + quick_roll_bonus
 
 
 func get_total_block() -> int:
@@ -1287,6 +1363,10 @@ func get_defense_for_color(color_index: int) -> int:
 		for item in equipped_armor:
 			if ItemPickup.get_block_colors(item).has(color_index):
 				total += ItemPickup.get_block_amount(item)
+		for equipment in equipped_weapons + equipped_armor:
+			var stone := ItemPickup.get_equipped_stone(equipment)
+			if ItemPickup.get_stone_stat(stone) == &"defense" and ItemPickup.get_stat_color(stone) == color_index:
+				total += ItemPickup.get_stone_bonus(stone)
 	return total
 
 
@@ -1550,9 +1630,14 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 func _pack_items(items: Array[Dictionary]) -> Array:
 	var packed: Array = []
 	for item in items:
-		packed.append([] if item.is_empty() else [
-			str(item.get("item_id", "")), ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item),
-		])
+		if item.is_empty():
+			packed.append([])
+			continue
+		var packed_item := [str(item.get("item_id", "")), ItemPickup.get_item_grade(item), ItemPickup.get_merge_amount(item)]
+		var stone := ItemPickup.get_equipped_stone(item)
+		if not stone.is_empty():
+			packed_item.append([str(stone.get("item_id", "")), ItemPickup.get_item_grade(stone), ItemPickup.get_merge_amount(stone)])
+		packed.append(packed_item)
 	return packed
 
 
@@ -1561,10 +1646,17 @@ func _unpack_items(packed: Array, expected_size: int) -> Array[Dictionary]:
 	for index in range(expected_size):
 		var packed_item := packed[index] as Array if index < packed.size() and packed[index] is Array else []
 		var item_id := str(packed_item[0]) if not packed_item.is_empty() else ""
+		var stone: Dictionary = {}
+		if packed_item.size() > 3 and packed_item[3] is Array:
+			var packed_stone := packed_item[3] as Array
+			var stone_id := str(packed_stone[0]) if not packed_stone.is_empty() else ""
+			if ItemPickup.is_stone(stone_id):
+				stone = ItemPickup.make_item(stone_id, int(packed_stone[1]) if packed_stone.size() > 1 else 0, int(packed_stone[2]) if packed_stone.size() > 2 else -1)
 		items.append(ItemPickup.make_item(
 			item_id,
 			int(packed_item[1]) if packed_item.size() > 1 else 0,
-			int(packed_item[2]) if packed_item.size() > 2 else -1
+			int(packed_item[2]) if packed_item.size() > 2 else -1,
+			stone
 		) if ItemPickup.ITEM_DATA.has(item_id) else {})
 	return items
 

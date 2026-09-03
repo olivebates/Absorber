@@ -216,13 +216,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			resource_manager.fill_all_to_maximum()
 		get_viewport().set_input_as_handled()
 		return
-	if key < KEY_0 or key > KEY_9 or key_event.ctrl_pressed or key_event.alt_pressed or key_event.meta_pressed:
+	if key < KEY_0 or key > KEY_9 or key_event.alt_pressed or key_event.meta_pressed:
 		return
 	var slot := int(key - KEY_0)
-	if key_event.shift_pressed:
+	if key_event.shift_pressed and not key_event.ctrl_pressed:
 		save_game(slot)
-	else:
+	elif key_event.ctrl_pressed and not key_event.shift_pressed:
 		load_game(slot)
+	else:
+		return
 	get_viewport().set_input_as_handled()
 
 
@@ -268,6 +270,7 @@ func load_save_string(encoded: String, loaded_at_unix := -1) -> bool:
 func _capture_state(timestamp: int) -> Array:
 	var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
 	var dungeon_manager := _get_dungeon_manager()
+	var commerce_hub := _world.get_node_or_null("HUD/CommerceHub") as CommerceHub
 	var spawn_data: Array = []
 	for spawn in _get_spawns():
 		spawn_data.append([str(spawn.name), spawn.get_save_data()])
@@ -299,6 +302,7 @@ func _capture_state(timestamp: int) -> Array:
 		_get_deru().get_save_data() if _get_deru() else [],
 		_world.version_number,
 		dungeon_manager.get_save_data() if dungeon_manager else [],
+		commerce_hub.get_save_data() if commerce_hub else [],
 	]
 
 
@@ -368,6 +372,9 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 		deru.load_save_data(state[13] as Array if state.size() > 13 and state[13] is Array else [])
 	if dungeon_manager:
 		dungeon_manager.load_save_data(state[15] as Array if state.size() > 15 and state[15] is Array else [], offline_seconds)
+	var commerce_hub := _world.get_node_or_null("HUD/CommerceHub") as CommerceHub
+	if commerce_hub:
+		commerce_hub.load_save_data(state[16] as Array if state.size() > 16 and state[16] is Array else [])
 	var spawn_data := state[4] as Array
 	var saved_spawns_by_name: Dictionary = {}
 	var uses_named_spawns := false

@@ -5,6 +5,7 @@ const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
 const DAMAGE_NAMES := ["Red Damage", "Yellow Damage", "Blue Damage"]
 const COLOR_ORDER := [FoxPlayer.COLOR_RED, FoxPlayer.COLOR_YELLOW, FoxPlayer.COLOR_BLUE]
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
+const WEAPON_TYPE_TOOLTIP := "Weapon Type"
 const SIDEBAR_MARGIN := 12.0
 const STAT_MARGIN := 8.0
 const CELL_GAP := 4
@@ -228,7 +229,7 @@ func _add_weapon_header(weapon_index: int) -> void:
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(icon)
-	_connect_stat_tooltip(damage_type_cell, "Weapon Damage")
+	_connect_stat_tooltip(damage_type_cell, WEAPON_TYPE_TOOLTIP)
 	_grid.add_child(damage_type_cell)
 
 

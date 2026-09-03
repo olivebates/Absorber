@@ -7,6 +7,9 @@
 z_index = 4
 script = ExtResource("1_fox_lio")
 reverse_sprite_orientation = true
+dialogue_speaker_name = "Lio"
+talk_pitch_min = 0.5
+talk_pitch_max = 0.7
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 1

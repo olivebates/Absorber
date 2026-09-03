@@ -37,8 +37,12 @@ func _ready() -> void:
 	_header = HBoxContainer.new()
 	_header.name = "InventoryHeader"
 	_header.custom_minimum_size.y = 44.0
+	_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_header.add_theme_constant_override("separation", SECTION_GAP)
 	_content.add_child(_header)
+	var header_spacer := Control.new()
+	header_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_header.add_child(header_spacer)
 	_quest_anchor = Control.new()
 	_quest_anchor.name = "QuestLogAnchor"
 	_quest_anchor.custom_minimum_size = Vector2(44, 44)
@@ -49,12 +53,10 @@ func _ready() -> void:
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_color_override("font_color", Color.WHITE)
-	_header.add_child(title)
-	var header_balance := Control.new()
-	header_balance.custom_minimum_size = Vector2(44, 44)
-	_header.add_child(header_balance)
+	_content.add_child(title)
 	_items = GridContainer.new()
 	_items.columns = COLUMN_COUNT
+	_items.custom_minimum_size.x = SLOT_SIZE * COLUMN_COUNT + SLOT_SEPARATION * (COLUMN_COUNT - 1)
 	_items.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_items.add_theme_constant_override("h_separation", int(SLOT_SEPARATION))
 	_items.add_theme_constant_override("v_separation", int(SLOT_SEPARATION))
@@ -166,7 +168,7 @@ func _update_merge_highlights() -> void:
 	for child in _items.get_children():
 		if child is ItemSlot:
 			var slot := child as ItemSlot
-			var merge_target := _player.is_tutorial_merge_slot("inventory", slot.slot_index) or (not ("inventory" == _drag_source_storage and slot.slot_index == _drag_source_index) and _player.can_merge(_dragged_item, slot.item))
+			var merge_target := _player.is_tutorial_merge_slot("inventory", slot.slot_index) or (not ("inventory" == _drag_source_storage and slot.slot_index == _drag_source_index) and (_player.can_merge(_dragged_item, slot.item) or ItemPickup.is_stone(str(_dragged_item.get("item_id", ""))) and ItemPickup.is_equipment(str(slot.item.get("item_id", "")))))
 			slot.configure(self, "inventory", slot.slot_index, slot.item, merge_target)
 
 
@@ -183,7 +185,7 @@ func _refresh() -> void:
 	for index in range(_player.inventory_slots.size()):
 		var item := _player.get_slot_item("inventory", index)
 		var slot := ItemSlot.new()
-		var merge_target := _player.is_tutorial_merge_slot("inventory", index) or (not ("inventory" == _drag_source_storage and index == _drag_source_index) and _player.can_merge(_dragged_item, item))
+		var merge_target := _player.is_tutorial_merge_slot("inventory", index) or (not ("inventory" == _drag_source_storage and index == _drag_source_index) and (_player.can_merge(_dragged_item, item) or ItemPickup.is_stone(str(_dragged_item.get("item_id", ""))) and ItemPickup.is_equipment(str(item.get("item_id", "")))))
 		slot.configure(self, "inventory", index, item, merge_target)
 		_connect_tooltip(slot)
 		_items.add_child(slot)
@@ -209,6 +211,9 @@ func can_drop_in_slot(source: ItemSlot, target: ItemSlot) -> bool:
 
 func _can_move(source: ItemSlot, target: ItemSlot) -> bool:
 	var item_id := str(source.item.get("item_id", ""))
+	if ItemPickup.is_stone(item_id):
+		return source.storage == "inventory" and target.storage == "inventory" and source.slot_index != target.slot_index \
+			and ItemPickup.is_equipment(str(target.item.get("item_id", "")))
 	if target.storage == "weapon" and not ItemPickup.is_weapon(item_id):
 		return false
 	if target.storage == "armor" and not ItemPickup.is_armor(item_id):
@@ -224,6 +229,11 @@ func _can_move(source: ItemSlot, target: ItemSlot) -> bool:
 
 
 func drop_in_slot(source: ItemSlot, target: ItemSlot) -> void:
+	if ItemPickup.is_stone(str(source.item.get("item_id", ""))):
+		var equipment_toolbar := get_parent().get_node_or_null("EquipmentToolbar") as EquipmentToolbar
+		if equipment_toolbar:
+			equipment_toolbar.request_stone_equip(source.storage, source.slot_index, target.storage, target.slot_index)
+		return
 	_player.move_or_merge(source.storage, source.slot_index, target.storage, target.slot_index)
 
 

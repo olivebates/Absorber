@@ -107,8 +107,9 @@ func _run() -> void:
 	var load_key := InputEventKey.new()
 	load_key.pressed = true
 	load_key.physical_keycode = KEY_9
+	load_key.ctrl_pressed = true
 	save_system._unhandled_key_input(load_key)
-	assert(player.health == player.max_health, "Number without Shift must restore its slot")
+	assert(player.health == player.max_health, "Ctrl-number must restore its slot")
 	var slot_path := ProjectSettings.globalize_path(save_system.get_save_path(9))
 	assert(DirAccess.remove_absolute(slot_path) == OK, "Save test must clean up its temporary slot")
 	print("PASS: compact saves, hotkey slots, and offline progression work")

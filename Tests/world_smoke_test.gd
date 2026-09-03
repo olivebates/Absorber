@@ -154,11 +154,11 @@ func _run() -> void:
 	assert(fox.collect_item("weathered_sword"), "Picked-up sword should be collected")
 	assert(fox.collect_item("weathered_armor"), "Picked-up armor should be collected")
 	assert(not fox.get_slot_item("weapon", 0).is_empty() and not fox.get_slot_item("armor", 0).is_empty(), "Equipment must auto-equip into valid empty slots")
-	assert(fox.get_damage_for_color(FoxPlayer.COLOR_RED) == fox.get_base_damage_for_color(FoxPlayer.COLOR_RED) + ItemPickup.get_damage_bonus(fox.get_slot_item("weapon", 0)), "Weapon damage should be added to the base color damage")
+	assert(fox.get_damage_for_color(FoxPlayer.COLOR_YELLOW) == fox.get_base_damage_for_color(FoxPlayer.COLOR_YELLOW) + ItemPickup.get_damage_bonus(fox.get_slot_item("weapon", 0)), "Weapon damage should be added to its configured color")
 	assert(fox.collect_item("weathered_sword"), "A second sword should use an empty inventory slot")
 	assert(fox.move_or_merge("inventory", 0, "weapon", 0), "Matching items should merge")
 	assert(fox.get_slot_item("weapon", 0).get("grade", -1) == 1, "Merging two grade-zero swords should create grade one")
-	assert(fox.get_damage_for_color(FoxPlayer.COLOR_RED) == fox.get_base_damage_for_color(FoxPlayer.COLOR_RED) + ItemPickup.get_damage_bonus(fox.get_slot_item("weapon", 0)), "Grade one sword damage should use the 2.1x grade multiplier")
+	assert(fox.get_damage_for_color(FoxPlayer.COLOR_YELLOW) == fox.get_base_damage_for_color(FoxPlayer.COLOR_YELLOW) + ItemPickup.get_damage_bonus(fox.get_slot_item("weapon", 0)), "Every merged sword copy should add its base damage")
 	var armored_health := fox.health
 	fox.take_damage(2)
 	assert(fox.health == armored_health - 1, "Weathered armor should block one damage")

@@ -102,7 +102,7 @@ func _run() -> void:
 	for control in [inventory, equipment]:
 		assert(is_equal_approx(control.get_global_rect().end.x, viewport_size.x - 12.0), "Bottom-right panels must retain their right inset")
 		assert(is_equal_approx(control.size.x, control.get_combined_minimum_size().x) and control.size.x <= 296.0, "Bottom-right panels must fit their content inside the sidebar")
-	assert(world.player.inventory_slots.size() == 6 and inventory._items.get_child_count() == 6, "The player must start with one full six-slot inventory row")
+	assert(world.player.inventory_slots.size() == 4 and inventory._items.get_child_count() == 4, "The player must start with four inventory slots")
 	assert(inventory._items.columns == 6 and equipment._armor_row.columns == 6 and equipment._weapon_row.columns == 6, "Inventory and equipment must use six columns because they fit")
 	assert((inventory._items.get_child(0) as ItemSlot).size == Vector2(42, 42), "Inventory slots must return to their compact size")
 	assert((equipment._weapon_row.get_child(0) as ItemSlot).size == Vector2(42, 42), "Equipment slots must return to their compact size")
@@ -134,7 +134,7 @@ func _run() -> void:
 	legacy_save[34] = 4
 	legacy_save[35] = 4
 	assert(world.player.load_save_data(legacy_save, 0), "Legacy four-slot player data must still load")
-	assert(world.player.inventory_slots.size() == 6 and world.player.equipped_weapons.size() == 6 and world.player.equipped_armor.size() == 6, "Legacy saves must be padded to the new six-slot row")
+	assert(world.player.inventory_slots.size() == 4 and world.player.equipped_weapons.size() == 6 and world.player.equipped_armor.size() == 6, "Legacy saves must retain four inventory slots and six equipment slots")
 	assert(world.player.damage_by_color[1][0] == 5 and world.player.damage_by_color[2][3] == 12 and world.player.damage_by_color[0][4] == 1, "Legacy four-column damage data must retain its color grouping and pad new columns")
 	assert(world.player.unlock_equipment_slots(3) == 2 and world.player.equipment_slots_unlocked == 6, "Equipment rewards must unlock both new positions without exceeding six")
 	world.queue_free()

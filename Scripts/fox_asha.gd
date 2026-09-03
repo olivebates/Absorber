@@ -8,6 +8,10 @@ const INVALID_CELL := Vector2i(-999999, -999999)
 
 @export var reverse_sprite_orientation := false
 @export var stationary := false
+@export_category("Dialogue Voice")
+@export var dialogue_speaker_name := "Asha"
+@export_range(0.5, 2.0, 0.01) var talk_pitch_min := 1.3
+@export_range(0.5, 2.0, 0.01) var talk_pitch_max := 1.5
 
 var purchase_counts: Array[int] = [0, 0, 0, 0]
 var _waiting_for_player := false
@@ -39,6 +43,7 @@ func _ready() -> void:
 	add_to_group("shopkeepers")
 	add_to_group("npcs")
 	add_to_group("story_characters")
+	add_to_group("dialogue_speakers")
 	_world = get_parent() as WorldNavigation
 	if _world:
 		_world.register_navigation_actor(self)
@@ -46,6 +51,14 @@ func _ready() -> void:
 	_highlight = _create_tile_highlight()
 	add_child(_highlight)
 	call_deferred("_finish_setup")
+
+
+func get_dialogue_speaker_name() -> String:
+	return dialogue_speaker_name
+
+
+func get_talk_pitch_range() -> Vector2:
+	return Vector2(talk_pitch_min, talk_pitch_max)
 
 
 func _finish_setup() -> void:
@@ -127,8 +140,12 @@ func is_recruited() -> bool:
 	return _recruited
 
 
-func can_overlap_navigation_actor(actor: Node2D) -> bool:
-	return _recruited and actor is FoxPlayer
+func can_overlap_navigation_actor(_actor: Node2D) -> bool:
+	return _recruited
+
+
+func has_unrestricted_helper_movement() -> bool:
+	return _recruited
 
 
 func is_story_interactable() -> bool:

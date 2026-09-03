@@ -6,6 +6,10 @@ const PATROL_RADIUS_TILES := 2
 const MOVE_SPEED := 120.0
 
 @export var character_id: StringName
+@export_category("Dialogue Voice")
+@export var dialogue_speaker_name := "Nia"
+@export_range(0.5, 2.0, 0.01) var talk_pitch_min := 1.3
+@export_range(0.5, 2.0, 0.01) var talk_pitch_max := 1.5
 
 var _waiting_for_player := false
 var _player: FoxPlayer
@@ -25,6 +29,7 @@ var _is_walking := false
 func _ready() -> void:
 	add_to_group("npcs")
 	add_to_group("story_characters")
+	add_to_group("dialogue_speakers")
 	_world = get_parent() as WorldNavigation
 	if _world:
 		_world.register_navigation_actor(self)
@@ -32,6 +37,14 @@ func _ready() -> void:
 	_highlight = _create_tile_highlight()
 	add_child(_highlight)
 	call_deferred("_finish_setup")
+
+
+func get_dialogue_speaker_name() -> String:
+	return dialogue_speaker_name
+
+
+func get_talk_pitch_range() -> Vector2:
+	return Vector2(talk_pitch_min, talk_pitch_max)
 
 
 func _finish_setup() -> void:

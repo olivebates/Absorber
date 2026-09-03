@@ -20,7 +20,7 @@ func _run() -> void:
 
 	luca.open_shop()
 	var shop := luca._shop
-	assert(shop is FoxLucaShop and shop.visible and shop._rows.size() == 4, "Luca must open a separate four-upgrade store")
+	assert(shop is FoxLucaShop and shop.visible and shop._rows.size() == 8, "Luca must open a separate expanded store")
 	assert(shop.get_upgrade_price(0) == 7 and shop.get_upgrade_price(1) == 3 and shop.get_upgrade_price(2) == 10 and shop.get_upgrade_price(3) == 8, "Luca's upgrades must be ordered damage, armor, health, regeneration")
 	assert(shop.get_panel().find_child("BuyFish", true, false) and shop.get_panel().find_child("BuyJewels", true, false), "Luca must trade both Fish and Gems")
 

@@ -230,9 +230,15 @@ func interact_with(character_id: StringName) -> bool:
 			_shop_to_reopen = null
 			return false
 		if _has_seen(&"lio_intro"):
-			return _play_default_dialogue([
+			_reopen_shop_after_dialogue = true
+			_shop_to_reopen = _lio
+			if _play_default_dialogue([
 				_line("Lio", "If only I had a way to automate this gold digging business.", LIO_PORTRAIT),
-			])
+			]):
+				return true
+			_reopen_shop_after_dialogue = false
+			_shop_to_reopen = null
+			return false
 		_seen_events[&"lio_intro"] = true
 		_reopen_shop_after_dialogue = true
 		_shop_to_reopen = _lio

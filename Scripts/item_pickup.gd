@@ -4,6 +4,13 @@ extends Area2D
 const ITEM_NAMES := {
 	"weathered_armor": "Orange Shield",
 	"weathered_sword": "Yellow Sword",
+	"blue_sword": "Blue Sword",
+	"red_damage_stone": "Red Damage Stone",
+	"yellow_damage_stone": "Yellow Damage Stone",
+	"blue_damage_stone": "Blue Damage Stone",
+	"red_defense_stone": "Red Defense Stone",
+	"yellow_defense_stone": "Yellow Defense Stone",
+	"blue_defense_stone": "Blue Defense Stone",
 	"potion_basic": "Basic Potion",
 	"potion_rope": "Upgraded Potion",
 	"potion_bronze": "Bronze Potion",
@@ -16,6 +23,13 @@ const ITEM_NAMES := {
 const ITEM_TEXTURES := {
 	"weathered_armor": preload("res://Sprites/1Armor.webp"),
 	"weathered_sword": preload("res://Sprites/1Sword.webp"),
+	"blue_sword": preload("res://Sprites/1Sword.webp"),
+	"red_damage_stone": preload("res://Sprites/statStone.webp"),
+	"yellow_damage_stone": preload("res://Sprites/statStone.webp"),
+	"blue_damage_stone": preload("res://Sprites/statStone.webp"),
+	"red_defense_stone": preload("res://Sprites/statStone.webp"),
+	"yellow_defense_stone": preload("res://Sprites/statStone.webp"),
+	"blue_defense_stone": preload("res://Sprites/statStone.webp"),
 	"potion_basic": preload("res://Sprites/PotionBasic.webp"),
 	"potion_rope": preload("res://Sprites/PotionRope.webp"),
 	"potion_bronze": preload("res://Sprites/PotionBronze.webp"),
@@ -45,6 +59,13 @@ const MAX_SCALED_STAT := 0x7fffffffffffffff
 const ITEM_DATA := {
 	"weathered_armor": {"block": 2, "slot": "armor", "colors": [FoxPlayer.COLOR_RED, FoxPlayer.COLOR_YELLOW]},
 	"weathered_sword": {"damage": 5, "slot": "weapon", "color": FoxPlayer.COLOR_YELLOW},
+	"blue_sword": {"damage": 10, "slot": "weapon", "color": FoxPlayer.COLOR_BLUE, "tint": Color("4f8cff")},
+	"red_damage_stone": {"stone_stat": "damage", "stone_amount": 2, "color": FoxPlayer.COLOR_RED, "slot": "stone", "tint": Color("ef5350")},
+	"yellow_damage_stone": {"stone_stat": "damage", "stone_amount": 2, "color": FoxPlayer.COLOR_YELLOW, "slot": "stone", "tint": Color("ffd54f")},
+	"blue_damage_stone": {"stone_stat": "damage", "stone_amount": 2, "color": FoxPlayer.COLOR_BLUE, "slot": "stone", "tint": Color("4f8cff")},
+	"red_defense_stone": {"stone_stat": "defense", "stone_amount": 2, "color": FoxPlayer.COLOR_RED, "slot": "stone", "tint": Color("ef5350")},
+	"yellow_defense_stone": {"stone_stat": "defense", "stone_amount": 2, "color": FoxPlayer.COLOR_YELLOW, "slot": "stone", "tint": Color("ffd54f")},
+	"blue_defense_stone": {"stone_stat": "defense", "stone_amount": 2, "color": FoxPlayer.COLOR_BLUE, "slot": "stone", "tint": Color("4f8cff")},
 	"potion_basic": {"healing": 40, "slot": "consumable"},
 	"potion_rope": {"healing": 100, "slot": "consumable"},
 	"potion_bronze": {"healing": 240, "slot": "consumable"},
@@ -70,6 +91,7 @@ func setup(new_item_id: String, new_grade := 0) -> void:
 
 func _ready() -> void:
 	icon.texture = ITEM_TEXTURES.get(item_id, ITEM_TEXTURES["weathered_sword"])
+	icon.modulate = get_icon_modulate(item_id)
 	_shadow = Polygon2D.new()
 	_shadow.polygon = _ellipse_points(19.0, 5.5)
 	_shadow.position = Vector2(0, 18)
@@ -167,11 +189,26 @@ static func get_grade_for_merge_amount(merge_amount: int) -> int:
 
 
 static func get_damage_bonus(item: Dictionary) -> int:
-	return _scaled_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("damage", 0)), get_item_grade(item))
+	return _merged_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("damage", 0)), get_merge_amount(item))
 
 
 static func get_block_amount(item: Dictionary) -> int:
-	return _scaled_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("block", 0)), get_item_grade(item))
+	return _merged_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("block", 0)), get_merge_amount(item))
+
+
+static func get_stone_bonus(item: Dictionary) -> int:
+	if not is_stone(str(item.get("item_id", ""))):
+		return 0
+	return _merged_stat(int(ITEM_DATA[str(item.get("item_id"))].get("stone_amount", 0)), get_merge_amount(item))
+
+
+static func get_equipped_stone(item: Dictionary) -> Dictionary:
+	var stone: Variant = item.get("stone", {})
+	return (stone as Dictionary).duplicate(true) if stone is Dictionary and is_stone(str(stone.get("item_id", ""))) else {}
+
+
+static func get_stone_stat(item: Dictionary) -> StringName:
+	return StringName(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("stone_stat", ""))
 
 
 static func get_block_colors(item: Dictionary) -> Array:
@@ -197,6 +234,17 @@ static func is_equipment(item_id: String) -> bool:
 	return is_weapon(item_id) or is_armor(item_id)
 
 
+static func is_stone(item_id: String) -> bool:
+	return str(ITEM_DATA.get(item_id, {}).get("slot", "")) == "stone"
+
+
+static func get_icon_modulate(item_id: String) -> Color:
+	var data := ITEM_DATA.get(item_id, {}) as Dictionary
+	if data.has("tint"):
+		return data["tint"] as Color
+	return Color.WHITE
+
+
 static func is_consumable(item_id: String) -> bool:
 	return str(ITEM_DATA.get(item_id, {}).get("slot", "")) == "consumable"
 
@@ -217,18 +265,33 @@ static func is_full_heal(item: Dictionary) -> bool:
 	return bool(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("full_heal", false))
 
 
-static func make_item(new_item_id: String, new_grade := 0, merge_amount := -1) -> Dictionary:
+static func make_item(new_item_id: String, new_grade := 0, merge_amount := -1, equipped_stone: Dictionary = {}) -> Dictionary:
 	var normalized_grade := maxi(new_grade, 0)
 	var normalized_merges := merge_amount
 	if normalized_merges < 1:
 		normalized_merges = 1
 		for _step in range(mini(normalized_grade, 62)):
 			normalized_merges *= 2
-	return {
+	var result := {
 		"item_id": new_item_id,
 		"grade": get_grade_for_merge_amount(normalized_merges),
 		"merges": normalized_merges,
 	}
+	if is_equipment(new_item_id) and not equipped_stone.is_empty() and is_stone(str(equipped_stone.get("item_id", ""))):
+		result["stone"] = make_item(
+			str(equipped_stone.get("item_id", "")),
+			get_item_grade(equipped_stone),
+			get_merge_amount(equipped_stone)
+		)
+	return result
+
+
+static func _merged_stat(base_amount: int, merge_amount: int) -> int:
+	if base_amount <= 0 or merge_amount <= 0:
+		return 0
+	if merge_amount > int(MAX_SCALED_STAT / base_amount):
+		return MAX_SCALED_STAT
+	return base_amount * merge_amount
 
 
 static func _scaled_stat(base_amount: int, grade: int) -> int:

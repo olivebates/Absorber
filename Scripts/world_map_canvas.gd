@@ -15,6 +15,7 @@ const WATER_COLOR := Color("2d7fc4")
 const PATH_COLOR := Color("42a5f5")
 const DUNGEON_WALL_COLOR := Color.BLACK
 const REDRAW_INTERVAL := 0.1
+const SHOP_HOVER_TILES := 2.0
 
 var _world: WorldNavigation
 var _campfires: Array[Campfire] = []
@@ -61,14 +62,45 @@ func refresh_markers() -> void:
 
 
 func _process(delta: float) -> void:
-	if not visible:
+	if not is_visible_in_tree():
+		_hide_shop_popup()
 		return
+	_update_shop_popup()
 	_redraw_time_left -= delta
 	if _redraw_time_left <= 0.0:
 		_redraw_time_left = REDRAW_INTERVAL
 		_refresh_terrain_cache()
 		_update_map_transform()
 		queue_redraw()
+
+
+func _update_shop_popup() -> void:
+	var hub := get_tree().get_first_node_in_group("commerce_hub") as CommerceHub
+	if hub == null or _world == null or _world is DungeonLevel or not Rect2(Vector2.ZERO, size).has_point(get_local_mouse_position()):
+		if hub:
+			hub.hide_map_shop_popup()
+		return
+	var mouse := get_local_mouse_position()
+	for raw_shopkeeper in get_tree().get_nodes_in_group("shopkeepers"):
+		if not raw_shopkeeper is FoxAsha:
+			continue
+		var shopkeeper := raw_shopkeeper as FoxAsha
+		if not _world.belongs_to_world(shopkeeper) or not hub.is_active_shop(shopkeeper):
+			continue
+		var spawn_cell := shopkeeper._home_cell if shopkeeper._initialized else _world.world_to_cell(shopkeeper.global_position)
+		if not _is_shop_spawn_explored(shopkeeper):
+			continue
+		var marker := _cell_to_map(spawn_cell)
+		if absf(mouse.x - marker.x) <= _cell_size_cache * SHOP_HOVER_TILES and absf(mouse.y - marker.y) <= _cell_size_cache * SHOP_HOVER_TILES:
+			hub.show_map_shop_popup(shopkeeper, get_viewport().get_mouse_position())
+			return
+	hub.hide_map_shop_popup()
+
+
+func _hide_shop_popup() -> void:
+	var hub := get_tree().get_first_node_in_group("commerce_hub") as CommerceHub
+	if hub:
+		hub.hide_map_shop_popup()
 
 
 func _draw() -> void:
@@ -113,8 +145,8 @@ func _draw() -> void:
 				continue
 			_draw_discovered_node_marker(node)
 	for shopkeeper in get_tree().get_nodes_in_group("shopkeepers"):
-		if shopkeeper is Node2D and is_instance_valid(shopkeeper) and _world.belongs_to_world(shopkeeper):
-			_draw_discovered_node_marker(shopkeeper)
+		if shopkeeper is FoxAsha and is_instance_valid(shopkeeper) and _world.belongs_to_world(shopkeeper):
+			_draw_shop_marker(shopkeeper as FoxAsha)
 	if is_instance_valid(_world.player):
 		_draw_player_path()
 		var player_position := _cell_to_map(_world.world_to_cell(_world.player.global_position))
@@ -241,6 +273,25 @@ func _draw_discovered_node_marker(node: Node2D) -> void:
 	var marker_size := clampf(_get_cell_size() * 1.8, 12.0, 24.0)
 	var rect := Rect2(_cell_to_map(cell) - Vector2.ONE * marker_size * 0.5, Vector2.ONE * marker_size)
 	draw_texture_rect(sprite.texture, rect, false)
+
+
+func _draw_shop_marker(shopkeeper: FoxAsha) -> void:
+	var spawn_cell := shopkeeper._home_cell if shopkeeper._initialized else _world.world_to_cell(shopkeeper.global_position)
+	if not _is_shop_spawn_explored(shopkeeper):
+		return
+	var sprite := _get_marker_sprite(shopkeeper)
+	if sprite == null or sprite.texture == null:
+		return
+	var marker_size := clampf(_get_cell_size() * 1.8, 12.0, 24.0)
+	var rect := Rect2(_cell_to_map(spawn_cell) - Vector2.ONE * marker_size * 0.5, Vector2.ONE * marker_size)
+	draw_texture_rect(sprite.texture, rect, false)
+
+
+func _is_shop_spawn_explored(shopkeeper: FoxAsha) -> bool:
+	if _world == null or not is_instance_valid(shopkeeper):
+		return false
+	var spawn_cell := shopkeeper._home_cell if shopkeeper._initialized else _world.world_to_cell(shopkeeper.global_position)
+	return _world.is_cell_explored(spawn_cell)
 
 
 func _draw_boss_respawn_timers(cell_size: float) -> void:

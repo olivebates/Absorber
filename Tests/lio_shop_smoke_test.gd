@@ -21,10 +21,10 @@ func _run() -> void:
 	story._process(0.0)
 	assert(not box.is_open(), "Lio must not speak merely because the player is nearby")
 	lio.interact()
-	assert(_finish_dialogue(box) == " You wouldn’t believe how much work it takes to dig up this gold! What I wouldn’t do for some fish right now, haha!", "Lio's first interaction must use the requested dialogue")
+	assert(_finish_dialogue(box) == " You wouldn’t believe how much work it takes to dig up this gold! If only I had some way to automate it, hah! What I wouldn’t do for some fish right now, haha!", "Lio's first interaction must use the authored dialogue")
 	await process_frame
 	var shop := lio._shop as FoxLioShop
-	assert(shop != null and shop.visible and shop._rows.size() == 2, "Lio must open his three-offer shop")
+	assert(shop != null and shop.visible and shop._rows.size() == 3, "Lio must open his expanded shop")
 	assert(shop.get_panel().find_child("BuyGoldOre", true, false) is Button, "Lio must offer one Gold")
 	assert(shop.is_upgrade_visible(0) and not shop.is_upgrade_visible(1), "Lio's Jewel health offer must stay hidden until Jewels have been discovered")
 	var resources := world.get_node("ResourceManager") as ResourceManager
@@ -37,6 +37,11 @@ func _run() -> void:
 	assert(_finish_dialogue(box) == " Oh man, I'm so hungry, thank you!", "Lio's first purchase must use the requested thank-you line")
 	await process_frame
 	assert(shop.visible, "Lio's shop must reopen after his first-purchase dialogue")
+	shop.close()
+	lio.interact()
+	assert(_finish_dialogue(box) == " If only I had a way to automate this gold digging business.", "Active Lio quest interactions must keep their one-line reminder")
+	await process_frame
+	assert(shop.visible, "Lio's active-quest reminder must reopen his shop")
 	var health_before := world.player.max_health
 	assert(shop.get_upgrade_price(1) == 5 and shop.buy_upgrade(1), "Lio's health upgrade must cost five Jewels")
 	assert(world.player.max_health == health_before + 20, "Lio must grant twenty maximum health")

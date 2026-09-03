@@ -4,6 +4,7 @@ extends FoxShop
 const LIO_UPGRADES := [
 	{"resource_id": &"fish", "base_price": 5, "fixed_price": true, "visible_by_default": true, "amount": 4, "stat_icon": DAMAGE_ICON, "stat": &"damage", "color": FoxPlayer.COLOR_RED, "name": "Red Damage", "description": "Increase red damage by 4."},
 	{"resource_id": &"jewels", "base_price": 5, "fixed_price": true, "amount": 20, "stat_icon": HEALTH_ICON, "stat": &"health", "name": "Max Health", "description": "Increase maximum health by 20."},
+	{"resource_id": &"fish", "base_price": 8, "fixed_price": true, "visible_by_default": true, "purchase_slot": 2, "amount": 1, "stat_icon": preload("res://Sprites/1Sword.webp"), "stat": &"item", "item_id": "blue_sword", "name": "Blue Sword", "description": "A sword that adds 10 blue damage."},
 ]
 
 

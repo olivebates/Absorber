@@ -118,6 +118,14 @@ func is_hunter_recruited() -> bool:
 	return _hunter_recruited
 
 
+func has_unrestricted_helper_movement() -> bool:
+	return _hunter_recruited
+
+
+func can_overlap_navigation_actor(actor: Node2D) -> bool:
+	return _hunter_recruited or super.can_overlap_navigation_actor(actor)
+
+
 func is_waiting_at_campfire() -> bool:
 	return _hunter_recruited and hunt_state == HuntState.WAITING_AT_CAMPFIRE
 
@@ -273,7 +281,18 @@ func load_save_data(data: Array) -> bool:
 		_reward_fee_paid = false
 	stationary = _hunter_recruited or _is_stationary_before_recruitment()
 	_hunt_target = null
+	_hunt_path_refresh_left = 0.0
+	_hunt_attack_left = 0.0
+	_hunt_attack_visual_time_left = 0.0
+	if _hunt_attack_tween and _hunt_attack_tween.is_valid():
+		_hunt_attack_tween.kill()
+	_hunt_attack_tween = null
+	if is_instance_valid(fox_sprite):
+		fox_sprite.position = Vector2.ZERO
+		fox_sprite.rotation = 0.0
+		fox_sprite.scale = Vector2.ONE
 	_delivery_running = false
+	_stop_patrol()
 	if not _hunter_recruited:
 		# A non-helper save represents the character before recruitment. Return to
 		# the location authored in the current scene instead of leaving them at a
@@ -284,8 +303,28 @@ func load_save_data(data: Array) -> bool:
 		_last_player_cell = INVALID_CELL
 		_follow_target_cell = INVALID_CELL
 		_stop_patrol()
+	elif hunt_state == HuntState.HUNTING or hunt_state == HuntState.RETURNING:
+		call_deferred("_resume_helper_movement_after_load")
 	call_deferred("_refresh_collected_stats_display")
 	return loaded
+
+
+func _resume_helper_movement_after_load() -> void:
+	if not _hunter_recruited or not is_instance_valid(_world):
+		return
+	_hunt_target = null
+	_hunt_path_refresh_left = 0.0
+	_stop_patrol()
+	if hunt_state == HuntState.HUNTING:
+		_hunt_target = _find_nearest_eligible_enemy()
+		if is_instance_valid(_hunt_target):
+			_path = _best_adjacent_path(_hunt_target)
+			_path_index = 1 if _path.size() > 1 else _path.size()
+	elif hunt_state == HuntState.RETURNING:
+		var campfire := _get_area_campfire()
+		if campfire:
+			_path = _world.find_path(global_position, campfire.get_respawn_position(), self)
+			_path_index = 1 if _path.size() > 1 else _path.size()
 
 
 func _process_hunting(delta: float) -> void:

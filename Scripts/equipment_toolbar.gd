@@ -13,6 +13,7 @@ var _secondary_background: Panel
 var _dragged_item: Dictionary = {}
 var _drag_source_storage := ""
 var _drag_source_index := -1
+var _stone_confirmation: PanelContainer
 
 
 func _ready() -> void:
@@ -134,6 +135,8 @@ func _can_move(source: ItemSlot, target: ItemSlot) -> bool:
 	if source.locked or target.locked:
 		return false
 	var item_id := str(source.item.get("item_id", ""))
+	if ItemPickup.is_stone(item_id):
+		return source.storage == "inventory" and (target.storage == "weapon" or target.storage == "armor") and not target.item.is_empty()
 	if target.storage == "weapon" and not ItemPickup.is_weapon(item_id):
 		return false
 	if target.storage == "armor" and not ItemPickup.is_armor(item_id):
@@ -149,7 +152,17 @@ func _can_move(source: ItemSlot, target: ItemSlot) -> bool:
 
 
 func drop_in_slot(source: ItemSlot, target: ItemSlot) -> void:
+	if ItemPickup.is_stone(str(source.item.get("item_id", ""))):
+		request_stone_equip(source.storage, source.slot_index, target.storage, target.slot_index)
+		return
 	_player.move_or_merge(source.storage, source.slot_index, target.storage, target.slot_index)
+
+
+func request_stone_equip(source_storage: String, source_index: int, target_storage: String, target_index: int) -> void:
+	if _player.is_stone_replacement_weaker(source_storage, source_index, target_storage, target_index):
+		_show_stone_confirmation(source_storage, source_index, target_storage, target_index)
+	else:
+		_player.equip_stone(source_storage, source_index, target_storage, target_index)
 
 
 func click_slot(_slot: ItemSlot) -> void:
@@ -215,8 +228,71 @@ func _is_valid_equipment_target(storage: String, index: int, item: Dictionary) -
 	if _is_locked(storage, index):
 		return false
 	var item_id := str(item.get("item_id", ""))
+	if ItemPickup.is_stone(item_id):
+		return not _player.get_slot_item(storage, index).is_empty()
 	return storage == "weapon" and ItemPickup.is_weapon(item_id) \
 		or storage == "armor" and ItemPickup.is_armor(item_id)
+
+
+func _show_stone_confirmation(source_storage: String, source_index: int, target_storage: String, target_index: int) -> void:
+	if is_instance_valid(_stone_confirmation):
+		_stone_confirmation.queue_free()
+	_stone_confirmation = PanelContainer.new()
+	_stone_confirmation.name = "WeakerStoneConfirmation"
+	_stone_confirmation.z_index = 900
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("242938")
+	style.border_color = Color("77819a")
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(7)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
+	_stone_confirmation.add_theme_stylebox_override("panel", style)
+	get_parent().add_child(_stone_confirmation)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 6)
+	_stone_confirmation.add_child(content)
+	var warning := Label.new()
+	warning.text = "This stone is weaker. Replace it?"
+	warning.add_theme_color_override("font_color", Color.WHITE)
+	content.add_child(warning)
+	var buttons := HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_END
+	buttons.add_theme_constant_override("separation", 6)
+	content.add_child(buttons)
+	var cancel := Button.new()
+	cancel.text = "Cancel"
+	cancel.pressed.connect(_close_stone_confirmation)
+	buttons.add_child(cancel)
+	var replace := Button.new()
+	replace.text = "Replace"
+	replace.pressed.connect(func() -> void:
+		if is_instance_valid(_player):
+			_player.equip_stone(source_storage, source_index, target_storage, target_index)
+		_close_stone_confirmation()
+	)
+	buttons.add_child(replace)
+	_stone_confirmation.reset_size()
+	call_deferred("_place_stone_confirmation")
+
+
+func _place_stone_confirmation() -> void:
+	if not is_instance_valid(_stone_confirmation):
+		return
+	var viewport_size := get_viewport_rect().size
+	var mouse := get_viewport().get_mouse_position()
+	_stone_confirmation.position = Vector2(
+		clampf(mouse.x + 14.0, 0.0, maxf(0.0, viewport_size.x - _stone_confirmation.size.x)),
+		clampf(mouse.y + 14.0, 0.0, maxf(0.0, viewport_size.y - _stone_confirmation.size.y))
+	)
+
+
+func _close_stone_confirmation() -> void:
+	if is_instance_valid(_stone_confirmation):
+		_stone_confirmation.queue_free()
+	_stone_confirmation = null
 
 
 func _connect_tooltip(slot: ItemSlot) -> void:

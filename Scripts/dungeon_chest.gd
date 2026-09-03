@@ -162,7 +162,7 @@ func _open(player: FoxPlayer) -> void:
 	if audio:
 		audio.play_purchase()
 	var reward_name := _grant_reward(player)
-	_show_reward_over_player(player, _get_reward_icon())
+	_show_reward_over_player(player, _get_reward_icon(), ItemPickup.get_icon_modulate(item_id) if reward_type == RewardType.ITEM else Color.WHITE)
 	var dialogue := get_tree().get_first_node_in_group("dialogue_ui") as DialogueBox
 	if dialogue and dialogue.play([{
 		"speaker": "Mira",
@@ -268,7 +268,7 @@ func _get_reward_icon() -> Texture2D:
 	return null
 
 
-func _show_reward_over_player(player: FoxPlayer, texture: Texture2D) -> void:
+func _show_reward_over_player(player: FoxPlayer, texture: Texture2D, icon_modulate: Color = Color.WHITE) -> void:
 	_clear_reward_display()
 	_reward_display = Node2D.new()
 	_reward_display.position = Vector2(0, -76)
@@ -285,6 +285,7 @@ func _show_reward_over_player(player: FoxPlayer, texture: Texture2D) -> void:
 		rays.add_child(ray)
 	var icon := Sprite2D.new()
 	icon.texture = texture
+	icon.modulate = icon_modulate
 	if texture:
 		icon.scale = Vector2.ONE * (32.0 / maxf(texture.get_size().x, texture.get_size().y))
 	_reward_display.add_child(icon)

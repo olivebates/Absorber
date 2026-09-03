@@ -98,6 +98,8 @@ func buy_upgrade(upgrade_index: int) -> bool:
 		return false
 	_apply_upgrade(upgrade)
 	var purchase_slot := int(upgrade.get("purchase_slot", upgrade_index))
+	while _shopkeeper.purchase_counts.size() <= purchase_slot:
+		_shopkeeper.purchase_counts.append(0)
 	_shopkeeper.purchase_counts[purchase_slot] += 1
 	_refresh()
 	var after_value: Variant = _get_upgrade_current_value(upgrade_index)
@@ -202,6 +204,10 @@ func _apply_upgrade(upgrade: Dictionary) -> void:
 			_player.increase_auto_fight_range(amount)
 		&"inventory_slot":
 			_player.unlock_inventory_slots(amount)
+		&"equipment_slot":
+			_player.unlock_equipment_slots(amount)
+		&"skill_slot":
+			_player.unlock_next_player_skill_slots(amount)
 		&"skill":
 			_player.unlock_player_skill(StringName(upgrade.get("skill_id", &"")))
 
@@ -230,6 +236,10 @@ func _get_upgrade_current_value(upgrade_index: int) -> Variant:
 			return _player.auto_fight_range_bonus
 		&"inventory_slot":
 			return _player.inventory_slots.size()
+		&"equipment_slot":
+			return _player.equipment_slots_unlocked
+		&"skill_slot":
+			return _player.player_skill_slots_unlocked.count(true)
 		&"skill":
 			return 1 if _player.unlocked_player_skills.has(StringName(upgrade.get("skill_id", &""))) else 0
 	return 0
@@ -509,7 +519,25 @@ func _make_upgrade_button(upgrade_index: int) -> Button:
 	margin.add_child(row)
 	var offer_icon := _make_icon(upgrade["stat_icon"] as Texture2D, Vector2(24, 24))
 	offer_icon.name = "OfferIcon"
-	row.add_child(offer_icon)
+	var stat_kind := StringName(upgrade.get("stat", &""))
+	if stat_kind == &"inventory_slot" or stat_kind == &"equipment_slot" or stat_kind == &"skill_slot":
+		var slot_frame := PanelContainer.new()
+		slot_frame.name = "PurchasableSlotFrame"
+		slot_frame.custom_minimum_size = Vector2(32, 32)
+		slot_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var slot_style := StyleBoxFlat.new()
+		slot_style.bg_color = Color("192236")
+		slot_style.border_color = Color.BLACK
+		slot_style.set_border_width_all(2)
+		slot_style.set_corner_radius_all(4)
+		slot_frame.add_theme_stylebox_override("panel", slot_style)
+		slot_frame.add_child(offer_icon)
+		row.add_child(slot_frame)
+	else:
+		row.add_child(offer_icon)
+	var offered_item_id := str(upgrade.get("item_id", ""))
+	if not offered_item_id.is_empty():
+		offer_icon.modulate = ItemPickup.get_icon_modulate(offered_item_id)
 	if StringName(upgrade["stat"]) == &"damage" or StringName(upgrade["stat"]) == &"defense":
 		var damage_dot := Panel.new()
 		damage_dot.name = "DefenseColorDot" if StringName(upgrade["stat"]) == &"defense" else "DamageColorDot"

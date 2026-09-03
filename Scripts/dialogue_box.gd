@@ -12,6 +12,8 @@ const INPUT_DELAY := 0.8
 const BOTTOM_TOP := -174.0
 const BOTTOM_BOTTOM := -24.0
 const SKILL_TOOLBAR_OFFSET := 64.0
+const TALK_SOUND: AudioStream = preload("res://Music/sndTalk.ogg")
+const DEFAULT_TALK_PITCH_RANGE := Vector2(0.9, 1.1)
 const ACTION_NONE := &""
 const ACTION_TILE_CHOICE := &"tile_choice"
 const ACTION_KEY := &"key"
@@ -22,6 +24,7 @@ var _portrait: TextureRect
 var _name_label: Label
 var _text_label: Label
 var _continue_label: Label
+var _talk_player: AudioStreamPlayer
 var _bottom: MarginContainer
 var _row: HBoxContainer
 var _identity: VBoxContainer
@@ -41,6 +44,8 @@ var _action_key := Key.KEY_NONE
 var _tile_choice_world: WorldNavigation
 var _tile_choice_cells: Array[Vector2i] = []
 var _tile_choice_buttons: Array[Button] = []
+var _talk_pitch_range := DEFAULT_TALK_PITCH_RANGE
+var _talk_sound_play_count := 0
 
 
 func _ready() -> void:
@@ -50,6 +55,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	gui_input.connect(_on_gui_input)
 	_build_interface()
+	_build_talk_player()
 	hide()
 
 
@@ -116,6 +122,7 @@ func advance() -> void:
 func close() -> void:
 	if not visible:
 		return
+	_stop_talk_sound()
 	hide()
 	_lines.clear()
 	_clear_action_mode()
@@ -125,6 +132,7 @@ func close() -> void:
 func cancel() -> void:
 	if not visible:
 		return
+	_stop_talk_sound()
 	hide()
 	_lines.clear()
 	_externally_locked = false
@@ -154,6 +162,7 @@ func set_input_locked(locked: bool) -> void:
 func finish_typing() -> void:
 	_visible_characters = _full_text.length()
 	_text_label.visible_characters = -1
+	_stop_talk_sound()
 	_show_continue_indicator()
 
 
@@ -172,9 +181,12 @@ func _process(delta: float) -> void:
 			_visible_characters += 1
 			_text_label.visible_characters = _visible_characters
 			var revealed := _full_text.substr(_visible_characters - 1, 1)
+			if not revealed.strip_edges().is_empty():
+				_play_talk_sound()
 			_type_delay_left += TYPE_INTERVAL + _punctuation_pause(revealed)
 		if not is_typing():
-			finish_typing()
+			_text_label.visible_characters = -1
+			_show_continue_indicator()
 	else:
 		_continue_time += delta
 		_continue_label.modulate.a = 0.62 + sin(_continue_time * 5.5) * 0.28
@@ -203,7 +215,9 @@ func _show_current_line() -> void:
 	var line := _lines[_line_index]
 	var speaker := str(line.get("speaker", ""))
 	var player_speaking := speaker == "Mira"
+	_stop_talk_sound()
 	_name_label.text = speaker
+	_talk_pitch_range = _resolve_talk_pitch_range(line, speaker)
 	_full_text = str(line.get("text", ""))
 	_text_label.text = _full_text
 	_visible_characters = 0
@@ -232,6 +246,47 @@ func _show_current_line() -> void:
 	_portrait_bob_time = 0.0
 	_animate_speaker()
 	line_shown.emit(_line_index)
+
+
+func _build_talk_player() -> void:
+	_talk_player = AudioStreamPlayer.new()
+	_talk_player.name = "TalkSound"
+	_talk_player.stream = TALK_SOUND
+	_talk_player.bus = &"SFX"
+	_talk_player.max_polyphony = 8
+	add_child(_talk_player)
+
+
+func _play_talk_sound() -> void:
+	if not is_instance_valid(_talk_player):
+		return
+	_talk_player.pitch_scale = randf_range(_talk_pitch_range.x, _talk_pitch_range.y)
+	_talk_player.play()
+	_talk_sound_play_count += 1
+
+
+func _stop_talk_sound() -> void:
+	if is_instance_valid(_talk_player):
+		_talk_player.stop()
+
+
+func _resolve_talk_pitch_range(line: Dictionary, speaker: String) -> Vector2:
+	if line.has("talk_pitch_min") and line.has("talk_pitch_max"):
+		return _ordered_pitch_range(float(line["talk_pitch_min"]), float(line["talk_pitch_max"]))
+	for character in get_tree().get_nodes_in_group("dialogue_speakers"):
+		if not is_instance_valid(character) or not character.has_method("get_dialogue_speaker_name") \
+				or not character.has_method("get_talk_pitch_range"):
+			continue
+		if str(character.call("get_dialogue_speaker_name")) != speaker:
+			continue
+		var pitch_range: Variant = character.call("get_talk_pitch_range")
+		if pitch_range is Vector2:
+			return _ordered_pitch_range(pitch_range.x, pitch_range.y)
+	return DEFAULT_TALK_PITCH_RANGE
+
+
+func _ordered_pitch_range(first: float, second: float) -> Vector2:
+	return Vector2(maxf(0.01, minf(first, second)), maxf(0.01, maxf(first, second)))
 
 
 func _build_interface() -> void:

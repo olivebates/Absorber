@@ -21,6 +21,7 @@ var _empty_icon: TextureRect
 var _cooldown_overlay: ColorRect
 var _lock_icon: TextureRect
 var _merge_amount_label: Label
+var _stone_icon: TextureRect
 var _disabled_line: Line2D
 var _was_dragged := false
 var _merge_tween: Tween
@@ -47,7 +48,19 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		add_child(_icon)
 	_icon.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", ""))) if not item.is_empty() else null
 	_icon.visible = not item.is_empty()
-	_icon.modulate = EQUIPMENT_YELLOW_TINT if not item.is_empty() and ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
+	_icon.modulate = _get_item_tint(str(item.get("item_id", "")))
+	if _stone_icon == null:
+		_stone_icon = TextureRect.new()
+		_stone_icon.name = "EquippedStoneIcon"
+		_stone_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_stone_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_stone_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_stone_icon.z_index = 6
+		add_child(_stone_icon)
+	var equipped_stone := ItemPickup.get_equipped_stone(item)
+	_stone_icon.texture = ItemPickup.ITEM_TEXTURES.get(str(equipped_stone.get("item_id", ""))) if not equipped_stone.is_empty() else null
+	_stone_icon.modulate = ItemPickup.get_icon_modulate(str(equipped_stone.get("item_id", "")))
+	_stone_icon.visible = not equipped_stone.is_empty()
 	if _merge_amount_label == null:
 		_merge_amount_label = Label.new()
 		_merge_amount_label.name = "MergeAmount"
@@ -61,7 +74,7 @@ func configure(new_owner: Control, new_storage: String, new_slot_index: int, new
 		_merge_amount_label.z_index = 4
 		add_child(_merge_amount_label)
 	_merge_amount_label.text = str(ItemPickup.get_merge_amount(item))
-	_merge_amount_label.visible = not item.is_empty() and ItemPickup.is_equipment(str(item.get("item_id", "")))
+	_merge_amount_label.visible = not item.is_empty() and (ItemPickup.is_equipment(str(item.get("item_id", ""))) or ItemPickup.is_stone(str(item.get("item_id", ""))))
 	if _empty_icon == null:
 		_empty_icon = TextureRect.new()
 		_empty_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -135,6 +148,9 @@ func _update_cooldown_overlay() -> void:
 	if _merge_amount_label:
 		_merge_amount_label.position = Vector2(2, 1)
 		_merge_amount_label.size = slot_size - Vector2(5, 4)
+	if _stone_icon:
+		_stone_icon.position = Vector2(3, slot_size.y - 11)
+		_stone_icon.size = Vector2(8, 8)
 
 
 func _get_drag_data(_at_position: Vector2) -> Variant:
@@ -144,7 +160,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	owner_ui.call("begin_slot_drag", self)
 	var preview := TextureRect.new()
 	preview.texture = ItemPickup.ITEM_TEXTURES.get(str(item.get("item_id", "")))
-	preview.modulate = EQUIPMENT_YELLOW_TINT if ItemPickup.is_equipment(str(item.get("item_id", ""))) else Color.WHITE
+	preview.modulate = _get_item_tint(str(item.get("item_id", "")))
 	preview.custom_minimum_size = Vector2(32, 32)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -225,3 +241,10 @@ func _set_style(background: Color, merge_highlight: bool) -> void:
 	style.set_corner_radius_all(4)
 	_panel_style = style
 	add_theme_stylebox_override("panel", style)
+
+
+func _get_item_tint(item_id: String) -> Color:
+	var tint := ItemPickup.get_icon_modulate(item_id)
+	if ItemPickup.is_equipment(item_id) and tint == Color.WHITE:
+		return EQUIPMENT_YELLOW_TINT
+	return tint

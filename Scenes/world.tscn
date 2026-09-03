@@ -51,6 +51,8 @@
 [ext_resource type="PackedScene" uid="uid://cy2w0af4uuhto" path="res://Scenes/dungeon1_Snakemouth.tscn" id="53_g44x5"]
 [ext_resource type="Script" uid="uid://b2fvg70vc3lbe" path="res://Scripts/skill_toolbar.gd" id="54_skill_toolbar"]
 [ext_resource type="Script" uid="uid://urfxb30a5c3m" path="res://Scripts/quest_log.gd" id="55_quest_log"]
+[ext_resource type="Script" uid="uid://iucet88oq222" path="res://Scripts/merge_upgrade_banners.gd" id="56_merge_banners"]
+[ext_resource type="Script" uid="uid://c33hvu7fisoo2" path="res://Scripts/commerce_hub.gd" id="57_commerce_hub"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_floor_variation"]
 shader = ExtResource("45_floor_variation")
@@ -308,33 +310,22 @@ sources/1 = SubResource("TileSetAtlasSource_1cojt")
 sources/2 = SubResource("TileSetAtlasSource_pyn1s")
 sources/3 = SubResource("TileSetAtlasSource_xbk3s")
 
-[sub_resource type="Resource" id="Resource_l33cg"]
-script = ExtResource("19_13n8b")
-chance = 0.2
-metadata/_custom_type_script = "uid://cd0pekaifnq4k"
-
-[sub_resource type="Resource" id="Resource_13n8b"]
-script = ExtResource("19_13n8b")
-item_type = 1
-chance = 0.1
-metadata/_custom_type_script = "uid://cd0pekaifnq4k"
-
 [sub_resource type="Resource" id="Resource_uqdn7"]
 script = ExtResource("19_13n8b")
-item_type = 1
-chance = 0.1
+item_type = 11
+chance = 0.05
 metadata/_custom_type_script = "uid://cd0pekaifnq4k"
 
-[sub_resource type="Resource" id="Resource_v5t50"]
+[sub_resource type="Resource" id="Resource_tm1lj"]
 script = ExtResource("19_13n8b")
-item_type = 1
-chance = 0.1
+item_type = 8
+chance = 1.0
 metadata/_custom_type_script = "uid://cd0pekaifnq4k"
 
 [sub_resource type="Resource" id="Resource_gwaj6"]
 script = ExtResource("19_13n8b")
-item_type = 2
-chance = 0.2
+item_type = 10
+chance = 0.05
 metadata/_custom_type_script = "uid://cd0pekaifnq4k"
 
 [node name="World" type="Node2D" unique_id=1129400803]
@@ -406,6 +397,10 @@ position = Vector2(864, 416)
 [node name="Campfire2" parent="." unique_id=939463375 instance=ExtResource("15_campfire")]
 position = Vector2(2016, 1952)
 area_id = 2
+
+[node name="Campfire3" parent="." unique_id=1872340801 instance=ExtResource("15_campfire")]
+position = Vector2(6688, 2656)
+area_id = 5
 
 [node name="ChickenSpawn2" parent="." unique_id=946325617 instance=ExtResource("4_spawn")]
 position = Vector2(416, 96)
@@ -580,7 +575,6 @@ enemy_damage = 16
 enemy_damage_color = 1
 aggressive = true
 enemy_type = 21
-item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_l33cg")])
 
 [node name="ChickenSpawn39" parent="." unique_id=454940025 instance=ExtResource("4_spawn")]
 position = Vector2(4640, 2080)
@@ -596,54 +590,129 @@ enemy_damage_color = 1
 enemy_type = 12
 
 [node name="ChickenSpawn43" parent="." unique_id=1479723677 instance=ExtResource("4_spawn")]
-position = Vector2(7040, 2624)
+position = Vector2(7072, 2592)
 respawn_time = 1800.0
 max_enemies = 1
-area_id = 3
+area_id = 5
+stat_reward_amount = 2
 damage_reward_color = 2
 defense_reward_color = 2
 reward_resource_id = &"jewels"
 enemy_health = 300
 enemy_damage = 20
 enemy_damage_color = 2
-enemy_type = 15
+enemy_type = 17
+
+[node name="ChickenSpawn47" parent="." unique_id=308487100 instance=ExtResource("4_spawn")]
+position = Vector2(5344, 2336)
+respawn_time = 1800.0
+max_enemies = 1
+area_id = 5
+stat_reward_amount = 2
+damage_reward_color = 2
+defense_reward_color = 2
+reward_resource_id = &"jewels"
+enemy_health = 300
+enemy_damage = 20
+enemy_damage_color = 2
+enemy_type = 17
+
+[node name="ChickenSpawn48" parent="." unique_id=841972270 instance=ExtResource("4_spawn")]
+position = Vector2(6240, 416)
+respawn_time = 1800.0
+max_enemies = 1
+area_id = 5
+stat_reward_amount = 2
+damage_reward_color = 2
+defense_reward_color = 2
+reward_resource_id = &"jewels"
+enemy_health = 300
+enemy_damage = 20
+enemy_damage_color = 2
+enemy_type = 17
+
+[node name="ChickenSpawn49" parent="." unique_id=331687835 instance=ExtResource("4_spawn")]
+position = Vector2(7712, 1568)
+respawn_time = 1800.0
+max_enemies = 1
+area_id = 5
+stat_reward_amount = 2
+damage_reward_color = 2
+defense_reward_color = 2
+reward_resource_id = &"jewels"
+enemy_health = 300
+enemy_damage = 20
+enemy_damage_color = 2
+enemy_type = 17
+
+[node name="ChickenSpawn50" parent="." unique_id=1971760163 instance=ExtResource("4_spawn")]
+position = Vector2(8672, 928)
+respawn_time = 1800.0
+max_enemies = 1
+area_id = 5
+stat_reward_amount = 2
+damage_reward_color = 2
+defense_reward_color = 2
+reward_resource_id = &"jewels"
+enemy_health = 300
+enemy_damage = 20
+enemy_damage_color = 2
+enemy_type = 17
+
+[node name="ChickenSpawn51" parent="." unique_id=1750673589 instance=ExtResource("4_spawn")]
+position = Vector2(8288, 2656)
+respawn_time = 1800.0
+max_enemies = 1
+area_id = 5
+stat_reward_amount = 2
+damage_reward_color = 2
+defense_reward_color = 2
+reward_resource_id = &"jewels"
+enemy_health = 300
+enemy_damage = 20
+enemy_damage_color = 2
+enemy_type = 17
 
 [node name="ChickenSpawn45" parent="." unique_id=2022002351 instance=ExtResource("4_spawn")]
-position = Vector2(6816, 2528)
-respawn_time = 1800.0
-area_id = 3
+position = Vector2(6880, 3040)
+respawn_time = 900.0
+area_id = 5
+stat_reward_amount = 5
+reward_type = 1
 damage_reward_color = 2
 defense_reward_color = 2
 reward_resource_id = &"jewels"
 enemy_health = 400
 enemy_damage = 4
 enemy_damage_color = 2
-enemy_type = 16
+enemy_type = 15
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_uqdn7")])
 
 [node name="ChickenSpawn46" parent="." unique_id=665364156 instance=ExtResource("4_spawn")]
-position = Vector2(6048, 2592)
-respawn_time = 1800.0
-max_enemies = 1
-area_id = 5
-damage_reward_color = 2
-defense_reward_color = 2
-reward_resource_id = &"jewels"
-enemy_health = 100
-enemy_damage = 2
-enemy_damage_color = 2
-enemy_type = 17
-
-[node name="ChickenSpawn44" parent="." unique_id=390675333 instance=ExtResource("4_spawn")]
-position = Vector2(6432, 2464)
+position = Vector2(6304, 2592)
 respawn_time = 900.0
 max_enemies = 4
-area_id = 3
-stat_reward_amount = 4
+area_id = 5
+stat_reward_amount = 3
 reward_type = 1
 damage_reward_color = 2
 defense_reward_color = 2
 reward_resource_id = &"jewels"
-enemy_health = 200
+enemy_health = 400
+enemy_damage = 2
+enemy_damage_color = 2
+enemy_type = 14
+
+[node name="ChickenSpawn44" parent="." unique_id=390675333 instance=ExtResource("4_spawn")]
+position = Vector2(6624, 2208)
+respawn_time = 900.0
+area_id = 5
+stat_reward_amount = 3
+reward_type = 1
+damage_reward_color = 2
+defense_reward_color = 2
+reward_resource_id = &"jewels"
+enemy_health = 400
 enemy_damage_color = 2
 enemy_type = 14
 
@@ -681,6 +750,7 @@ enemy_skill_1_damage_type = 1
 enemy_skill_1_cooldown = 9.0
 enemy_skill_1_initial_cooldown_offset = 3.0
 enemy_type = 13
+item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_tm1lj")])
 
 [node name="ChickenSpawn34" parent="." unique_id=587052680 instance=ExtResource("4_spawn")]
 position = Vector2(2400, 3616)
@@ -696,7 +766,6 @@ enemy_health = 160
 enemy_damage = 17
 enemy_damage_color = 1
 enemy_type = 9
-item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
 
 [node name="ChickenSpawn38" parent="." unique_id=1968417412 instance=ExtResource("4_spawn")]
 position = Vector2(1440, 3488)
@@ -712,7 +781,6 @@ enemy_health = 160
 enemy_damage = 17
 enemy_damage_color = 1
 enemy_type = 9
-item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
 
 [node name="ChickenSpawn28" parent="." unique_id=722446106 instance=ExtResource("4_spawn")]
 position = Vector2(2912, 3424)
@@ -771,7 +839,6 @@ enemy_health = 160
 enemy_damage = 17
 enemy_damage_color = 1
 enemy_type = 9
-item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_uqdn7")])
 
 [node name="ChickenSpawn24" parent="." unique_id=1751302336 instance=ExtResource("4_spawn")]
 position = Vector2(1568, 2976)
@@ -786,7 +853,6 @@ enemy_health = 160
 enemy_damage = 17
 enemy_damage_color = 1
 enemy_type = 9
-item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
 
 [node name="ChickenSpawn27" parent="." unique_id=599286039 instance=ExtResource("4_spawn")]
 position = Vector2(3232, 1696)
@@ -801,7 +867,6 @@ enemy_health = 160
 enemy_damage = 17
 enemy_damage_color = 1
 enemy_type = 9
-item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_13n8b")])
 
 [node name="ChickenSpawn41" parent="." unique_id=1914977612 instance=ExtResource("4_spawn")]
 position = Vector2(3232, 2336)
@@ -816,7 +881,6 @@ enemy_health = 160
 enemy_damage = 17
 enemy_damage_color = 1
 enemy_type = 9
-item_drops = Array[ExtResource("19_13n8b")]([SubResource("Resource_v5t50")])
 
 [node name="ChickenSpawn25" parent="." unique_id=455699342 instance=ExtResource("4_spawn")]
 position = Vector2(1312, 4128)
@@ -1078,6 +1142,26 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("55_quest_log")
+
+[node name="CommerceHub" type="Control" parent="HUD" unique_id=1406015722]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("57_commerce_hub")
+
+[node name="MergeUpgradeBanners" type="Control" parent="HUD" unique_id=1915865657]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("56_merge_banners")
 
 [node name="SettingsMenu" type="Control" parent="HUD" unique_id=2124534503]
 layout_mode = 3
