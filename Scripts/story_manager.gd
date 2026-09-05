@@ -12,6 +12,8 @@ const NIA_PORTRAIT := preload("res://Sprites/FoxNia.webp")
 const LUCA_PORTRAIT := preload("res://Sprites/FoxLuca.webp")
 const DERU_PORTRAIT := preload("res://Sprites/FoxDeruSad.webp")
 const DERU_HAPPY_PORTRAIT := preload("res://Sprites/FoxDeruHappy.webp")
+const CHLOE_PORTRAIT := preload("res://Sprites/FoxChloe.webp")
+const RANDAL_PORTRAIT := preload("res://Sprites/foxRandal.webp")
 
 var completed_dialogues := 0
 var first_gate_opened := false
@@ -23,6 +25,9 @@ var _luca: FoxLuca
 var _lio: FoxLio
 var _nia: StoryFox
 var _deru: FoxDeru
+var _chloe: FoxChloe
+var _randal: FoxRandal
+var _randals_ball_pickup: RandalsBallPickup
 var _first_gate: Gate
 var _bull_spawn: EnemySpawnPoint
 var _first_gate_cell := Vector2i.ZERO
@@ -74,7 +79,8 @@ func _process(_delta: float) -> void:
 		return
 	if _world.gameplay_paused:
 		return
-	if not is_instance_valid(_asha) or not is_instance_valid(_luca) or not is_instance_valid(_lio) or not is_instance_valid(_nia):
+	if not is_instance_valid(_asha) or not is_instance_valid(_luca) or not is_instance_valid(_lio) \
+			or not is_instance_valid(_nia) or not is_instance_valid(_chloe) or not is_instance_valid(_randal):
 		_find_characters()
 	if _dialogue_box == null or _dialogue_box.is_open() or _active_dialogue != 0 or _active_event != &"":
 		return
@@ -170,6 +176,91 @@ func interact_with(character_id: StringName) -> bool:
 		_reopen_shop_after_dialogue = false
 		_shop_to_reopen = null
 		return false
+	if character_id == &"chloe":
+		if _has_seen(&"chloe_intro"):
+			return false
+		_seen_events[&"chloe_intro"] = true
+		_reopen_shop_after_dialogue = true
+		_shop_to_reopen = _chloe
+		if _play_default_dialogue([
+			_line("Chloe", "Hi there! I've got a few useful things if you'd like to trade.", CHLOE_PORTRAIT),
+			_line("Chloe", "Take a look and let me know what catches your eye.", CHLOE_PORTRAIT),
+		]):
+			return true
+		_seen_events.erase(&"chloe_intro")
+		_reopen_shop_after_dialogue = false
+		_shop_to_reopen = null
+		return false
+	if character_id == &"randal":
+		if not _has_seen(&"randal_intro"):
+			_seen_events[&"randal_intro"] = true
+			_refresh_randals_ball_pickup()
+			return _play_default_dialogue([
+				_line("Randal", "Oh no... I can't find my ball anywhere!", RANDAL_PORTRAIT),
+				_line("Mira", "Where did you last have it?", PLAYER_PORTRAIT),
+				_line("Randal", "Somewhere nearby, I think. It must have rolled away while I was playing.", RANDAL_PORTRAIT),
+				_line("Mira", "I'll keep an eye out for it.", PLAYER_PORTRAIT),
+			])
+		if not _has_seen(&"randal_ball_delivered"):
+			if _world.player.has_inventory_item("randals_ball"):
+				_world.player.remove_quest_item("randals_ball")
+				_seen_events[&"randal_ball_collected"] = true
+				_seen_events[&"randal_ball_delivered"] = true
+				_refresh_randals_ball_pickup()
+				_active_event = &"randal_recruitment"
+				return _play_default_dialogue([
+					_line("Mira", "Randal, is this the ball you were looking for?", PLAYER_PORTRAIT),
+					_line("Randal", "It is! I thought I'd lost it for good.", RANDAL_PORTRAIT),
+					_line("Mira", "It rolled pretty far down the path. Here you go.", PLAYER_PORTRAIT),
+					_line("Randal", "Thank you, Mira. What can I do to return the favor?", RANDAL_PORTRAIT),
+					_line("Mira", "I could use some help clearing the creatures out of these woods.", PLAYER_PORTRAIT),
+					_line("Randal", "I know these woods pretty well. Leave a few of them to me—I’ll meet you at the campfire afterward.", RANDAL_PORTRAIT),
+				])
+			return _play_default_dialogue([
+				_line("Randal", "My ball has to be around here somewhere. Please let me know if you find it!", RANDAL_PORTRAIT),
+			])
+		if is_instance_valid(_randal) and _randal.is_hunter_recruited():
+			if _randal.is_waiting_at_campfire():
+				if _randal.is_reward_handoff_free():
+					_active_event = &"randal_reward_intro"
+					if _play_default_dialogue([
+						_line("Randal", "I found a few things out there. These are yours!", RANDAL_PORTRAIT),
+					]):
+						_randal.authorize_free_reward_handoff()
+						return true
+					_active_event = &""
+					return false
+				if not _randal.has_paid_reward_fee() and not _randal.can_pay_reward_fee():
+					return _play_default_dialogue([
+						_line("Randal", "That was a big haul. Bring me 3 Gold and I'll hand it all over.", RANDAL_PORTRAIT),
+					])
+				_active_event = &"randal_reward_intro"
+				if _play_default_dialogue([
+					_line("Randal", "Here's everything I gathered for you.", RANDAL_PORTRAIT),
+				]):
+					if not _randal.has_paid_reward_fee():
+						_randal.pay_reward_fee()
+					return true
+				_active_event = &""
+				return false
+			return _play_default_dialogue([
+				_line("Randal", "I'm still clearing out the creatures. Meet me at the campfire when I'm finished!", RANDAL_PORTRAIT),
+			])
+		return false
+	if character_id == &"randals_ball":
+		if not is_randal_quest_started() or is_randal_quest_completed() or is_randals_ball_collected():
+			return false
+		if not _world.player.can_collect_item("randals_ball"):
+			return _play_default_dialogue([
+				_line("Mira", "There's Randal's ball, but I need to make room in my inventory first.", PLAYER_PORTRAIT),
+			])
+		if not _world.player.collect_item("randals_ball"):
+			return false
+		_seen_events[&"randal_ball_collected"] = true
+		_refresh_randals_ball_pickup()
+		return _play_default_dialogue([
+			_line("Mira", "There it is! I should bring Randal's ball back to him.", PLAYER_PORTRAIT),
+		])
 	if character_id == &"lio":
 		if is_instance_valid(_lio) and _lio.is_hunter_recruited():
 			if _lio.is_waiting_at_campfire():
@@ -324,6 +415,19 @@ func is_deru_quest_completed() -> bool:
 	return _has_seen(&"deru_parts_delivered")
 
 
+func is_randal_quest_started() -> bool:
+	return _has_seen(&"randal_intro")
+
+
+func is_randals_ball_collected() -> bool:
+	return _has_seen(&"randal_ball_collected") or is_instance_valid(_world) \
+		and is_instance_valid(_world.player) and _world.player.has_inventory_item("randals_ball")
+
+
+func is_randal_quest_completed() -> bool:
+	return _has_seen(&"randal_ball_delivered")
+
+
 func is_asha_recruited() -> bool:
 	return _has_seen(&"asha_recruited")
 
@@ -362,6 +466,20 @@ func get_quest_log_entries() -> Array[Dictionary]:
 				{"text": "Ask Asha about spare cart parts.", "completed": _has_seen(&"asha_deru_parts_intro") or _has_seen(&"spare_parts_purchased")},
 				{"text": "Buy the spare cart parts from Asha.", "completed": _has_seen(&"spare_parts_purchased")},
 				{"text": "Bring the spare cart parts to Deru.", "completed": deru_completed},
+			],
+		})
+	if _has_seen(&"randal_intro"):
+		var ball_collected := is_randals_ball_collected()
+		var randal_completed := is_randal_quest_completed()
+		quests.append({
+			"id": &"randals_ball",
+			"title": "Randal's Lost Ball",
+			"location": "Whippersnapper Woods",
+			"completed": randal_completed,
+			"steps": [
+				{"text": "Ask Randal what he lost.", "completed": true},
+				{"text": "Find and pick up Randal's Ball.", "completed": ball_collected},
+				{"text": "Return Randal's Ball to him.", "completed": randal_completed},
 			],
 		})
 	return quests
@@ -447,6 +565,9 @@ func _find_characters() -> void:
 	_deru = _world.get_node_or_null("FoxDeru") as FoxDeru
 	_luca = _world.get_node_or_null("FoxLuca") as FoxLuca
 	_lio = _world.get_node_or_null("FoxLio") as FoxLio
+	_chloe = _world.get_node_or_null("FoxChloe") as FoxChloe
+	_randal = _world.get_node_or_null("FoxRandal") as FoxRandal
+	_randals_ball_pickup = _world.get_node_or_null("randalsBallPickup") as RandalsBallPickup
 	for node in get_tree().get_nodes_in_group("story_characters"):
 		if node is StoryFox:
 			var fox := node as StoryFox
@@ -456,7 +577,15 @@ func _find_characters() -> void:
 		_asha.set_recruited(is_asha_recruited(), false)
 	if is_instance_valid(_lio) and _has_seen(&"lio_recruited") and not _lio.is_hunter_recruited():
 		_lio.set_hunter_recruited(true)
+	if is_instance_valid(_randal) and is_randal_quest_completed() and not _randal.is_hunter_recruited():
+		_randal.set_hunter_recruited(true)
 	_apply_deru_repaired_state()
+	_refresh_randals_ball_pickup()
+
+
+func _refresh_randals_ball_pickup() -> void:
+	if is_instance_valid(_randals_ball_pickup):
+		_randals_ball_pickup.refresh_availability()
 
 
 func _apply_deru_repaired_state() -> void:
@@ -501,6 +630,7 @@ func on_structure_built(resource_id: StringName, deposit: GoldOre = null) -> voi
 			_trigger_event_once(&"gem_mine")
 		&"wood":
 			_trigger_event_once(&"wood_lodge")
+	_trigger_event_once(&"first_structure_build_tip")
 
 
 func on_asha_purchase(item_id := "") -> void:
@@ -563,6 +693,16 @@ func on_lio_purchase() -> void:
 	_trigger_event_once(&"lio_purchase")
 
 
+func on_chloe_purchase() -> void:
+	if _has_seen(&"chloe_purchase"):
+		return
+	if is_instance_valid(_chloe):
+		_chloe.close_shop()
+	_reopen_shop_after_dialogue = true
+	_shop_to_reopen = _chloe
+	_trigger_event_once(&"chloe_purchase")
+
+
 func on_lio_reward_delivery_finished() -> void:
 	if not is_instance_valid(_dialogue_box):
 		return
@@ -581,6 +721,16 @@ func on_deru_reward_delivery_finished() -> void:
 		return
 	if not _begin_event_dialogue(&"deru_hunt_departure") and is_instance_valid(_deru):
 		_deru.start_hunting_after_handoff()
+
+
+func on_randal_reward_delivery_finished() -> void:
+	if not is_instance_valid(_dialogue_box):
+		return
+	if _dialogue_box.is_open() or _active_event != &"":
+		_queued_events.append(&"randal_hunt_departure")
+		return
+	if not _begin_event_dialogue(&"randal_hunt_departure") and is_instance_valid(_randal):
+		_randal.start_hunting_after_handoff()
 
 
 func _is_nearest_gold_ore_to_lio(deposit: GoldOre) -> bool:
@@ -652,6 +802,9 @@ func _on_dialogue_finished() -> void:
 	if finished_event == &"deru_recruitment":
 		if is_instance_valid(_deru):
 			_deru.set_repaired(true)
+	if finished_event == &"randal_recruitment":
+		if is_instance_valid(_randal):
+			_randal.set_hunter_recruited(true)
 	if finished_event == &"asha_first_smooch":
 		_finish_first_smooch()
 		return
@@ -666,12 +819,19 @@ func _on_dialogue_finished() -> void:
 		if is_instance_valid(_deru):
 			_deru.begin_reward_delivery()
 		return
+	if finished_event == &"randal_reward_intro":
+		if is_instance_valid(_randal):
+			_randal.begin_reward_delivery()
+		return
 	if finished_event == &"lio_hunt_departure":
 		if is_instance_valid(_lio):
 			_lio.start_hunting_after_handoff()
 	if finished_event == &"deru_hunt_departure":
 		if is_instance_valid(_deru):
 			_deru.start_hunting_after_handoff()
+	if finished_event == &"randal_hunt_departure":
+		if is_instance_valid(_randal):
+			_randal.start_hunting_after_handoff()
 	if not _queued_events.is_empty():
 		_begin_event_dialogue(_queued_events.pop_front())
 		return
@@ -911,6 +1071,8 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			return [_line("Mira", "That'll do nicely.", PLAYER_PORTRAIT)]
 		&"wood_lodge":
 			return [_line("Mira", "A nice lodge to cut my wood from!", PLAYER_PORTRAIT)]
+		&"first_structure_build_tip":
+			return [_line("Mira", "Plus, if I click it again, I can build even more things!", PLAYER_PORTRAIT)]
 		&"campfire_adjacent":
 			return [_line("Mira", "What a nice temperature.", PLAYER_PORTRAIT)]
 		&"asha_purchase":
@@ -933,10 +1095,14 @@ func _get_event_dialogue(event_id: StringName) -> Array[Dictionary]:
 			return [_line("Lucie", "Appreicate it.", LUCA_PORTRAIT)]
 		&"lio_purchase":
 			return [_line("Lio", "Oh man, I'm so hungry, thank you!", LIO_PORTRAIT)]
+		&"chloe_purchase":
+			return [_line("Chloe", "Lovely choice. Thank you!", CHLOE_PORTRAIT)]
 		&"lio_hunt_departure":
 			return [_line("Lio", "Once those critters return, I'll head out again! :)", LIO_PORTRAIT)]
 		&"deru_hunt_departure":
 			return [_line("Deru", "I'll be heading out once the creatures start comming back.", DERU_HAPPY_PORTRAIT)]
+		&"randal_hunt_departure":
+			return [_line("Randal", "Once the creatures return, I'll head out again!", RANDAL_PORTRAIT)]
 		&"campfire_teleport":
 			return [_line("Mira", "Convenient.", PLAYER_PORTRAIT)]
 		&"evil_goat_killed":

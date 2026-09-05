@@ -26,13 +26,19 @@ Buying Deru's Spare Cart Parts starts Asha's recruitment conversation. When Mira
 
 Giving the parts to Deru repairs his cart and recruits him instead of turning him into a shopkeeper. Deru deals 7 damage per hit while hunting eligible enemies throughout AreaID 2, carries stat rewards and item drops, and returns to the AreaID 2 campfire for the same reward-handoff loop used by Lio. Helpers also carry item drops. If Mira cannot fit everything, an inventory-transfer popup lets the player choose what to keep before confirmation clears the helper's item inventory. Small deliveries are free and large deliveries cost 3 Gems. Hovering either waiting helper at a campfire shows their carried rewards and price in an equipment-style popup.
 
+Randal asks Mira to find his lost ball. Starting the quest reveals the interaction-only `randalsBallPickup`; interacting with it adds the protected `Randal's Ball` quest item to inventory. When Mira returns it, Randal asks how he can repay her, Mira suggests helping clear the creatures from the woods, and he agrees before joining the helper loop for every eligible AreaID 5 enemy. Randal deals 17 damage per hit. Each quest stage has distinct introduction, reminder, pickup, return, and post-recruitment dialogue.
+
+## Chloe's shop
+
+Chloe trades one Herb for 2 Cave Moss and one Cave Moss for 2 Wood. She also sells +4 blue damage starting at 5 Cave Moss and a single one-time inventory slot for 15 Cave Moss. Inventory, equipment, and skill slots are absent from every other shop.
+
 ## Quest log
 
-The Quest Log opens from the `iconQuest` button aligned above the inventory. Lio's first conversation starts the Tiny Woods quest: build the mine next to him, build the two remaining gold mines, then recruit him. Deru's cart-parts story is the Snakemouth Expanse quest. Titles show their location in parentheses. The log shows every step through the current one, crosses out finished steps in red, and marks a completed quest with a green checkmark. Starting or advancing either quest sends a red dot from Mira into the button and makes it pulse as the update is absorbed.
+The Quest Log opens from the `iconQuest` button aligned above the inventory. Lio's first conversation starts the Tiny Woods quest: build the mine next to him, build the two remaining gold mines, then recruit him. Deru's cart-parts story is the Snakemouth Expanse quest, and Randal's lost-ball story is the Whippersnapper Woods quest. Titles show their location in parentheses. The log shows every step through the current one, crosses out finished steps in red, and marks a completed quest with a green checkmark. Starting or advancing a quest sends a red dot from Mira into the button and makes it pulse as the update is absorbed.
 
 ## One-time remarks
 
-Mira comments once upon coming within seven tiles of the cave bull, building each producer type, standing directly beside a campfire, crossing the former gate tile, reaching the second campfire, teleporting to a different campfire, and killing the Evil Goat at ChickenSpawn12. Building a mine on the gold rock nearest Lio prompts his two-line reaction. Mad Coyote's first snare produces the skill-sensitive escape prompt, and its first defeat celebrates clearing the path. Each shopkeeper's first successful purchase temporarily closes their shop for a one-time response, then reopens it.
+Mira comments once upon coming within seven tiles of the cave bull, building each producer type, standing directly beside a campfire, crossing the former gate tile, reaching the second campfire, teleporting to a different campfire, and killing the Evil Goat at ChickenSpawn12. The first producer construction follows its existing remark with `Plus, if I click it again, I can build even more things!` Building a mine on the gold rock nearest Lio prompts his two-line reaction. Mad Coyote's first snare produces the skill-sensitive escape prompt, and its first defeat celebrates clearing the path. Each shopkeeper's first successful purchase temporarily closes their shop for a one-time response, then reopens it.
 
 ## Presentation and triggers
 
@@ -44,4 +50,4 @@ Mira comments once upon coming within seven tiles of the cave bull, building eac
 - The dialogue panel stays centered and fits its width to the current message, up to its wrapping limit.
 - Mira's portrait and name appear unflipped on the left. NPC portraits and names appear on the right, with the portrait flipped toward the text; Asha is the exception and remains unflipped.
 - All fox NPCs stop moving while the dialogue box is open.
-- Story progress, every one-time-event flag, and Lio/Nia positions persist in saves.
+- Story progress, every one-time-event flag, Chloe's purchases, and all helper state persist in saves.

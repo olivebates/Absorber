@@ -56,6 +56,9 @@
 [ext_resource type="PackedScene" uid="uid://dd1f0xko0dai8" path="res://Scenes/dungeon3_Forest2.tscn" id="56_g44x5"]
 [ext_resource type="Script" uid="uid://iucet88oq222" path="res://Scripts/merge_upgrade_banners.gd" id="56_merge_banners"]
 [ext_resource type="Script" uid="uid://c33hvu7fisoo2" path="res://Scripts/commerce_hub.gd" id="57_commerce_hub"]
+[ext_resource type="PackedScene" path="res://Scenes/fox_chloe.tscn" id="58_fox_chloe"]
+[ext_resource type="PackedScene" path="res://Scenes/fox_randal.tscn" id="59_fox_randal"]
+[ext_resource type="PackedScene" path="res://Scenes/randals_ball_pickup.tscn" id="60_randals_ball"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_floor_variation"]
 shader = ExtResource("45_floor_variation")
@@ -1436,6 +1439,17 @@ position = Vector2(2464, 3104)
 
 [node name="FoxLuca" parent="." unique_id=984191575 instance=ExtResource("34_fox_luca")]
 position = Vector2(4000, 2080)
+
+[node name="FoxChloe" parent="." unique_id=107752112 instance=ExtResource("58_fox_chloe")]
+position = Vector2(8544, 1440)
+
+[node name="FoxRandal" parent="." unique_id=347967011 instance=ExtResource("59_fox_randal")]
+position = Vector2(5472, 736)
+reverse_sprite_orientation = true
+stationary = false
+
+[node name="randalsBallPickup" parent="." unique_id=1372054343 instance=ExtResource("60_randals_ball")]
+position = Vector2(5280, 1248)
 
 [node name="StoryManager" type="Node" parent="." unique_id=1135423176]
 script = ExtResource("31_story")

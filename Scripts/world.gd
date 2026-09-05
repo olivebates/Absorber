@@ -361,7 +361,15 @@ func find_path_to_actor_adjacent(from_world: Vector2, target_actor: Node2D, movi
 	var cell_path := _find_cell_path(start, goal, occupied, true)
 	if cell_path.size() <= 1:
 		return PackedVector2Array()
+	# Jump Point Search can represent a long straight route using only its start
+	# and goal. Preserve the tile immediately before the actor instead of simply
+	# removing the goal, which would otherwise erase the whole approach route.
+	var final_direction: Vector2i = goal - cell_path[-2]
+	var final_step := Vector2i(signi(final_direction.x), signi(final_direction.y))
+	var adjacent_cell := goal - final_step
 	cell_path.remove_at(cell_path.size() - 1)
+	if cell_path[-1] != adjacent_cell:
+		cell_path.append(adjacent_cell)
 	return _center_and_compress(cell_path)
 
 

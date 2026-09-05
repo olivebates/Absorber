@@ -9,7 +9,6 @@ const LUCA_UPGRADES := [
 	{"resource_id": &"jewels", "base_price": 20, "fixed_price": true, "visible_by_default": true, "purchase_slot": 4, "amount": 1, "stat_icon": preload("res://Sprites/SwordIcon.webp"), "stat": &"auto_fight", "name": "Auto Fight", "description": "Automatically fight previously defeated enemies within range."},
 	{"resource_id": &"wood", "base_price": 30, "fixed_price": true, "visible_by_default": true, "purchase_slot": 5, "amount": 1, "stat_icon": preload("res://Sprites/SwordIcon.webp"), "stat": &"auto_fight_range", "name": "Auto Fight Range", "description": "Increase Auto Fight range by 1 tile."},
 	{"resource_id": &"gold_ore", "base_price": 2, "fixed_price": true, "visible_by_default": true, "purchase_slot": 6, "amount": 1, "stat_icon": preload("res://Sprites/PotionBasic.webp"), "stat": &"item", "item_id": "potion_basic", "name": "Basic Potion", "description": "Consume to heal 40 HP."},
-	{"resource_id": &"wood", "base_price": 30, "fixed_price": true, "visible_by_default": true, "one_time": true, "purchase_slot": 7, "amount": 1, "stat_icon": preload("res://Sprites/ChestClosed.webp"), "stat": &"inventory_slot", "name": "Inventory Slot", "description": "Add one extra inventory slot."},
 ]
 
 

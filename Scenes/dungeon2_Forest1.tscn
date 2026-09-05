@@ -219,7 +219,8 @@ position = Vector2(-928, 1056)
 
 [node name="KeyChest3" parent="." unique_id=1630967062 instance=ExtResource("5_bg6kc")]
 position = Vector2(864, -1056)
-reward_type = 13
+reward_type = 7
+reward_skill = 4
 
 [node name="KeyChest4" parent="." unique_id=1384247267 instance=ExtResource("5_bg6kc")]
 position = Vector2(-672, -1184)

@@ -307,6 +307,8 @@ func _capture_state(timestamp: int) -> Array:
 		_world.version_number,
 		dungeon_manager.get_save_data() if dungeon_manager else [],
 		commerce_hub.get_save_data() if commerce_hub else [],
+		_get_chloe().get_save_data() if _get_chloe() else [],
+		_get_randal().get_save_data() if _get_randal() else [],
 	]
 
 
@@ -374,6 +376,12 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 	var deru: FoxAsha = _get_deru()
 	if deru:
 		deru.load_save_data(state[13] as Array if state.size() > 13 and state[13] is Array else [])
+	var chloe: FoxAsha = _get_chloe()
+	if chloe:
+		chloe.load_save_data(state[17] as Array if state.size() > 17 and state[17] is Array else [])
+	var randal: FoxAsha = _get_randal()
+	if randal:
+		randal.load_save_data(state[18] as Array if state.size() > 18 and state[18] is Array else [])
 	if dungeon_manager:
 		dungeon_manager.load_save_data(state[15] as Array if state.size() > 15 and state[15] is Array else [], offline_seconds)
 	var commerce_hub := _world.get_node_or_null("HUD/CommerceHub") as CommerceHub
@@ -476,6 +484,14 @@ func _get_luca() -> FoxAsha:
 
 func _get_deru() -> FoxAsha:
 	return _world.get_node_or_null("FoxDeru") as FoxAsha
+
+
+func _get_chloe() -> FoxAsha:
+	return _world.get_node_or_null("FoxChloe") as FoxAsha
+
+
+func _get_randal() -> FoxAsha:
+	return _world.get_node_or_null("FoxRandal") as FoxAsha
 
 
 func _get_story_manager() -> StoryManager:

@@ -18,6 +18,7 @@ const ITEM_NAMES := {
 	"potion_royal": "Royal Potion",
 	"potion_holy": "Holy Potion",
 	"spare_cart_parts": "Spare Part",
+	"randals_ball": "Randal's Ball",
 }
 
 const ITEM_TEXTURES := {
@@ -37,6 +38,7 @@ const ITEM_TEXTURES := {
 	"potion_royal": preload("res://Sprites/PotionRoyal.webp"),
 	"potion_holy": preload("res://Sprites/PotionHoly.webp"),
 	"spare_cart_parts": preload("res://Sprites/SpareParts.webp"),
+	"randals_ball": preload("res://Sprites/RandalsBall.webp"),
 }
 
 const GRADES := [
@@ -73,6 +75,7 @@ const ITEM_DATA := {
 	"potion_royal": {"healing": 1350, "slot": "consumable"},
 	"potion_holy": {"healing": 2147483647, "full_heal": true, "slot": "consumable"},
 	"spare_cart_parts": {"slot": "quest", "protected": true, "description": "Give them to Deru in The Snakemouth Expanse."},
+	"randals_ball": {"slot": "quest", "protected": true, "description": "Return it to Randal."},
 }
 
 var item_id := "weathered_sword"

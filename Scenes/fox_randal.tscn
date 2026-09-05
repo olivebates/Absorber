@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://Scripts/fox_randal.gd" id="1_randal"]
+[ext_resource type="Texture2D" path="res://Sprites/foxRandal.webp" id="2_sprite"]
+
+[node name="FoxRandal" type="Node2D"]
+z_index = 4
+script = ExtResource("1_randal")
+stationary = true
+dialogue_speaker_name = "Randal"
+talk_pitch_min = 0.7
+talk_pitch_max = 0.9
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_sprite")
