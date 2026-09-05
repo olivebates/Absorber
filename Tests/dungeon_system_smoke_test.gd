@@ -230,7 +230,7 @@ func _run() -> void:
 	assert(not manager.is_dungeon_active(), "A cleared dungeon must not be re-enterable")
 	assert(not dialogue.is_open(), "The first-exit reaction must not repeat on later exits")
 	var resources := world.get_node("ResourceManager") as ResourceManager
-	assert(is_equal_approx(resources.get_definition(&"cave_moss").production_speed, 1.0 / 600.0), "Each cleared dungeon must produce one Cave Moss per ten minutes")
+	assert(is_zero_approx(resources.get_production_speed(&"cave_moss")), "A cleared dungeon must require a mine before producing Cave Moss")
 	print("Dungeon system smoke test passed")
 	world.queue_free()
 	await process_frame

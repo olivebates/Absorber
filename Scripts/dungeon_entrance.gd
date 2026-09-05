@@ -3,6 +3,10 @@ extends Node2D
 
 const DIFFICULTY_NAMES := ["Simple", "Moderate", "Challenging", "Intense", "Overwhelming", "Diabolical"]
 const CAVE_MOSS_ICON := preload("res://Sprites/IconCaveMoss.webp")
+const MINE_SCENE := preload("res://Scenes/miner_structure.tscn")
+const MINE_ICON := preload("res://Sprites/MinerStructure.webp")
+const MINE_BUILD_COST := {"cave_moss": 5, "wood": 2}
+const MINE_PRODUCTION_SPEED := 1.0 / 600.0
 const DIFFICULTY_COLORS := [
 	Color("4caf50"), Color("f4d03f"), Color("f39c3d"),
 	Color("e53935"), Color("7f1d2d"), Color("8e44ad"),
@@ -27,6 +31,9 @@ var _tooltip_production_row: HBoxContainer
 var _cleared_badge: Label
 var _manager: Node
 var _cleared_shake_tween: Tween
+var _mine: MinerStructure
+var _build_button: Button
+var _mine_build_tooltip: BuildMineTooltip
 
 @onready var _sprite: Sprite2D = $Sprite2D
 
@@ -38,6 +45,7 @@ func _ready() -> void:
 	_register_with_navigation()
 	_build_cleared_label()
 	_build_tooltip()
+	_build_mine_button()
 	call_deferred("_connect_manager")
 
 
@@ -64,6 +72,9 @@ func request_interaction(player: FoxPlayer, world: WorldNavigation) -> void:
 		or (_manager.has_method("is_dungeon_active") and bool(_manager.call("is_dungeon_active"))):
 		return
 	if _manager.has_method("is_cleared") and bool(_manager.call("is_cleared", dungeon_id)):
+		if not _has_mine():
+			show_build_button()
+			return
 		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
 		if audio:
 			audio.play_skill_unavailable()
@@ -80,6 +91,7 @@ func request_interaction(player: FoxPlayer, world: WorldNavigation) -> void:
 
 func _process(_delta: float) -> void:
 	_update_hover()
+	_update_build_button_position()
 	if not is_instance_valid(_pending_player) or not is_instance_valid(_pending_world):
 		return
 	if _pending_world.are_adjacent(_pending_player, self):
@@ -100,6 +112,26 @@ func get_return_position() -> Vector2:
 
 func get_sprite_texture() -> Texture2D:
 	return _sprite.texture if is_instance_valid(_sprite) else null
+
+
+func get_mine_sprite_texture() -> Texture2D:
+	return MINE_ICON
+
+
+func show_build_button() -> void:
+	if not is_instance_valid(_build_button) or _has_mine() or not _is_cleared():
+		return
+	var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+	_build_button.disabled = resources == null or not resources.can_afford(MINE_BUILD_COST)
+	_build_button.show()
+	_update_build_button_position()
+
+
+func hide_build_button() -> void:
+	if is_instance_valid(_build_button):
+		_build_button.hide()
+	if is_instance_valid(_mine_build_tooltip):
+		_mine_build_tooltip.hide_tooltip(_build_button)
 
 
 func _best_adjacent_path(player: FoxPlayer, world: WorldNavigation) -> PackedVector2Array:
@@ -234,14 +266,118 @@ func _build_tooltip() -> void:
 	_tooltip.hide()
 
 
+func _build_mine_button() -> void:
+	_build_button = Button.new()
+	_build_button.name = "BuildCaveMossMineButton"
+	_build_button.text = "Build Mine"
+	_build_button.custom_minimum_size = Vector2(104, 30)
+	_build_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	for state_name in ["normal", "hover", "pressed", "disabled"]:
+		var button_style := StyleBoxFlat.new()
+		button_style.bg_color = Color("4d3d12") if state_name == "normal" else Color("715b19") if state_name == "hover" else Color("2f260a") if state_name == "pressed" else Color("25272d")
+		button_style.border_color = Color("e9c64d") if state_name != "disabled" else Color("626975")
+		button_style.set_border_width_all(2)
+		button_style.set_corner_radius_all(4)
+		_build_button.add_theme_stylebox_override(state_name, button_style)
+	_build_button.add_theme_color_override("font_color", Color("fff2bd"))
+	_build_button.add_theme_color_override("font_outline_color", Color.BLACK)
+	_build_button.add_theme_constant_override("outline_size", 2)
+	_build_button.pressed.connect(_try_build_mine)
+	_build_button.mouse_entered.connect(_show_mine_build_tooltip)
+	_build_button.mouse_exited.connect(_hide_mine_build_tooltip)
+	_build_button.hide()
+	call_deferred("_move_build_button_to_hud")
+
+
+func _move_build_button_to_hud() -> void:
+	var world := get_tree().get_first_node_in_group("world_navigation") as WorldNavigation
+	var hud := world.get_node_or_null("HUD") as CanvasLayer if world else null
+	if hud == null or not is_instance_valid(_build_button):
+		return
+	hud.add_child(_build_button)
+	_mine_build_tooltip = hud.get_node_or_null("BuildMineTooltip") as BuildMineTooltip
+	var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+	if resources:
+		var callback := Callable(self, "_on_build_resource_changed")
+		if not resources.resource_changed.is_connected(callback):
+			resources.resource_changed.connect(callback)
+	_update_build_button_position()
+
+
+func _on_build_resource_changed(_resource_id: StringName, _amount: int, _maximum_amount: int) -> void:
+	if is_instance_valid(_build_button) and _build_button.visible:
+		show_build_button()
+
+
+func _update_build_button_position() -> void:
+	if not is_instance_valid(_build_button) or not _build_button.visible:
+		return
+	_build_button.position = get_global_transform_with_canvas().origin - _build_button.size * 0.5
+
+
+func _show_mine_build_tooltip() -> void:
+	if is_instance_valid(_mine_build_tooltip) and is_instance_valid(_build_button):
+		var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+		_mine_build_tooltip.show_cost(MINE_BUILD_COST, resources, _build_button, MINE_ICON)
+
+
+func _hide_mine_build_tooltip() -> void:
+	if is_instance_valid(_mine_build_tooltip):
+		_mine_build_tooltip.hide_tooltip(_build_button)
+
+
+func _try_build_mine() -> void:
+	if _manager == null or not _manager.has_method("build_cave_moss_mine") \
+			or not bool(_manager.call("build_cave_moss_mine", dungeon_id, MINE_BUILD_COST)):
+		show_build_button()
+		return
+	hide_build_button()
+	var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+	if audio:
+		audio.play_building()
+
+
+func _is_cleared() -> bool:
+	return _manager != null and _manager.has_method("is_cleared") and bool(_manager.call("is_cleared", dungeon_id))
+
+
+func _has_mine() -> bool:
+	return _manager != null and _manager.has_method("has_cave_moss_mine") and bool(_manager.call("has_cave_moss_mine", dungeon_id))
+
+
+func _create_mine() -> void:
+	if is_instance_valid(_mine):
+		return
+	_mine = MINE_SCENE.instantiate() as MinerStructure
+	_mine.name = "CaveMossMine"
+	_mine.resource_id = &"cave_moss"
+	_mine.production_speed = MINE_PRODUCTION_SPEED
+	_mine.produces_resources = false
+	var mine_sprite := _mine.get_node_or_null("Sprite2D") as Sprite2D
+	if mine_sprite:
+		mine_sprite.texture = MINE_ICON
+		mine_sprite.position.y = -8.0
+		mine_sprite.z_index = 2
+	_sprite.position.y = 12.0
+	_sprite.z_index = 0
+	add_child(_mine)
+
+
 func _on_dungeon_state_changed(changed_id: StringName) -> void:
 	if changed_id.is_empty() or changed_id == dungeon_id:
 		_refresh_state()
 
 
 func _refresh_state() -> void:
-	var cleared := _manager != null and _manager.has_method("is_cleared") \
-		and bool(_manager.call("is_cleared", dungeon_id))
+	var cleared := _is_cleared()
+	var has_mine := _has_mine()
+	if has_mine:
+		_create_mine()
+	else:
+		if is_instance_valid(_mine):
+			_mine.free()
+			_mine = null
+		_sprite.position.y = 0.0
 	if is_instance_valid(_cleared_badge):
 		_cleared_badge.visible = cleared
 	if is_instance_valid(_tooltip_cleared_label):
@@ -253,8 +389,13 @@ func _refresh_state() -> void:
 	if is_instance_valid(_tooltip_production_row):
 		_tooltip_production_row.visible = cleared
 	if is_instance_valid(_tooltip_production):
-		_tooltip_production.text = "Produces 1 Cave Moss / 10 min" if cleared else "Clear to produce Cave Moss"
-		_tooltip_production.add_theme_color_override("font_color", Color("8bd66d") if cleared else Color("aeb3c1"))
+		_tooltip_production.text = ResourceManager.format_production_rate(MINE_PRODUCTION_SPEED) if has_mine else "Build a mine to extract Cave Moss"
+		_tooltip_production.add_theme_color_override("font_color", Color("8bd66d") if has_mine else Color("aeb3c1"))
+
+
+func _exit_tree() -> void:
+	if is_instance_valid(_build_button) and _build_button.get_parent() != self:
+		_build_button.queue_free()
 
 
 func _play_cleared_interaction_shake(player: FoxPlayer) -> void:

@@ -20,6 +20,7 @@ const GOLD_SHACK_SCENE := preload("res://Scenes/gold_shack.tscn")
 const GEM_SHACK_SCENE := preload("res://Scenes/gem_shack.tscn")
 const FISH_CRATE_SCENE := preload("res://Scenes/fish_crate.tscn")
 const WOOD_CRATE_SCENE := preload("res://Scenes/wood_crate.tscn")
+const HERB_RACK_SCENE := preload("res://Scenes/herb_rack.tscn")
 const COMPRESSION_MODES := [
 	FileAccess.COMPRESSION_FASTLZ,
 	FileAccess.COMPRESSION_DEFLATE,
@@ -214,6 +215,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		var resource_manager := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
 		if resource_manager:
 			resource_manager.fill_all_to_maximum()
+		var commerce_hub := get_tree().get_first_node_in_group("commerce_hub") as CommerceHub
+		if commerce_hub:
+			commerce_hub.unlock_all_buildings()
 		get_viewport().set_input_as_handled()
 		return
 	if key < KEY_0 or key > KEY_9 or key_event.alt_pressed or key_event.meta_pressed:
@@ -334,7 +338,7 @@ func _apply_state(state: Array, offline_seconds: int) -> bool:
 			continue
 		var building_position := raw_building as Array
 		var building_type := int(building_position[2]) if building_position.size() > 2 else 0
-		var shack_scene := WOOD_CRATE_SCENE if building_type == 3 else FISH_CRATE_SCENE if building_type == 2 else GEM_SHACK_SCENE if building_type == 1 else GOLD_SHACK_SCENE
+		var shack_scene := HERB_RACK_SCENE if building_type == 4 else WOOD_CRATE_SCENE if building_type == 3 else FISH_CRATE_SCENE if building_type == 2 else GEM_SHACK_SCENE if building_type == 1 else GOLD_SHACK_SCENE
 		var shack := shack_scene.instantiate() as GoldShack
 		shack.global_position = Vector2(float(building_position[0]), float(building_position[1]))
 		_world.add_child(shack)

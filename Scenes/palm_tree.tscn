@@ -15,6 +15,7 @@ build_cost = {"fish": 2, "wood": 5}
 shack_build_cost = {"wood": 10}
 shack_scene = ExtResource("3_crate")
 shack_icon = ExtResource("4_crate_icon")
+capacity_bonus = 15
 mine_icon = ExtResource("5_lodge")
 mine_build_label = "Build Lodge"
 capacity_build_label = "Build Crate"

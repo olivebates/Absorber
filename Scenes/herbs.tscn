@@ -1,0 +1,33 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://Scripts/gold_ore.gd" id="1_ore"]
+[ext_resource type="Texture2D" path="res://Sprites/Herbs.webp" id="2_herbs"]
+[ext_resource type="PackedScene" path="res://Scenes/herb_rack.tscn" id="3_rack"]
+[ext_resource type="Texture2D" path="res://Sprites/herbDryingrack.webp" id="4_rack_icon"]
+[ext_resource type="Texture2D" path="res://Sprites/herbGarden.webp" id="5_garden_icon"]
+
+[node name="Herbs" type="Node2D"]
+z_index = 4
+script = ExtResource("1_ore")
+build_cost = {"cave_moss": 2, "herbs": 5}
+mined_resource_id = &"herbs"
+mine_production_speed = 0.00238095238095
+shack_build_cost = {"herbs": 10}
+shack_scene = ExtResource("3_rack")
+shack_icon = ExtResource("4_rack_icon")
+mine_icon = ExtResource("5_garden_icon")
+capacity_bonus = 10
+mine_build_label = "Build Garden"
+capacity_build_label = "Build Rack"
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture_filter = 1
+texture = ExtResource("2_herbs")
+
+[node name="BuildMineButton" type="Button" parent="."]
+offset_left = -52.0
+offset_top = -15.0
+offset_right = 52.0
+offset_bottom = 15.0
+mouse_filter = 0
+text = "Build Garden"

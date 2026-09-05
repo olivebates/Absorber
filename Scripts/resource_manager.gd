@@ -11,6 +11,7 @@ signal production_changed(resource_id: StringName, production_speed: float)
 	preload("res://Resources/fish.tres"),
 	preload("res://Resources/wood.tres"),
 	preload("res://Resources/cave_moss.tres"),
+	preload("res://Resources/herbs.tres"),
 ]
 
 var _definitions: Dictionary = {}
@@ -76,6 +77,36 @@ func get_production_speed(resource_id: StringName) -> float:
 		if producer is Dictionary and StringName(producer.get("resource_id", &"")) == resource_id:
 			speed += float(producer.get("speed", 0.0))
 	return speed
+
+
+static func format_production_rate(production_speed: float) -> String:
+	var per_minute := maxf(0.0, production_speed) * 60.0
+	if is_zero_approx(per_minute):
+		return "+0/1 min"
+	var best_amount := maxi(1, roundi(per_minute))
+	var best_minutes := 1
+	var best_error := absf(float(best_amount) - per_minute)
+	for minutes in range(1, 601):
+		var amount := maxi(1, roundi(per_minute * float(minutes)))
+		var error := absf(float(amount) / float(minutes) - per_minute)
+		if error < best_error:
+			best_error = error
+			best_amount = amount
+			best_minutes = minutes
+		if error <= 0.000001:
+			break
+	var divisor := _greatest_common_divisor(best_amount, best_minutes)
+	return "+%d/%d min" % [int(best_amount / divisor), int(best_minutes / divisor)]
+
+
+static func _greatest_common_divisor(first: int, second: int) -> int:
+	var left := absi(first)
+	var right := absi(second)
+	while right != 0:
+		var remainder := left % right
+		left = right
+		right = remainder
+	return maxi(1, left)
 
 
 func add_resource(resource_id: StringName, amount: float) -> int:

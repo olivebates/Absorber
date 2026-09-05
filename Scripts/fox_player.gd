@@ -10,8 +10,12 @@ const SKILL_YELLOW_GUARD := &"yellow_guard"
 const SKILL_ROLL_BACK := &"roll_back"
 const SKILL_ROLL_ARC := &"roll_arc"
 const SKILL_BULWARK := &"bulwark"
-const PLAYER_SKILL_IDS: Array[StringName] = [SKILL_ROLL_CLOCKWISE, SKILL_YELLOW_GUARD, SKILL_ROLL_BACK, SKILL_ROLL_ARC, SKILL_BULWARK]
+const SKILL_CHARGED_STRIKE := &"charged_strike"
+const CHARGED_STRIKE_DURATION := 3.0
+const CHARGED_STRIKE_DAMAGE_MULTIPLIER := 7
+const PLAYER_SKILL_IDS: Array[StringName] = [SKILL_ROLL_CLOCKWISE, SKILL_YELLOW_GUARD, SKILL_ROLL_BACK, SKILL_ROLL_ARC, SKILL_BULWARK, SKILL_CHARGED_STRIKE]
 const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const MAX_HEALTH := 100000000
 const EQUIPMENT_SLOT_COUNT := 6
 const STARTING_INVENTORY_SLOT_COUNT := 4
 const SKILL_DATA := {
@@ -35,6 +39,10 @@ const SKILL_DATA := {
 		"name": "Bulwark", "description": "Gain 20 Yellow armor for 3 seconds.",
 		"icon": preload("res://Sprites/skillBulwark.webp"), "mana": 5, "cooldown": 8.0,
 	},
+	SKILL_CHARGED_STRIKE: {
+		"name": "Charged Strike", "description": "Charge for 3 seconds, then strike your target for 7 times your normal hit damage.",
+		"icon": preload("res://Sprites/SwordIcon.webp"), "mana": 10, "cooldown": 3.0,
+	},
 }
 
 signal damage_matrix_changed
@@ -51,7 +59,8 @@ signal skills_changed
 signal mana_changed
 
 @export var move_speed := 280.0
-@export var max_health := 10
+@export_range(1, 100000000, 1) var max_health := 10
+@export_range(0, 100000000, 1) var thorn := 0
 @export var attack_damage := 1 # Compatibility value mirrors the equipped red damage.
 @export var attack_range := 52.0
 @export var attack_cooldown := 0.8
@@ -143,6 +152,9 @@ var _snare_sources: Dictionary = {}
 var _snare_ring: Line2D
 var _snare_label: Label
 var _snare_shake_tween: Tween
+var _charged_strike_target: ChickenEnemy
+var _charged_strike_damage := 0
+var _charged_strike_label: Label
 
 @onready var fox_sprite: Sprite2D = $FoxSprite
 @onready var health_bar: ProgressBar = $HealthBar
@@ -240,15 +252,15 @@ func get_remaining_path_points() -> PackedVector2Array:
 	return points
 
 
-func take_damage(amount: int, color_index := COLOR_RED) -> void:
-	_apply_damage(amount, color_index, false, Vector2.ZERO)
+func take_damage(amount: int, color_index := COLOR_RED, attacker: ChickenEnemy = null) -> void:
+	_apply_damage(amount, color_index, false, Vector2.ZERO, attacker)
 
 
-func take_skill_damage(amount: int, color_index: int, impact_direction: Vector2) -> bool:
-	return _apply_damage(amount, color_index, true, impact_direction)
+func take_skill_damage(amount: int, color_index: int, impact_direction: Vector2, attacker: ChickenEnemy = null) -> bool:
+	return _apply_damage(amount, color_index, true, impact_direction, attacker)
 
 
-func _apply_damage(amount: int, color_index: int, skill_hit: bool, impact_direction: Vector2) -> bool:
+func _apply_damage(amount: int, color_index: int, skill_hit: bool, impact_direction: Vector2, attacker: ChickenEnemy = null) -> bool:
 	if health <= 0 or _is_dying or _skill_invulnerable:
 		return false
 	if color_index == COLOR_YELLOW and _yellow_guard_time_left > 0.0:
@@ -261,6 +273,8 @@ func _apply_damage(amount: int, color_index: int, skill_hit: bool, impact_direct
 	_update_health_label()
 	vitals_changed.emit()
 	_show_damage_popup(amount, color_index, blocked_damage, skill_hit, impact_direction)
+	if is_instance_valid(attacker) and get_thorn() > 0:
+		attacker.take_damage(get_thorn())
 	if health == 0:
 		_begin_death_sequence()
 	return true
@@ -312,7 +326,7 @@ func add_max_health(amount: int) -> void:
 	if amount == 0:
 		return
 	var old_max_health := max_health
-	max_health = maxi(1, max_health + amount)
+	max_health = clampi(max_health + amount, 1, MAX_HEALTH)
 	health_bar.max_value = max_health
 	if max_health > old_max_health:
 		heal(max_health - old_max_health)
@@ -509,6 +523,8 @@ func cast_player_skill_slot(slot_index: int) -> bool:
 		_begin_yellow_guard()
 	elif skill_id == SKILL_BULWARK:
 		_begin_bulwark()
+	elif skill_id == SKILL_CHARGED_STRIKE:
+		_begin_charged_strike(cast_plan)
 	else:
 		_begin_player_roll(cast_plan)
 	return true
@@ -558,6 +574,12 @@ func _build_player_skill_cast_plan(skill_id: StringName) -> Dictionary:
 	if absi(relative.x) + absi(relative.y) != 1:
 		_last_skill_cast_failure = "Move Closer"
 		return {}
+	if skill_id == SKILL_CHARGED_STRIKE:
+		return {
+			"skill_id": skill_id,
+			"target": target,
+			"damage": get_damage_for_color(target.enemy_color) * CHARGED_STRIKE_DAMAGE_MULTIPLIER,
+		}
 	var destination_cell := player_cell
 	var arc_angle := 0.0
 	if skill_id == SKILL_ROLL_CLOCKWISE:
@@ -750,6 +772,98 @@ func _trigger_asha_roll() -> void:
 			return
 
 
+func _begin_charged_strike(plan: Dictionary) -> void:
+	_skill_casting = true
+	_charged_strike_target = plan.get("target") as ChickenEnemy
+	_charged_strike_damage = maxi(1, int(plan.get("damage", 0)))
+	stop()
+	_cancel_combat_visual_tweens()
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	_clear_charged_strike_label()
+	_charged_strike_label = Label.new()
+	_charged_strike_label.name = "ChargedStrikeLabel"
+	_charged_strike_label.text = "Charging..."
+	_charged_strike_label.position = Vector2(-80, -82)
+	_charged_strike_label.size = Vector2(160, 28)
+	_charged_strike_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_charged_strike_label.add_theme_font_size_override("font_size", 19)
+	_charged_strike_label.add_theme_color_override("font_color", Color("ffe08a"))
+	_charged_strike_label.add_theme_color_override("font_outline_color", Color("4a2600"))
+	_charged_strike_label.add_theme_constant_override("outline_size", 5)
+	_charged_strike_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_charged_strike_label.z_index = 40
+	add_child(_charged_strike_label)
+	fox_sprite.modulate = Color("ffe08a")
+	_skill_visual_tween = create_tween().set_parallel(true)
+	_skill_visual_tween.tween_method(_update_charged_strike, 0.0, 1.0, CHARGED_STRIKE_DURATION).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_skill_visual_tween.tween_property(_charged_strike_label, "modulate:a", 1.0, CHARGED_STRIKE_DURATION)
+	_skill_visual_tween.chain().tween_callback(_release_charged_strike)
+
+
+func _update_charged_strike(progress: float) -> void:
+	if not _skill_casting:
+		return
+	if is_instance_valid(_charged_strike_target):
+		_face_toward(_charged_strike_target)
+	var pulse := (sin(progress * TAU * 5.0) + 1.0) * 0.5
+	fox_sprite.position = Vector2(-8.0 * progress, 0.0)
+	fox_sprite.scale = Vector2(1.0 + progress * 0.20, 1.0 - progress * 0.22) * lerpf(0.97, 1.03, pulse)
+	fox_sprite.modulate = Color.WHITE.lerp(Color("ffc247"), 0.35 + progress * 0.55)
+	if is_instance_valid(_charged_strike_label):
+		_charged_strike_label.scale = Vector2.ONE * lerpf(0.92, 1.08, progress)
+
+
+func _release_charged_strike() -> void:
+	if not _skill_casting:
+		return
+	var target := _charged_strike_target
+	_skill_casting = false
+	_charged_strike_target = null
+	velocity = Vector2.ZERO
+	fox_sprite.position = Vector2.ZERO
+	fox_sprite.scale = Vector2(1.34, 0.68)
+	fox_sprite.modulate = Color("fff0ae")
+	_clear_charged_strike_label()
+	var world := _get_navigation_world()
+	if is_instance_valid(target) and target.health > 0 and world and world.belongs_to_world(target):
+		var audio := get_tree().get_first_node_in_group("game_audio") as GameAudio
+		if audio:
+			audio.play_damage()
+		_face_toward(target)
+		var weapon_grade := ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])
+		_show_slash(target, ItemPickup.get_grade_color(weapon_grade), ItemPickup.is_animated_grade(weapon_grade))
+		target.take_damage(_charged_strike_damage, false, self)
+		_weapon_cooldowns[current_weapon_index] = attack_cooldown
+		_play_skill_camera_nudge(global_position.direction_to(target.global_position), 5.0)
+	_charged_strike_damage = 0
+	_skill_visual_tween = create_tween().set_parallel(true)
+	_skill_visual_tween.tween_property(fox_sprite, "position", Vector2.ZERO, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(fox_sprite, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_skill_visual_tween.tween_property(fox_sprite, "modulate", Color.WHITE, 0.14)
+
+
+func _clear_charged_strike_label() -> void:
+	if is_instance_valid(_charged_strike_label):
+		_charged_strike_label.queue_free()
+	_charged_strike_label = null
+
+
+func _cancel_charged_strike() -> void:
+	if _charged_strike_damage <= 0 and not is_instance_valid(_charged_strike_label):
+		return
+	if _skill_visual_tween and _skill_visual_tween.is_valid():
+		_skill_visual_tween.kill()
+	_charged_strike_target = null
+	_charged_strike_damage = 0
+	_skill_casting = false
+	_clear_charged_strike_label()
+	if is_instance_valid(fox_sprite):
+		fox_sprite.position = Vector2.ZERO
+		fox_sprite.scale = Vector2.ONE
+		fox_sprite.modulate = Color.WHITE
+
+
 func _begin_yellow_guard() -> void:
 	_yellow_guard_time_left = 1.0
 	_skill_casting = true
@@ -878,6 +992,14 @@ func add_color_defense(color_index: int, amount: int) -> void:
 		return
 	defense_by_color[color_index] = maxi(0, defense_by_color[color_index] + amount)
 	damage_matrix_changed.emit()
+
+
+func add_thorn(amount: int) -> void:
+	if amount == 0:
+		return
+	thorn = clampi(thorn + amount, 0, MAX_HEALTH)
+	damage_matrix_changed.emit()
+	vitals_changed.emit()
 
 
 func collect_item(item_id: String, grade := 0) -> bool:
@@ -1370,6 +1492,17 @@ func get_defense_for_color(color_index: int) -> int:
 	return total
 
 
+func get_thorn() -> int:
+	var total := maxi(0, thorn)
+	if not is_in_dungeon():
+		for equipment in equipped_weapons + equipped_armor:
+			total += ItemPickup.get_thorn_amount(equipment)
+			var stone := ItemPickup.get_equipped_stone(equipment)
+			if ItemPickup.get_stone_stat(stone) == &"thorn":
+				total += ItemPickup.get_stone_bonus(stone)
+	return total
+
+
 func is_in_dungeon() -> bool:
 	return _get_navigation_world() is DungeonLevel
 
@@ -1504,17 +1637,19 @@ func get_save_data() -> Array:
 		inventory_slots.size(), equipment_slots_unlocked, skill_swap_tutorial_seen,
 		snare_without_quick_roll_tutorial_seen,
 		auto_fight_range_bonus,
+		thorn,
 	]
 
 
 func load_save_data(data: Array, offline_seconds: int) -> bool:
 	if data.size() < 14:
 		return false
+	_cancel_charged_strike()
 	stop()
 	clear_attack_target()
 	global_position = Vector2(float(data[0]), float(data[1]))
 	_sync_navigation_position()
-	max_health = maxi(1, int(data[3]))
+	max_health = clampi(int(data[3]), 1, MAX_HEALTH)
 	passive_healing_amount = maxi(1, int(data[4]))
 	var legacy_defense := maxi(0, int(data[14])) if data.size() > 14 else 0
 	defense_by_color = []
@@ -1542,6 +1677,7 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	skill_swap_tutorial_seen = bool(data[36]) if data.size() > 36 else false
 	snare_without_quick_roll_tutorial_seen = bool(data[37]) if data.size() > 37 else false
 	auto_fight_range_bonus = maxi(0, int(data[38])) if data.size() > 38 else 0
+	thorn = clampi(int(data[39]), 0, MAX_HEALTH) if data.size() > 39 else 0
 	_bulwark_time_left = 0.0
 	_quick_roll_damage_time_left = 0.0
 	armor_ever_equipped = bool(data[16]) if data.size() > 16 else has_equipped_armor()
@@ -1839,7 +1975,7 @@ func _attack_nearby_enemy(world: WorldNavigation = null, adjacent_enemy: Chicken
 		_play_attack_animation(target)
 		var weapon_grade := ItemPickup.get_item_grade(equipped_weapons[current_weapon_index])
 		_show_slash(target, ItemPickup.get_grade_color(weapon_grade), ItemPickup.is_animated_grade(weapon_grade))
-		target.take_damage(get_damage_for_color(target.enemy_color), automatic)
+		target.take_damage(get_damage_for_color(target.enemy_color), automatic, self)
 		_weapon_cooldowns[current_weapon_index] = attack_cooldown
 
 
@@ -2065,6 +2201,7 @@ func _begin_death_sequence() -> void:
 	if _is_dying:
 		return
 	_is_dying = true
+	_cancel_charged_strike()
 	stop()
 	clear_attack_target()
 	var world := _get_navigation_world()
@@ -2179,7 +2316,21 @@ func _update_walk_animation(delta: float) -> void:
 
 
 func _update_health_label() -> void:
-	health_label.text = str(health)
+	health_label.text = format_large_number(health)
+
+
+static func format_large_number(value: int) -> String:
+	var magnitude := absi(value)
+	if magnitude >= 1200000:
+		return "%s%s" % [_format_scaled_number(float(value) / 1000000.0), "m"]
+	if magnitude >= 1500:
+		return "%s%s" % [_format_scaled_number(float(value) / 1000.0), "k"]
+	return str(value)
+
+
+static func _format_scaled_number(value: float) -> String:
+	var formatted := "%.1f" % value
+	return formatted.trim_suffix(".0")
 
 
 func _update_mana_display() -> void:

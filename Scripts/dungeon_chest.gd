@@ -17,7 +17,7 @@ const MANA_REGEN_ICON := preload("res://Sprites/iconManaRegen.webp")
 const SKILL_BOOK_ICON := preload("res://Sprites/IconSkillBook.webp")
 const ROLL_ICON := preload("res://Sprites/skillRoll.webp")
 const EQUIPMENT_SLOT_ICON := preload("res://Sprites/HelmetIcon.webp")
-const CHEST_SKILLS: Array[StringName] = [FoxPlayer.SKILL_ROLL_CLOCKWISE, FoxPlayer.SKILL_YELLOW_GUARD, FoxPlayer.SKILL_ROLL_BACK, FoxPlayer.SKILL_ROLL_ARC]
+const CHEST_SKILLS: Array[StringName] = [FoxPlayer.SKILL_ROLL_CLOCKWISE, FoxPlayer.SKILL_YELLOW_GUARD, FoxPlayer.SKILL_ROLL_BACK, FoxPlayer.SKILL_ROLL_ARC, FoxPlayer.SKILL_CHARGED_STRIKE]
 const HIDDEN_OUTLINE_COLOR := Color.WHITE
 const HIDDEN_OUTLINE_INSET := 3.0
 const HIDDEN_OUTLINE_SPACING := 8.0
@@ -29,7 +29,7 @@ const HIDDEN_OUTLINE_RADIUS := 1.5
 @export var item_id := "weathered_sword"
 @export_enum("Crude", "Ordinary", "Superior", "Elite", "Masterwork", "Mythic", "Divine", "Immortal", "Omnipotent", "Void") var item_grade := 0
 @export var resource_id: StringName = &"cave_moss"
-@export_enum("Quick Roll", "Golden Guard", "Back Roll", "Arc Roll") var reward_skill := 0
+@export_enum("Quick Roll", "Golden Guard", "Back Roll", "Arc Roll", "Charged Strike") var reward_skill := 0
 
 var opened := false
 var _revealed := false
@@ -252,7 +252,10 @@ func _get_reward_icon() -> Texture2D:
 			var definition := resources.get_definition(resource_id) if resources else null
 			return definition.icon if definition else null
 		RewardType.SKILL:
-			return ROLL_ICON if clampi(reward_skill, 0, CHEST_SKILLS.size() - 1) != 1 else SKILL_BOOK_ICON
+			var skill_index := clampi(reward_skill, 0, CHEST_SKILLS.size() - 1)
+			if skill_index == CHEST_SKILLS.size() - 1:
+				return FoxPlayer.SKILL_DATA[FoxPlayer.SKILL_CHARGED_STRIKE]["icon"] as Texture2D
+			return ROLL_ICON if skill_index != 1 else SKILL_BOOK_ICON
 		RewardType.MANA:
 			return MANA_ICON
 		RewardType.MANA_REGENERATION:

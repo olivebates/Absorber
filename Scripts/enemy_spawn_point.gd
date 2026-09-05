@@ -44,31 +44,32 @@ const SPAWN_RADIUS_TILES := 2
 @export_enum("Damage", "Health", "Resource", "Regenerate", "Defense", "Mana", "Mana Regenerate") var reward_type := ChickenEnemy.REWARD_DAMAGE
 @export_enum("Red", "Yellow", "Blue") var damage_reward_color := FoxPlayer.COLOR_RED
 @export_enum("Red", "Yellow", "Blue") var defense_reward_color := FoxPlayer.COLOR_RED
-@export var reward_resource_id: StringName = &"gold_ore"
+@export_enum("gold_ore", "jewels", "fish", "wood", "cave_moss", "herbs") var reward_resource_id := "gold_ore"
 @export_category("Enemy Stats")
-@export_range(1, 999, 1) var enemy_health := 3
+@export_range(1, 100000000, 1) var enemy_health := 3
 @export_range(1, 999, 1) var enemy_damage := 1
 @export_enum("Red", "Yellow", "Blue") var enemy_damage_color := FoxPlayer.COLOR_RED
 @export_range(0, 999, 1) var enemy_armor := 0
+@export_range(0, 100000000, 1) var enemy_thorn := 0
 @export var aggressive := false
 @export var boss := false
 @export var dungeon_once := false
 @export_category("Enemy Skills")
 ## Damage 0 uses the skill's default of five times this spawn's enemy damage.
-@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)") var enemy_skill_1 := ChickenEnemy.SKILL_NONE
+@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)", "Scatter Strike") var enemy_skill_1 := ChickenEnemy.SKILL_NONE
 @export_range(0, 999, 1) var enemy_skill_1_damage := 0
 @export_enum("Red", "Yellow", "Blue") var enemy_skill_1_damage_type := FoxPlayer.COLOR_RED
 ## Cooldown 0 uses the selected skill's default cooldown.
 @export_range(0.0, 999.0, 0.1) var enemy_skill_1_cooldown := 0.0
 ## Delay before this skill's first use in each engagement. Its regular cooldown begins after use.
 @export_range(0.0, 999.0, 0.1) var enemy_skill_1_initial_cooldown_offset := 0.0
-@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)") var enemy_skill_2 := ChickenEnemy.SKILL_NONE
+@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)", "Scatter Strike") var enemy_skill_2 := ChickenEnemy.SKILL_NONE
 @export_range(0, 999, 1) var enemy_skill_2_damage := 0
 @export_enum("Red", "Yellow", "Blue") var enemy_skill_2_damage_type := FoxPlayer.COLOR_RED
 @export_range(0.0, 999.0, 0.1) var enemy_skill_2_cooldown := 0.0
 ## Delay before this skill's first use in each engagement. Its regular cooldown begins after use.
 @export_range(0.0, 999.0, 0.1) var enemy_skill_2_initial_cooldown_offset := 0.0
-@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)") var enemy_skill_3 := ChickenEnemy.SKILL_NONE
+@export_enum("None", "Crushing Blow", "Cascading Sweep", "Cascading Surround", "Fan Strike (Quick)", "Fan Strike (Charged)", "Driving Strike (Quick)", "Driving Strike (Charged)", "Scatter Strike") var enemy_skill_3 := ChickenEnemy.SKILL_NONE
 @export_range(0, 999, 1) var enemy_skill_3_damage := 0
 @export_enum("Red", "Yellow", "Blue") var enemy_skill_3_damage_type := FoxPlayer.COLOR_RED
 @export_range(0.0, 999.0, 0.1) var enemy_skill_3_cooldown := 0.0
@@ -152,7 +153,7 @@ func _create_enemy(world: WorldNavigation, spawn_position: Vector2, home: Vector
 	enemy.spawn_point = self
 	enemy.rewards_enabled = rewards_enabled
 	enemy.global_position = spawn_position
-	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), reward_resource_id, damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor, defense_reward_color, aggressive, _get_enemy_skills(), flip_enemy_sprites_horizontally)
+	enemy.setup(home, stat_reward_amount, reward_type, _get_drop_table(), StringName(reward_resource_id), damage_reward_color, enemy_health, enemy_damage, enemy_damage_color, enemy_armor, defense_reward_color, aggressive, _get_enemy_skills(), flip_enemy_sprites_horizontally, enemy_thorn)
 	enemy.died.connect(_on_spawned_enemy_died)
 	get_parent().add_child(enemy)
 	if not saved_data.is_empty():

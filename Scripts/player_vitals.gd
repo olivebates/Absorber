@@ -5,6 +5,7 @@ const HEART_ICON := preload("res://Sprites/Heart.webp")
 const REGEN_ICON := preload("res://Sprites/RecoveryHeart.webp")
 const MANA_ICON := preload("res://Sprites/IconMana.webp")
 const MANA_REGEN_ICON := preload("res://Sprites/iconManaRegen.webp")
+const THORN_ICON := preload("res://Sprites/iconThorn.webp")
 const SIDEBAR_MARGIN := 12.0
 const STAT_MARGIN := 8.0
 const CELL_HEIGHT := 48.0
@@ -16,6 +17,7 @@ var _damage_grid: DamageGrid
 var _armor_grid: Control
 var _health_label: Label
 var _regen_label: Label
+var _thorn_label: Label
 var _regen_cell: PanelContainer
 var _regen_icon: TextureRect
 var _regen_block_line: Line2D
@@ -36,6 +38,7 @@ func _ready() -> void:
 	add_child(health_row)
 	_health_label = _add_stat_cell(health_row, "Health", HEART_ICON)
 	_regen_label = _add_stat_cell(health_row, "Regeneration", REGEN_ICON)
+	_thorn_label = _add_stat_cell(health_row, "Thorn", THORN_ICON)
 	_mana_row = HBoxContainer.new()
 	_mana_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_mana_row.add_theme_constant_override("separation", int(STAT_MARGIN))
@@ -65,6 +68,7 @@ func _connect_player() -> void:
 	_armor_grid = get_parent().get_node_or_null("ArmorGrid") as Control
 	if _player:
 		_player.vitals_changed.connect(_refresh)
+		_player.equipment_changed.connect(_refresh)
 		_player.skills_changed.connect(_refresh)
 		_player.mana_changed.connect(_refresh)
 	_refresh()
@@ -73,7 +77,8 @@ func _connect_player() -> void:
 func _refresh() -> void:
 	if _player == null:
 		return
-	_health_label.text = "%d/%d" % [_player.health, _player.max_health]
+	_health_label.text = "%s/%s" % [FoxPlayer.format_large_number(_player.health), FoxPlayer.format_large_number(_player.max_health)]
+	_thorn_label.text = str(_player.get_thorn())
 	_refresh_regeneration()
 	_refresh_mana()
 	call_deferred("_fit_below_grids")
@@ -115,7 +120,7 @@ func _refresh_mana() -> void:
 
 
 func get_stat_target_screen_position(stat: StringName) -> Vector2:
-	var cell_name := "ManaRegenerationCell" if stat == &"mana_regeneration" else "ManaCell" if stat == &"mana" else "RegenerationCell" if stat == &"regeneration" else "HealthCell"
+	var cell_name := "ManaRegenerationCell" if stat == &"mana_regeneration" else "ManaCell" if stat == &"mana" else "ThornCell" if stat == &"thorn" else "RegenerationCell" if stat == &"regeneration" else "HealthCell"
 	var cell := find_child(cell_name, true, false) as Control
 	return cell.get_global_rect().get_center() if cell else get_global_rect().get_center()
 
@@ -147,6 +152,7 @@ func _add_stat_cell(parent_row: HBoxContainer, cell_name: String, texture: Textu
 		"Regeneration": "Health Regeneration",
 		"Mana": "Mana",
 		"ManaRegeneration": "Mana Regeneration",
+		"Thorn": "Thorn",
 	}
 	_connect_stat_tooltip(cell, str(tooltip_titles.get(cell_name, cell_name)))
 	parent_row.add_child(cell)

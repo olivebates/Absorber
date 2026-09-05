@@ -6,10 +6,15 @@ var _icon_row: HBoxContainer
 var _stone_slot: PanelContainer
 var _stone_icon: TextureRect
 var _rank: Label
+var _instruction: Label
+var _stat_dot: Control
 var _stat_icon: TextureRect
 var _stat: Label
+var _stat_bonus: Label
+var _secondary_stat_dot: Control
 var _secondary_stat_icon: TextureRect
 var _secondary_stat: Label
+var _secondary_stat_bonus: Label
 var _extra_rows: VBoxContainer
 var _target_position := Vector2.ZERO
 var _displayed_grade := -1
@@ -53,12 +58,23 @@ func _ready() -> void:
 	_rank.add_theme_color_override("font_outline_color", Color.BLACK)
 	_rank.add_theme_constant_override("outline_size", 2)
 	content.add_child(_rank)
+	_instruction = Label.new()
+	_instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_instruction.add_theme_color_override("font_color", Color.WHITE)
+	_instruction.add_theme_color_override("font_outline_color", Color.BLACK)
+	_instruction.add_theme_constant_override("outline_size", 2)
+	_instruction.hide()
+	content.add_child(_instruction)
 	var stat_row := _make_stat_row(content)
-	_stat_icon = stat_row[0] as TextureRect
-	_stat = stat_row[1] as Label
+	_stat_dot = stat_row[0] as Control
+	_stat_icon = stat_row[1] as TextureRect
+	_stat = stat_row[2] as Label
+	_stat_bonus = stat_row[3] as Label
 	var secondary_row := _make_stat_row(content)
-	_secondary_stat_icon = secondary_row[0] as TextureRect
-	_secondary_stat = secondary_row[1] as Label
+	_secondary_stat_dot = secondary_row[0] as Control
+	_secondary_stat_icon = secondary_row[1] as TextureRect
+	_secondary_stat = secondary_row[2] as Label
+	_secondary_stat_bonus = secondary_row[3] as Label
 	_secondary_stat_icon.get_parent().hide()
 	_extra_rows = VBoxContainer.new()
 	_extra_rows.add_theme_constant_override("separation", 2)
@@ -70,7 +86,15 @@ func _ready() -> void:
 func _make_stat_row(parent: VBoxContainer) -> Array:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 4)
 	parent.add_child(row)
+	var dot := Panel.new()
+	dot.name = "StatColorDot"
+	dot.custom_minimum_size = Vector2(8, 8)
+	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dot.hide()
+	row.add_child(dot)
 	var icon := TextureRect.new()
 	icon.custom_minimum_size = Vector2(16, 16)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -81,8 +105,14 @@ func _make_stat_row(parent: VBoxContainer) -> Array:
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 2)
 	row.add_child(label)
-	return [icon, label]
-
+	var bonus := Label.new()
+	bonus.name = "StackedStoneBonus"
+	bonus.add_theme_color_override("font_color", Color("63d471"))
+	bonus.add_theme_color_override("font_outline_color", Color.BLACK)
+	bonus.add_theme_constant_override("outline_size", 2)
+	bonus.hide()
+	row.add_child(bonus)
+	return [dot, icon, label, bonus]
 
 func _process(delta: float) -> void:
 	if not visible:
@@ -99,6 +129,9 @@ func show_item(item: Dictionary) -> void:
 	_displayed_grade = -1
 	_hide_secondary_stat()
 	_clear_extra_rows()
+	_instruction.hide()
+	_stat_bonus.hide()
+	_secondary_stat_bonus.hide()
 	var item_id := str(item.get("item_id", ""))
 	if not ItemPickup.ITEM_DATA.has(item_id):
 		return
@@ -138,15 +171,18 @@ func show_item(item: Dictionary) -> void:
 		return
 	if ItemPickup.is_stone(item_id):
 		var stone_grade := ItemPickup.get_item_grade(item)
+		var stone_stat := ItemPickup.get_stone_stat(item)
 		_displayed_grade = stone_grade
 		_rank.text = "%s %s" % [ItemPickup.get_grade_name(stone_grade), str(ItemPickup.ITEM_NAMES[item_id])]
 		_rank.visible = true
 		_rank.add_theme_color_override("font_color", ItemPickup.get_grade_color(stone_grade))
-		_stat_icon.texture = preload("res://Sprites/DamageIcon.webp") if ItemPickup.get_stone_stat(item) == &"damage" else preload("res://Sprites/ShieldIcon.webp")
+		_instruction.text = "Drag onto equipment to activate."
+		_instruction.show()
+		_stat_icon.texture = preload("res://Sprites/DamageIcon.webp") if stone_stat == &"damage" else preload("res://Sprites/iconThorn.webp") if stone_stat == &"thorn" else preload("res://Sprites/ShieldIcon.webp")
 		_stat_icon.visible = true
 		_stat.text = "+%d" % ItemPickup.get_stone_bonus(item)
 		var stone_colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
-		_stat.add_theme_color_override("font_color", stone_colors[ItemPickup.get_stat_color(item)])
+		_stat.add_theme_color_override("font_color", Color("63d471") if stone_stat == &"thorn" else stone_colors[ItemPickup.get_stat_color(item)])
 		_stat.visible = true
 		_set_style(ItemPickup.get_grade_color(stone_grade))
 		_show_and_place()
@@ -155,19 +191,26 @@ func show_item(item: Dictionary) -> void:
 	_rank.text = full_name
 	_rank.visible = true
 	_rank.add_theme_color_override("font_color", ItemPickup.get_grade_color(grade))
+	var stat_colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+	var primary_color := ItemPickup.get_stat_color(item) if is_weapon else FoxPlayer.COLOR_RED
 	_stat_icon.texture = preload("res://Sprites/DamageIcon.webp") if is_weapon else preload("res://Sprites/ShieldIcon.webp")
 	_stat_icon.visible = true
 	_stat.text = "+%d" % (ItemPickup.get_damage_bonus(item) if is_weapon else ItemPickup.get_block_amount(item))
-	var stat_colors := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
-	_stat.add_theme_color_override("font_color", stat_colors[ItemPickup.get_stat_color(item) if is_weapon else FoxPlayer.COLOR_RED])
+	_stat.add_theme_color_override("font_color", stat_colors[primary_color])
 	_stat.visible = true
+	_set_dot_color(_stat_dot, stat_colors[primary_color])
 	if not is_weapon:
 		_secondary_stat_icon.texture = preload("res://Sprites/ShieldIcon.webp")
 		_secondary_stat_icon.visible = true
 		_secondary_stat.text = "+%d" % ItemPickup.get_block_amount(item)
 		_secondary_stat.add_theme_color_override("font_color", stat_colors[FoxPlayer.COLOR_YELLOW])
 		_secondary_stat.visible = true
+		_set_dot_color(_secondary_stat_dot, stat_colors[FoxPlayer.COLOR_YELLOW])
 		_secondary_stat_icon.get_parent().show()
+	_show_equipped_stone_stat(item, is_weapon, primary_color, equipped_stone, stat_colors)
+	var thorn_amount := ItemPickup.get_thorn_amount(item)
+	if thorn_amount > 0:
+		_add_extra_stat_row(preload("res://Sprites/iconThorn.webp"), "+%d Thorn" % thorn_amount, Color("63d471"))
 	_set_style(ItemPickup.get_grade_color(grade))
 	_show_and_place()
 
@@ -176,6 +219,7 @@ func show_description(icon: Texture2D, title: String, description: String, icon_
 	_displayed_grade = -1
 	_hide_secondary_stat()
 	_clear_extra_rows()
+	_instruction.hide()
 	_icon.texture = icon
 	_icon.visible = icon != null
 	_icon.modulate = icon_modulate
@@ -195,6 +239,7 @@ func show_catalog(icon: Texture2D, title: String, rows: Array[Dictionary], icon_
 	_displayed_grade = -1
 	_hide_secondary_stat()
 	_clear_extra_rows()
+	_instruction.hide()
 	_icon.texture = icon
 	_icon.visible = icon != null
 	_icon.modulate = icon_modulate
@@ -239,6 +284,58 @@ func _hide_secondary_stat() -> void:
 		_secondary_stat_icon.get_parent().hide()
 	if is_instance_valid(_secondary_stat):
 		_secondary_stat.visible = false
+	if is_instance_valid(_stat_dot):
+		_stat_dot.hide()
+	if is_instance_valid(_secondary_stat_dot):
+		_secondary_stat_dot.hide()
+	if is_instance_valid(_stat_bonus):
+		_stat_bonus.hide()
+	if is_instance_valid(_secondary_stat_bonus):
+		_secondary_stat_bonus.hide()
+
+
+func _show_equipped_stone_stat(item: Dictionary, is_weapon: bool, primary_color: int, stone: Dictionary, stat_colors: Array) -> void:
+	if stone.is_empty():
+		return
+	var stone_stat := ItemPickup.get_stone_stat(stone)
+	var stone_color := ItemPickup.get_stat_color(stone)
+	var bonus := ItemPickup.get_stone_bonus(stone)
+	var stacks_primary := stone_color == primary_color and ((is_weapon and stone_stat == &"damage") or (not is_weapon and stone_stat == &"defense"))
+	var stacks_secondary := not is_weapon and stone_stat == &"defense" and stone_color == FoxPlayer.COLOR_YELLOW
+	if stacks_primary or stacks_secondary:
+		var bonus_label := _stat_bonus if stacks_primary else _secondary_stat_bonus
+		bonus_label.text = "+%d" % bonus
+		bonus_label.show()
+		return
+	var row_data := _make_stat_row(_extra_rows)
+	var dot := row_data[0] as Control
+	var icon := row_data[1] as TextureRect
+	var label := row_data[2] as Label
+	icon.texture = preload("res://Sprites/DamageIcon.webp") if stone_stat == &"damage" else preload("res://Sprites/iconThorn.webp") if stone_stat == &"thorn" else preload("res://Sprites/ShieldIcon.webp")
+	label.text = "+%d Thorn" % bonus if stone_stat == &"thorn" else "+%d %s %s" % [bonus, ["Red", "Yellow", "Blue"][stone_color], "Damage" if stone_stat == &"damage" else "Defence"]
+	label.add_theme_color_override("font_color", Color("63d471"))
+	_set_dot_color(dot, stat_colors[stone_color])
+
+
+func _add_extra_stat_row(texture: Texture2D, copy: String, color: Color) -> void:
+	var row_data := _make_stat_row(_extra_rows)
+	var dot := row_data[0] as Control
+	var icon := row_data[1] as TextureRect
+	var label := row_data[2] as Label
+	dot.hide()
+	icon.texture = texture
+	label.text = copy
+	label.add_theme_color_override("font_color", color)
+
+
+func _set_dot_color(dot: Control, color: Color) -> void:
+	if not is_instance_valid(dot):
+		return
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.set_corner_radius_all(4)
+	dot.add_theme_stylebox_override("panel", style)
+	dot.show()
 
 
 func _clear_extra_rows() -> void:

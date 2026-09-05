@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://6qnpu5txdsf5"
-path="res://.godot/imported/FoxMira.webp-1a51ec45b90673b00d1283b59546b279.ctex"
+uid="uid://d3io4n4cbtrl7"
+path="res://.godot/imported/iconThorn.webp-68a76f94fee1be3b64a5efea347c62f5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Sprites/FoxMira.webp"
-dest_files=["res://.godot/imported/FoxMira.webp-1a51ec45b90673b00d1283b59546b279.ctex"]
+source_file="res://Sprites/iconThorn.webp"
+dest_files=["res://.godot/imported/iconThorn.webp-68a76f94fee1be3b64a5efea347c62f5.ctex"]
 
 [params]
 

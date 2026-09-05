@@ -15,6 +15,7 @@ const ADJACENT_OFFSETS := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.
 @export var shack_scene: PackedScene = GOLD_SHACK_SCENE
 @export var shack_icon: Texture2D = GOLD_SHACK_ICON
 @export var mine_icon: Texture2D = MINER_STRUCTURE_ICON
+@export var capacity_bonus := GoldShack.GOLD_CAPACITY_BONUS
 @export var mine_build_label := "Build Mine"
 @export var capacity_build_label := "Build Shack"
 

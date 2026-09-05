@@ -59,10 +59,10 @@ const MAX_SCALED_STAT := 0x7fffffffffffffff
 const ITEM_DATA := {
 	"weathered_armor": {"block": 2, "slot": "armor", "colors": [FoxPlayer.COLOR_RED, FoxPlayer.COLOR_YELLOW]},
 	"weathered_sword": {"damage": 5, "slot": "weapon", "color": FoxPlayer.COLOR_YELLOW},
-	"blue_sword": {"damage": 10, "slot": "weapon", "color": FoxPlayer.COLOR_BLUE, "tint": Color("4f8cff")},
+	"blue_sword": {"damage": 20, "slot": "weapon", "color": FoxPlayer.COLOR_BLUE, "tint": Color("4f8cff")},
 	"red_damage_stone": {"stone_stat": "damage", "stone_amount": 2, "color": FoxPlayer.COLOR_RED, "slot": "stone", "tint": Color("ef5350")},
 	"yellow_damage_stone": {"stone_stat": "damage", "stone_amount": 2, "color": FoxPlayer.COLOR_YELLOW, "slot": "stone", "tint": Color("ffd54f")},
-	"blue_damage_stone": {"stone_stat": "damage", "stone_amount": 2, "color": FoxPlayer.COLOR_BLUE, "slot": "stone", "tint": Color("4f8cff")},
+	"blue_damage_stone": {"stone_stat": "damage", "stone_amount": 5, "color": FoxPlayer.COLOR_BLUE, "slot": "stone", "tint": Color("4f8cff")},
 	"red_defense_stone": {"stone_stat": "defense", "stone_amount": 2, "color": FoxPlayer.COLOR_RED, "slot": "stone", "tint": Color("ef5350")},
 	"yellow_defense_stone": {"stone_stat": "defense", "stone_amount": 2, "color": FoxPlayer.COLOR_YELLOW, "slot": "stone", "tint": Color("ffd54f")},
 	"blue_defense_stone": {"stone_stat": "defense", "stone_amount": 2, "color": FoxPlayer.COLOR_BLUE, "slot": "stone", "tint": Color("4f8cff")},
@@ -194,6 +194,10 @@ static func get_damage_bonus(item: Dictionary) -> int:
 
 static func get_block_amount(item: Dictionary) -> int:
 	return _merged_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("block", 0)), get_merge_amount(item))
+
+
+static func get_thorn_amount(item: Dictionary) -> int:
+	return _merged_stat(int(ITEM_DATA.get(str(item.get("item_id", "")), {}).get("thorn", 0)), get_merge_amount(item))
 
 
 static func get_stone_bonus(item: Dictionary) -> int:

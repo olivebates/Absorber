@@ -24,6 +24,7 @@ const REGEN_ICON := preload("res://Sprites/RecoveryHeart.webp")
 const DEFENSE_ICON := preload("res://Sprites/ShieldIcon.webp")
 const MANA_ICON := preload("res://Sprites/IconMana.webp")
 const MANA_REGEN_ICON := preload("res://Sprites/iconManaRegen.webp")
+const THORN_ICON := preload("res://Sprites/iconThorn.webp")
 const KEY_ICON := preload("res://Sprites/IconKey.webp")
 const BOSS_KEY_ICON := preload("res://Sprites/bossKey.webp")
 const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
@@ -267,7 +268,10 @@ func leave_dungeon(dungeon_animation_remaining := 0.0, snap_completion_to_entran
 	if bool(state.get("cleared", false)):
 		# Completion is permanent, but a completed layout no longer needs enemy,
 		# chest, door, exploration, key, or temporary-stat snapshot data.
-		state = {"cleared": true}
+		var completed_state := {"cleared": true}
+		if bool(state.get("mine", false)):
+			completed_state["mine"] = true
+		state = completed_state
 	dungeon_states[str(leaving_id)] = state
 	_refresh_cave_moss_production()
 	dungeon_state_changed.emit(leaving_id)
@@ -498,6 +502,28 @@ func is_cleared(dungeon_id: StringName) -> bool:
 	return bool(_get_or_create_state(dungeon_id).get("cleared", false))
 
 
+func has_cave_moss_mine(dungeon_id: StringName) -> bool:
+	return bool(_get_or_create_state(dungeon_id).get("mine", false))
+
+
+func build_cave_moss_mine(dungeon_id: StringName, cost: Dictionary) -> bool:
+	var state := _get_or_create_state(dungeon_id)
+	if not bool(state.get("cleared", false)) or bool(state.get("mine", false)):
+		return false
+	var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
+	if resources == null or not resources.spend_resources(cost):
+		return false
+	state["mine"] = true
+	dungeon_states[str(dungeon_id)] = state
+	_refresh_cave_moss_production()
+	dungeon_state_changed.emit(dungeon_id)
+	return true
+
+
+func get_cave_moss_mine_count() -> int:
+	return _get_cave_moss_mine_count()
+
+
 func reset_for_save_load() -> void:
 	# Clear every live snapshot before any incoming player/world state is applied,
 	# then let that save's dungeon payload repopulate only the runs it contains.
@@ -556,7 +582,10 @@ func get_save_data() -> Array:
 	for key in dungeon_states:
 		var state := dungeon_states[key] as Dictionary
 		if bool(state.get("cleared", false)):
-			saved_states[str(key)] = {"cleared": true}
+			var completed_state := {"cleared": true}
+			if bool(state.get("mine", false)):
+				completed_state["mine"] = true
+			saved_states[str(key)] = completed_state
 			continue
 		var raw_snapshot: Variant = state.get("level", {})
 		var snapshot := raw_snapshot as Dictionary if raw_snapshot is Dictionary else {}
@@ -614,7 +643,10 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 			continue
 		var state := saved_states[key] as Dictionary
 		if bool(state.get("cleared", false)):
-			dungeon_states[str(key)] = {"cleared": true}
+			var completed_state := {"cleared": true}
+			if bool(state.get("mine", false)):
+				completed_state["mine"] = true
+			dungeon_states[str(key)] = completed_state
 			continue
 		var raw_snapshot: Variant = state.get("level", {})
 		var snapshot := raw_snapshot as Dictionary if raw_snapshot is Dictionary else {}
@@ -623,11 +655,11 @@ func load_save_data(data: Array, offline_seconds: int) -> bool:
 	_last_moss_timestamp = int(data[2]) if data.size() > 2 else int(Time.get_unix_time_from_system()) - offline_seconds
 	first_exit_comment_seen = bool(data[3]) if data.size() > 3 else false
 	var saved_active_id := StringName(str(data[4])) if data.size() > 4 else &""
-	var cleared_count := _get_cleared_count()
-	if cleared_count > 0 and offline_seconds > 0:
+	var mine_count := _get_cave_moss_mine_count()
+	if mine_count > 0 and offline_seconds > 0:
 		var resources := get_tree().get_first_node_in_group("resource_manager") as ResourceManager
 		if resources:
-			resources.add_resource(CAVE_MOSS_ID, float(offline_seconds * cleared_count) / CAVE_MOSS_INTERVAL)
+			resources.add_resource(CAVE_MOSS_ID, float(offline_seconds * mine_count) / CAVE_MOSS_INTERVAL)
 	_refresh_cave_moss_production()
 	dungeon_state_changed.emit(&"")
 	if not saved_active_id.is_empty() and dungeon_states.has(str(saved_active_id)):
@@ -696,6 +728,7 @@ func _capture_stats(player: FoxPlayer) -> Dictionary:
 		"mana_regeneration": player.passive_mana_regeneration_amount,
 		"damage": player.damage_by_color.duplicate(true),
 		"defense": player.defense_by_color.duplicate(),
+		"thorn": player.thorn,
 	}
 
 
@@ -709,11 +742,13 @@ func _make_reset_stats() -> Dictionary:
 		"mana_regeneration": 1,
 		"damage": [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
 		"defense": [0, 0, 0],
+		"thorn": 0,
 	}
 
 
 func _apply_stats(player: FoxPlayer, stats: Dictionary) -> void:
-	player.max_health = maxi(1, int(stats.get("max_health", 10)))
+	player.max_health = clampi(int(stats.get("max_health", 10)), 1, FoxPlayer.MAX_HEALTH)
+	player.thorn = clampi(int(stats.get("thorn", 0)), 0, FoxPlayer.MAX_HEALTH)
 	player.passive_healing_amount = maxi(1, int(stats.get("regeneration", 1)))
 	player.max_mana = maxi(1, int(stats.get("max_mana", 10)))
 	player.mana = clampi(int(stats.get("mana", player.max_mana)), 0, player.max_mana)
@@ -746,6 +781,9 @@ func _collect_stat_rewards(previous: Dictionary, current: Dictionary) -> Array[D
 	var mana_regen_delta := int(current.get("mana_regeneration", 1)) - int(previous.get("mana_regeneration", 1))
 	if mana_regen_delta > 0:
 		rewards.append({"kind": "mana_regeneration", "amount": mana_regen_delta, "icon": MANA_REGEN_ICON})
+	var thorn_delta := int(current.get("thorn", 0)) - int(previous.get("thorn", 0))
+	if thorn_delta > 0:
+		rewards.append({"kind": "thorn", "amount": thorn_delta, "icon": THORN_ICON})
 	var old_damage := previous.get("damage", []) as Array
 	var new_damage := current.get("damage", []) as Array
 	for color in range(mini(old_damage.size(), new_damage.size())):
@@ -804,7 +842,7 @@ func _get_reward_target(reward: Dictionary) -> Vector2:
 		var armor = _world.get_node_or_null("HUD/ArmorGrid")
 		return armor.get_color_target_screen_position(int(reward.get("color", 0))) if armor else Vector2(90, 42)
 	var vitals := _world.get_node_or_null("HUD/PlayerVitals") as PlayerVitals
-	var stat_id := &"mana_regeneration" if kind == "mana_regeneration" else &"mana" if kind == "mana" else &"regeneration" if kind == "regeneration" else &"health"
+	var stat_id := &"thorn" if kind == "thorn" else &"mana_regeneration" if kind == "mana_regeneration" else &"mana" if kind == "mana" else &"regeneration" if kind == "regeneration" else &"health"
 	return vitals.get_stat_target_screen_position(stat_id) if vitals else Vector2(60, 120)
 
 
@@ -820,6 +858,8 @@ func _apply_single_stat_reward(reward: Dictionary) -> void:
 			player.add_max_mana(amount)
 		"mana_regeneration":
 			player.add_passive_mana_regeneration(amount)
+		"thorn":
+			player.add_thorn(amount)
 		"damage":
 			var color := int(reward.get("color", 0))
 			var weapon := int(reward.get("weapon", 0))
@@ -1025,13 +1065,16 @@ func _refresh_cave_moss_production() -> void:
 	var definition := resources.get_definition(CAVE_MOSS_ID)
 	if definition == null:
 		return
-	definition.production_speed = float(_get_cleared_count()) / CAVE_MOSS_INTERVAL
+	# Cave-moss mines are represented on their completed entrances; the shared
+	# definition accrues their fractional progress continuously and survives saves.
+	definition.production_speed = float(_get_cave_moss_mine_count()) / CAVE_MOSS_INTERVAL
 	resources.production_changed.emit(CAVE_MOSS_ID, resources.get_production_speed(CAVE_MOSS_ID))
 
 
-func _get_cleared_count() -> int:
+func _get_cave_moss_mine_count() -> int:
 	var result := 0
 	for raw_state in dungeon_states.values():
-		if raw_state is Dictionary and bool((raw_state as Dictionary).get("cleared", false)):
+		if raw_state is Dictionary and bool((raw_state as Dictionary).get("cleared", false)) \
+				and bool((raw_state as Dictionary).get("mine", false)):
 			result += 1
 	return result

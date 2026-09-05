@@ -14,6 +14,7 @@ mine_production_speed = 0.00166666666667
 shack_build_cost = {"jewels": 10}
 shack_scene = ExtResource("3_shack")
 shack_icon = ExtResource("4_shack_icon")
+capacity_bonus = 10
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 1

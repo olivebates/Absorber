@@ -27,8 +27,13 @@ const SKILL_FAN_STRIKE_QUICK := 4
 const SKILL_FAN_STRIKE_CHARGED := 5
 const SKILL_DRIVING_STRIKE_QUICK := 6
 const SKILL_DRIVING_STRIKE_CHARGED := 7
-const SKILL_DEFAULT_COOLDOWNS := [0.0, 6.0, 8.0, 10.0, 6.0, 9.0, 6.0, 9.0]
+const SKILL_SCATTER_STRIKE := 8
+const SCATTER_STRIKE_RANDOM_TILE_COUNT := 5
+const SCATTER_STRIKE_RADIUS := 2
+const SKILL_DEFAULT_COOLDOWNS := [0.0, 6.0, 8.0, 10.0, 6.0, 9.0, 6.0, 9.0, 8.0]
 const DAMAGE_COLORS := [Color("e53935"), Color("fbc02d"), Color("1976d2")]
+const SHIELD_ICON := preload("res://Sprites/ShieldIcon.webp")
+const THORN_ICON := preload("res://Sprites/iconThorn.webp")
 const PLAYER_PORTRAIT := preload("res://Sprites/Fox.webp")
 const ENEMY_SKILL_MOVE_TUTORIAL_DELAY := 0.4
 const SNARE_WITHOUT_QUICK_ROLL_TUTORIAL_DELAY := 0.2
@@ -52,6 +57,7 @@ signal died(enemy: ChickenEnemy)
 var max_health := 3
 var attack_damage := 1
 var armor := 0
+var thorn := 0
 @export var attack_range := 46.0
 @export var attack_cooldown := 1.0
 @export_enum("Red", "Yellow", "Blue") var enemy_color := FoxPlayer.COLOR_RED
@@ -118,6 +124,10 @@ var _last_skill_resolution_feedback: Array[String] = []
 var _skill_tutorial_paused := false
 var _skip_cascade_tutorial_for_current_cast := false
 var _flip_sprite_orientation := false
+var _armor_stat_group: HBoxContainer
+var _armor_stat_label: Label
+var _thorn_stat_group: HBoxContainer
+var _thorn_stat_label: Label
 
 @onready var chicken_sprite: Sprite2D = $ChickenSprite
 @onready var health_bar: ProgressBar = $HealthBar
@@ -130,7 +140,7 @@ var _flip_sprite_orientation := false
 @onready var reward_dot_outline: Polygon2D = $RewardDotOutline
 
 
-func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1, new_damage_color := FoxPlayer.COLOR_RED, new_armor := 0, new_defense_reward_color := FoxPlayer.COLOR_RED, new_aggressive: Variant = null, new_enemy_skills: Array[Dictionary] = [], flip_sprite_orientation := false) -> void:
+func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_table: Array[Dictionary] = [], new_reward_resource_id: StringName = &"gold_ore", new_damage_reward_color := FoxPlayer.COLOR_RED, new_max_health := 3, new_attack_damage := 1, new_damage_color := FoxPlayer.COLOR_RED, new_armor := 0, new_defense_reward_color := FoxPlayer.COLOR_RED, new_aggressive: Variant = null, new_enemy_skills: Array[Dictionary] = [], flip_sprite_orientation := false, new_thorn := 0) -> void:
 	home_cell = spawn_cell
 	damage_reward = reward
 	reward_type = type
@@ -138,9 +148,10 @@ func setup(spawn_cell: Vector2i, reward: int, type := REWARD_DAMAGE, new_drop_ta
 	reward_resource_id = new_reward_resource_id
 	damage_reward_color = clampi(new_damage_reward_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
 	defense_reward_color = clampi(new_defense_reward_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
-	max_health = maxi(1, new_max_health)
+	max_health = clampi(new_max_health, 1, FoxPlayer.MAX_HEALTH)
 	attack_damage = maxi(1, new_attack_damage)
 	armor = maxi(0, new_armor)
+	thorn = clampi(new_thorn, 0, FoxPlayer.MAX_HEALTH)
 	enemy_color = clampi(new_damage_color, FoxPlayer.COLOR_RED, FoxPlayer.COLOR_BLUE)
 	if new_aggressive != null:
 		aggressive = bool(new_aggressive)
@@ -163,6 +174,7 @@ func _ready() -> void:
 	health_bar.value = health
 	reward_dot.visible = false
 	reward_dot_outline.visible = false
+	_build_secondary_stat_display()
 	_update_health_label()
 	_update_color_dot()
 	_update_damage_label()
@@ -172,7 +184,7 @@ func _ready() -> void:
 	_set_facing_left(false)
 
 
-func take_damage(amount: int, automatic := false) -> void:
+func take_damage(amount: int, automatic := false, attacker: FoxPlayer = null) -> void:
 	if health <= 0:
 		return
 	_suppress_reward_collection_sound = _suppress_reward_collection_sound or automatic
@@ -185,6 +197,8 @@ func take_damage(amount: int, automatic := false) -> void:
 	health_bar.value = health
 	_update_health_label()
 	_show_damage_popup(amount, enemy_color, blocked_damage)
+	if is_instance_valid(attacker) and thorn > 0:
+		attacker.take_damage(thorn, enemy_color)
 	if health == 0:
 		died.emit(self)
 		if rewards_enabled:
@@ -462,7 +476,11 @@ func _begin_enemy_skill(slot_index: int) -> void:
 	chicken_sprite.modulate = Color.WHITE.lerp(DAMAGE_COLORS[_active_skill_damage_type], 0.25)
 	_play_enemy_charge_sfx()
 	var front := enemy_cell + _active_skill_direction
-	_add_enemy_skill_target(front, 0.0)
+	if skill_id == SKILL_SCATTER_STRIKE:
+		_add_enemy_skill_target(player_cell, 0.0)
+		_add_scatter_strike_targets(player_cell)
+	else:
+		_add_enemy_skill_target(front, 0.0)
 	if skill_id == SKILL_CASCADING_SWEEP or skill_id == SKILL_CASCADING_SURROUND:
 		_player.set_snared_by(self, true)
 		var side := Vector2i(-_active_skill_direction.y, _active_skill_direction.x)
@@ -482,6 +500,21 @@ func _begin_enemy_skill(slot_index: int) -> void:
 	_path.clear()
 	_path_index = 0
 	_attack_time_left = maxf(_attack_time_left, _active_skill_windup)
+
+
+func _add_scatter_strike_targets(player_cell: Vector2i) -> void:
+	var offsets: Array[Vector2i] = []
+	for y in range(-SCATTER_STRIKE_RADIUS, SCATTER_STRIKE_RADIUS + 1):
+		for x in range(-SCATTER_STRIKE_RADIUS, SCATTER_STRIKE_RADIUS + 1):
+			if x != 0 or y != 0:
+				offsets.append(Vector2i(x, y))
+	offsets.shuffle()
+	for index in range(mini(SCATTER_STRIKE_RANDOM_TILE_COUNT, offsets.size())):
+		var cell := player_cell + offsets[index]
+		# Random rolls are not replaced when they land on authored walls: those
+		# tiles simply never receive a telegraph or resolve an impact.
+		if _world.is_walkable(cell):
+			_add_enemy_skill_target(cell, 0.0)
 
 
 func _add_enemy_skill_target(cell: Vector2i, delay: float) -> void:
@@ -679,7 +712,7 @@ func _resolve_enemy_skill_target(target: Dictionary) -> void:
 	var target_cell: Vector2i = target.get("cell", Vector2i.ZERO)
 	var hit := false
 	if is_instance_valid(_player) and _world.world_to_cell(_player.global_position) == target_cell:
-		hit = _player.take_skill_damage(_active_skill_damage, _active_skill_damage_type, Vector2(_active_skill_direction))
+		hit = _player.take_skill_damage(_active_skill_damage, _active_skill_damage_type, Vector2(_active_skill_direction), self)
 	_active_skill_impact_count += 1
 	_last_skill_resolution_feedback.append("hit" if hit else "dodged")
 	_play_enemy_skill_release(target_cell)
@@ -1197,7 +1230,7 @@ func _attack_player(in_combat_override: Variant = null) -> void:
 		_face_toward(_player)
 		_play_attack_animation(_player)
 		_show_slash(_player)
-		_player.take_damage(attack_damage, enemy_color)
+		_player.take_damage(attack_damage, enemy_color, self)
 		_attack_time_left = attack_cooldown
 
 
@@ -1261,7 +1294,7 @@ func _exit_tree() -> void:
 
 
 func _update_health_label() -> void:
-	health_label.text = str(health)
+	health_label.text = FoxPlayer.format_large_number(health)
 
 
 func _update_health_bar() -> void:
@@ -1276,6 +1309,53 @@ func _update_color_dot() -> void:
 
 func _update_damage_label() -> void:
 	damage_label.text = str(attack_damage)
+	if is_instance_valid(_armor_stat_group):
+		_armor_stat_group.visible = armor > 0
+		_armor_stat_label.text = str(armor)
+	if is_instance_valid(_thorn_stat_group):
+		_thorn_stat_group.visible = thorn > 0
+		_thorn_stat_label.text = str(thorn)
+
+
+func _build_secondary_stat_display() -> void:
+	var row := HBoxContainer.new()
+	row.name = "DefenseStats"
+	row.position = Vector2(25, -35)
+	row.add_theme_constant_override("separation", 12)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(row)
+	var armor_controls := _make_secondary_stat_group("Armor", SHIELD_ICON)
+	_armor_stat_group = armor_controls[0] as HBoxContainer
+	_armor_stat_label = armor_controls[1] as Label
+	row.add_child(_armor_stat_group)
+	var thorn_controls := _make_secondary_stat_group("Thorn", THORN_ICON)
+	_thorn_stat_group = thorn_controls[0] as HBoxContainer
+	_thorn_stat_label = thorn_controls[1] as Label
+	row.add_child(_thorn_stat_group)
+
+
+func _make_secondary_stat_group(stat_name: String, texture: Texture2D) -> Array:
+	var group := HBoxContainer.new()
+	group.name = "%sStat" % stat_name
+	group.add_theme_constant_override("separation", 2)
+	group.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var icon := TextureRect.new()
+	icon.name = "%sIcon" % stat_name
+	icon.texture = texture
+	icon.custom_minimum_size = Vector2(14, 14)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	group.add_child(icon)
+	var label := Label.new()
+	label.name = "%sValue" % stat_name
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 3)
+	label.add_theme_font_size_override("font_size", 11)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	group.add_child(label)
+	return [group, label]
 
 
 func _update_reward_visual() -> void:

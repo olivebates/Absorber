@@ -45,7 +45,7 @@ func _run() -> void:
 	assert((tooltip._content.get_child(1) as Label).text == "Capacity: +10", "Shack hover stats must show capacity")
 	tooltip.show_stat(definition.icon, "Production", gem_ore._mine._get_production_tooltip_value(), gem_ore)
 	await process_frame
-	assert((tooltip._content.get_child(1) as Label).text == "Production: +0.10/m", "Mine hover stats must show production per minute")
+	assert((tooltip._content.get_child(1) as Label).text == "Production: +1/10 min", "Mine hover stats must show a flat amount and minute interval")
 	var resource_panel := world.get_node("HUD/ResourcePanel") as ResourcePanel
 	await process_frame
 	await process_frame

@@ -340,6 +340,9 @@ func _hide_ore_build_buttons() -> void:
 	for ore in get_tree().get_nodes_in_group("gold_ores"):
 		if ore is GoldOre and is_instance_valid(ore):
 			ore.hide_build_button()
+	for entrance in get_tree().get_nodes_in_group("dungeon_entrances"):
+		if entrance is DungeonEntrance and is_instance_valid(entrance) and belongs_to_world(entrance):
+			(entrance as DungeonEntrance).hide_build_button()
 
 
 func find_path(from_world: Vector2, to_world: Vector2, moving_actor: Node2D = null) -> PackedVector2Array:

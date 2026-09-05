@@ -6,6 +6,8 @@ const BUILDINGS_ICON := preload("res://Sprites/iconHouse.webp")
 const DAMAGE_ICON := preload("res://Sprites/DamageIcon.webp")
 const DEFENSE_ICON := preload("res://Sprites/ShieldIcon.webp")
 const HEALTH_ICON := preload("res://Sprites/Heart.webp")
+const MINE_ICON := preload("res://Sprites/MinerStructure.webp")
+const DUNGEON_MINE_KEY := "cave_moss:producer"
 const BUTTON_SIZE := Vector2(44, 44)
 const BUTTON_GAP := 8.0
 const SHOP_HOVER_TILES := 2
@@ -524,6 +526,9 @@ func _show_catalog_tooltip(entry: Dictionary) -> void:
 			rows.append({"icon": DAMAGE_ICON if is_weapon else DEFENSE_ICON, "text": "+%d %s %s" % [ItemPickup.get_damage_bonus(preview) if is_weapon else ItemPickup.get_block_amount(preview), _color_name(ItemPickup.get_stat_color(preview) if is_weapon else FoxPlayer.COLOR_RED), "Damage" if is_weapon else "Defence"], "color": _stat_color(ItemPickup.get_stat_color(preview) if is_weapon else FoxPlayer.COLOR_RED)})
 			if not is_weapon:
 				rows.append({"icon": DEFENSE_ICON, "text": "+%d Yellow Defence" % ItemPickup.get_block_amount(preview), "color": _stat_color(FoxPlayer.COLOR_YELLOW)})
+			var thorn_amount := ItemPickup.get_thorn_amount(preview)
+			if thorn_amount > 0:
+				rows.append({"icon": preload("res://Sprites/iconThorn.webp"), "text": "+%d Thorn" % thorn_amount, "color": Color("63d471")})
 		elif stat == &"damage":
 			rows.append({"icon": DAMAGE_ICON, "text": "+%d %s Damage" % [amount, _color_name(color_index)], "color": _stat_color(color_index)})
 		elif stat == &"health":
@@ -593,6 +598,15 @@ func _discover_visible_buildings() -> void:
 			_discover_building(_building_key(ore, false), ore, false, true)
 		if not ore._shack_buttons.is_empty():
 			_discover_building(_building_key(ore, true), ore, true, true)
+	for raw_entrance in get_tree().get_nodes_in_group("dungeon_entrances"):
+		if not raw_entrance is DungeonEntrance:
+			continue
+		var entrance := raw_entrance as DungeonEntrance
+		if entrance._is_cleared() and not bool(_discovered_buildings.get(DUNGEON_MINE_KEY, false)):
+			_discovered_buildings[DUNGEON_MINE_KEY] = true
+			_buildings_button.show()
+			_rebuild_buildings()
+			_fly_dot(_world.get_canvas_transform() * entrance.global_position, _buildings_button, Color("ef4444"), "BuildingDiscoveryDot")
 
 
 func _building_key(ore: GoldOre, capacity: bool) -> String:
@@ -635,6 +649,8 @@ func _rebuild_buildings() -> void:
 
 
 func _building_entry(key: String) -> Dictionary:
+	if key == DUNGEON_MINE_KEY:
+		return _dungeon_mine_entry()
 	var parts := key.split(":")
 	if parts.size() != 2:
 		return {}
@@ -645,11 +661,9 @@ func _building_entry(key: String) -> Dictionary:
 			var cost := ore.get_current_shack_cost() if capacity else ore.get_current_build_cost()
 			var built_count := _count_built_buildings(ore.mined_resource_id, capacity)
 			var resource_name := _resource_name(ore.mined_resource_id)
-			var minutes_per_resource := 1.0 / maxf(ore.mine_production_speed * 60.0, 0.00001)
-			var minute_text := str(roundi(minutes_per_resource)) if is_equal_approx(minutes_per_resource, roundf(minutes_per_resource)) else "%.1f" % minutes_per_resource
 			var effect_text := ""
 			if built_count > 0:
-				effect_text = "Capacity: +%d %s" % [10 if ore.mined_resource_id == &"jewels" else GoldShack.GOLD_CAPACITY_BONUS, resource_name] if capacity else "Production: +1 %s every %s min" % [resource_name, minute_text]
+				effect_text = "Capacity: +%d %s" % [ore.capacity_bonus, resource_name] if capacity else "Production: %s" % ResourceManager.format_production_rate(ore.mine_production_speed * built_count)
 			var authored_name := ore.capacity_build_label if capacity else ore.mine_build_label
 			var deposit_icon: Texture2D
 			if not capacity and ore.mined_resource_id in [&"gold_ore", &"jewels"]:
@@ -668,6 +682,39 @@ func _building_entry(key: String) -> Dictionary:
 				"resource_id": ore.mined_resource_id,
 			}
 	return {}
+
+
+func _dungeon_mine_entry() -> Dictionary:
+	var entrance: DungeonEntrance
+	for raw_entrance in get_tree().get_nodes_in_group("dungeon_entrances"):
+		if raw_entrance is DungeonEntrance:
+			entrance = raw_entrance as DungeonEntrance
+			break
+	var manager := get_tree().get_first_node_in_group("dungeon_manager") as DungeonManager
+	var built_count := manager.get_cave_moss_mine_count() if manager else 0
+	return {
+		"name": "Cave Moss Mine",
+		"icon": MINE_ICON,
+		"deposit_icon": entrance.get_sprite_texture() if entrance else null,
+		"price": _cost_total(DungeonEntrance.MINE_BUILD_COST),
+		"cost_id": &"mixed",
+		"price_text": _format_cost(DungeonEntrance.MINE_BUILD_COST),
+		"cost": DungeonEntrance.MINE_BUILD_COST,
+		"effect_text": "Production: %s" % ResourceManager.format_production_rate(DungeonEntrance.MINE_PRODUCTION_SPEED * built_count) if built_count > 0 else "",
+		"built_count": built_count,
+		"resource_id": &"cave_moss",
+	}
+
+
+func unlock_all_buildings() -> void:
+	for raw_ore in get_tree().get_nodes_in_group("gold_ores"):
+		if raw_ore is GoldOre:
+			var ore := raw_ore as GoldOre
+			_discovered_buildings[_building_key(ore, false)] = true
+			_discovered_buildings[_building_key(ore, true)] = true
+	_discovered_buildings[DUNGEON_MINE_KEY] = true
+	_buildings_button.show()
+	_rebuild_buildings()
 
 
 func _count_built_buildings(resource_id: StringName, capacity: bool) -> int:

@@ -131,7 +131,7 @@ func _run() -> void:
 	assert(is_equal_approx(resource_manager.get_production_speed(&"gold_ore"), 1.0 / 300.0), "Each mine must produce one gold ore every five minutes")
 	gold_row = resource_panel._rows.get_child(0) as HBoxContainer
 	assert((gold_row.find_child("ResourceAmount", true, false) as Label).text == "0/10", "Resource HUD must refresh the capped amount")
-	assert((gold_row.find_child("ResourceProduction", true, false) as Label).text == "+0.2/m", "Resource HUD must show active gain speed without unused decimals")
+	assert((gold_row.find_child("ResourceProduction", true, false) as Label).text == "+1/5 min", "Resource HUD must show active gain as a flat amount and interval")
 	assert((gold_row.find_child("ResourceProduction", true, false) as Label).get_theme_color("font_color") == Color("65d76e"), "Active resource gain must be green")
 	var mine := ore.get_node("MinerStructure") as MinerStructure
 	ore.global_position = fox.global_position

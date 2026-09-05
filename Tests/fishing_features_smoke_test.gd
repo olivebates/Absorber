@@ -31,16 +31,16 @@ func _run() -> void:
 	assert(is_instance_valid(fishing_spot._mine), "The fishing spot must build a mine")
 	assert(fishing_spot._mine.resource_id == &"fish" and is_equal_approx(fishing_spot._mine.production_speed, 1.0 / 60.0), "The fishing mine must produce one fish per minute")
 	assert((fishing_spot._mine.get_node("Sprite2D") as Sprite2D).texture.resource_path == "res://Sprites/FishingMine.webp", "The built fishing mine must use FishingMine")
-	assert(fishing_spot._mine._get_production_tooltip_value() == "+1.00/m", "Production rates must be converted to a per-minute value")
+	assert(fishing_spot._mine._get_production_tooltip_value() == "+1/1 min", "Production rates must use a flat amount and minute interval")
 
 	var tooltip := world.get_node("HUD/BuildMineTooltip") as BuildMineTooltip
 	tooltip.show_stat(fish_definition.icon, "Production", fishing_spot._mine._get_production_tooltip_value(), fishing_spot._mine)
 	var production_label := tooltip._content.get_child(1) as Label
-	assert(production_label.text == "Production: +1.00/m", "Mine hover must show production per minute")
+	assert(production_label.text == "Production: +1/1 min", "Mine hover must show a flat amount and minute interval")
 	var unrelated_shack := load("res://Scenes/gold_shack.tscn").instantiate() as GoldShack
 	world.add_child(unrelated_shack)
 	tooltip.hide_tooltip(unrelated_shack)
-	assert(tooltip.visible and (tooltip._content.get_child(1) as Label).text == "Production: +1.00/m", "Leaving a previously hovered shack must not hide the mine popup")
+	assert(tooltip.visible and (tooltip._content.get_child(1) as Label).text == "Production: +1/1 min", "Leaving a previously hovered shack must not hide the mine popup")
 
 	var fishing_cell := world.world_to_cell(fishing_spot.global_position)
 	var crate_cell := Vector2i(-999, -999)

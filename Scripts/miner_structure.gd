@@ -3,6 +3,7 @@ extends Node2D
 
 @export var resource_id: StringName = &"gold_ore"
 @export_range(0.001, 9999.0, 0.001, "suffix:/sec") var production_speed := 1.0 / 60.0
+@export var produces_resources := true
 
 var _resource_manager: ResourceManager
 var _production_time := 0.0
@@ -11,11 +12,13 @@ var _hovered := false
 
 func _ready() -> void:
 	_resource_manager = get_tree().get_first_node_in_group("resource_manager") as ResourceManager
-	if _resource_manager:
+	if _resource_manager and produces_resources:
 		_resource_manager.register_producer(self, resource_id, production_speed)
 
 
 func _process(delta: float) -> void:
+	if not produces_resources:
+		return
 	_update_tooltip()
 	if _resource_manager == null or production_speed <= 0.0:
 		return
@@ -44,12 +47,8 @@ func _update_tooltip() -> void:
 		tooltip.hide_tooltip(self)
 
 
-func _format_speed(speed: float) -> String:
-	return "%.3f" % speed if speed < 0.01 else "%.2f" % speed
-
-
 func _get_production_tooltip_value() -> String:
-	return "+%s/m" % _format_speed(production_speed * 60.0)
+	return ResourceManager.format_production_rate(production_speed)
 
 
 func _get_building_tooltip() -> BuildMineTooltip:
@@ -70,8 +69,10 @@ func load_save_data(data: Variant, offline_seconds: int) -> void:
 			production_speed = maxf(0.0, float(saved[1]) / 1000000000.0)
 	else:
 		production_milliseconds = maxi(0, int(data))
-	if _resource_manager:
+	if _resource_manager and produces_resources:
 		_resource_manager.register_producer(self, resource_id, production_speed)
+	if not produces_resources:
+		return
 	if _resource_manager == null or production_speed <= 0.0:
 		return
 	var interval := 1.0 / production_speed
@@ -83,7 +84,7 @@ func load_save_data(data: Variant, offline_seconds: int) -> void:
 
 
 func _exit_tree() -> void:
-	if _resource_manager:
+	if _resource_manager and produces_resources:
 		_resource_manager.unregister_producer(self)
 
 

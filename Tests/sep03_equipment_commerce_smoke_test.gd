@@ -30,7 +30,7 @@ func _run() -> void:
 	player.inventory_slots[2] = {}
 	assert(player.equip_stone("inventory", 1, "weapon", 0))
 	assert(ItemPickup.get_equipped_stone(player.equipped_weapons[0]).get("item_id") == "red_damage_stone")
-	assert(player.get_damage_for_color(FoxPlayer.COLOR_BLUE) == player.get_base_damage_for_color(FoxPlayer.COLOR_BLUE) + 10)
+	assert(player.get_damage_for_color(FoxPlayer.COLOR_BLUE) == player.get_base_damage_for_color(FoxPlayer.COLOR_BLUE) + 20)
 	assert(player.get_damage_for_color(FoxPlayer.COLOR_RED) == player.get_base_damage_for_color(FoxPlayer.COLOR_RED) + 6)
 	player.inventory_slots[0] = ItemPickup.make_item("red_damage_stone")
 	assert(player.is_stone_replacement_weaker("inventory", 0, "weapon", 0))

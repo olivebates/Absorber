@@ -65,6 +65,7 @@ func _build_menu() -> void:
 		_add_stat_row(rows, COLOR_NAMES[color_index], color_index + 2)
 	for color_index in range(DEFENSE_NAMES.size()):
 		_add_stat_row(rows, DEFENSE_NAMES[color_index], color_index + 5)
+	_add_stat_row(rows, "Thorn", 8)
 
 
 func _add_stat_row(parent: VBoxContainer, label_text: String, stat_index: int) -> void:
@@ -106,19 +107,22 @@ func _adjust_stat(stat_index: int, amount: int) -> void:
 			_player.add_passive_healing(amount)
 		2, 3, 4:
 			_player.add_color_damage(stat_index - 2, amount)
-		_:
+		5, 6, 7:
 			_player.add_color_defense(stat_index - 5, amount)
+		8:
+			_player.add_thorn(amount)
 	_refresh_values()
 
 
 func _refresh_values() -> void:
-	if _player == null or _values.size() < 8:
+	if _player == null or _values.size() < 9:
 		return
 	_values[0].text = str(_player.max_health)
 	_values[1].text = str(_player.passive_healing_amount)
 	for color_index in range(3):
 		_values[color_index + 2].text = str(_player.get_base_damage_for_color(color_index))
 		_values[color_index + 5].text = str(_player.get_base_defense_for_color(color_index))
+	_values[8].text = str(_player.thorn)
 
 
 func _fit_below_damage_grid() -> void:
